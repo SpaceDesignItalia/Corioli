@@ -1,0 +1,95 @@
+{
+  "name": "appdottori",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Gestione pazienti e visite - Corioli",
+  "author": "Pablo",
+  "main": "electron/main.js",
+  "homepage": "./",
+  "scripts": {
+    "dev": "vite --port 5173 --strictPort",
+    "build": "vite build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"npm run dev\" \"cross-env NODE_ENV=development ELECTRON_START_URL=http://localhost:5173 electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "dist": "npm run build && electron-builder --publish=never"
+  },
+  "dependencies": {
+    "@date-io/date-fns": "^3.0.0",
+    "@date-io/dayjs": "^3.0.0",
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mui/icons-material": "^5.15.19",
+    "@mui/material": "^5.15.19",
+    "@mui/x-date-pickers": "^7.14.0",
+    "@nextui-org/react": "^2.4.6",
+    "date-fns": "^3.6.0",
+    "dayjs": "^1.11.13",
+    "dompurify": "^3.1.6",
+    "framer-motion": "^11.2.10",
+    "jspdf": "^2.5.1",
+    "lucide-react": "^0.429.0",
+    "moment": "^2.30.1",
+    "moment-timezone": "^0.5.45",
+    "notistack": "^3.0.1",
+    "quill": "^2.0.2",
+    "react": "^18.2.0",
+    "react-big-calendar": "^1.13.0",
+    "react-dom": "^18.2.0",
+    "react-icons": "^5.3.0",
+    "react-quill": "^2.0.0",
+    "react-router-dom": "^6.23.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@typescript-eslint/eslint-plugin": "^7.2.0",
+    "@typescript-eslint/parser": "^7.2.0",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "autoprefixer": "^10.4.19",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "electron": "^38.1.2",
+    "electron-builder": "^26.0.12",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.6",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0",
+    "wait-on": "^9.0.1"
+  },
+  "build": {
+    "appId": "com.appdottori.desktop",
+    "productName": "Corioli",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/dottoressa.png",
+      "forceCodeSigning": false,
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/dottoressa.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "public/dottoressa.png"
+    }
+  }
+}

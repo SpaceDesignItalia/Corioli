@@ -1,0 +1,41 @@
+.quill-wrapper {
+  position: relative;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column; /* Assicurati che il contenuto sia impilato verticalmente */
+  height: 100%;
+}
+
+.quill-wrapper .ql-toolbar {
+  transition: opacity 0.2s ease, height 0.2s ease;
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+  border-bottom: none;
+}
+
+.quill-wrapper:focus-within .ql-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  height: auto;
+  border-bottom: 1px solid #ccc;
+}
+
+.quill-wrapper .ql-container {
+  border: none;
+  flex: 1; /* Permette all'editor di espandersi per riempire l'area disponibile */
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+}
+
+.quill-wrapper .ql-editor {
+  border: none;
+  padding: 8px;
+  flex: 1; /* Assicurati che l'editor riempia l'intera altezza disponibile */
+  outline: none; /* Rimuove il contorno predefinito */
+  min-height: 100%; /* Assicurati che l'editor riempia l'intera altezza del container */
+  cursor: text; /* Mostra il cursore di testo su tutta l'area */
+}

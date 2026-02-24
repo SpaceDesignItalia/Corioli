@@ -1,0 +1,317 @@
+import { storageService } from './StorageServiceFallback';
+import { Patient, Visit, Doctor, Document, BackupImportMode, RichiestaEsameComplementare } from '../types/Storage';
+
+// Servizio per gestire i pazienti offline
+export class PatientService {
+  static async getAllPatients(): Promise<Patient[]> {
+    return await storageService.getPatients();
+  }
+
+  static async getPatientById(id: string): Promise<Patient | null> {
+    return await storageService.getPatientById(id);
+  }
+
+  static async getPatientByCF(cf: string): Promise<Patient | null> {
+    return await storageService.getPatientByCF(cf);
+  }
+
+  static async addPatient(patientData: {
+    codiceFiscale: string;
+    codiceFiscaleGenerato?: boolean;
+    nome: string;
+    cognome: string;
+    dataNascita: string;
+    luogoNascita: string;
+    sesso: 'M' | 'F';
+    indirizzo?: string;
+    telefono?: string;
+    email?: string;
+  }): Promise<Patient> {
+    return await storageService.addPatient(patientData);
+  }
+
+  static async updatePatient(id: string, patientData: Partial<Patient>): Promise<Patient> {
+    return await storageService.updatePatient(id, patientData);
+  }
+
+  static async deletePatient(id: string): Promise<void> {
+    return await storageService.deletePatient(id);
+  }
+
+  static async searchPatients(searchTerm: string): Promise<Patient[]> {
+    const patients = await this.getAllPatients();
+    const term = searchTerm.toLowerCase();
+
+    return patients.filter(patient =>
+      patient.nome.toLowerCase().includes(term) ||
+      patient.cognome.toLowerCase().includes(term) ||
+      patient.codiceFiscale.toLowerCase().includes(term)
+    );
+  }
+}
+
+// Servizio per gestire le visite offline
+export class VisitService {
+  static async getAllVisits(): Promise<Visit[]> {
+    return await storageService.getVisits();
+  }
+
+  static async getVisitsByPatientId(patientId: string): Promise<Visit[]> {
+    return await storageService.getVisitsByPatientId(patientId);
+  }
+
+  static async getVisitById(id: string): Promise<Visit | null> {
+    return await storageService.getVisitById(id);
+  }
+
+  static async addVisit(visitData: {
+    patientId: string;
+    dataVisita: string;
+    descrizioneClinica: string;
+    anamnesi: string;
+    esamiObiettivo: string;
+    conclusioniDiagnostiche: string;
+    terapie: string;
+  }): Promise<Visit> {
+    return await storageService.addVisit(visitData);
+  }
+
+  static async updateVisit(id: string, visitData: Partial<Visit>): Promise<Visit> {
+    return await storageService.updateVisit(id, visitData);
+  }
+
+  static async deleteVisit(id: string): Promise<void> {
+    return await storageService.deleteVisit(id);
+  }
+
+  static async getVisitsByDateRange(startDate: string, endDate: string): Promise<Visit[]> {
+    const visits = await this.getAllVisits();
+    return visits.filter(visit =>
+      visit.dataVisita >= startDate && visit.dataVisita <= endDate
+    );
+  }
+}
+
+// Richieste esami complementari (entità separata dalla visita)
+export class RichiestaEsameService {
+  static async getAll(): Promise<RichiestaEsameComplementare[]> {
+    // Recupera tutti i pazienti e unisce i loro esami
+    const patients = await storageService.getPatients();
+    const all = await Promise.all(patients.map(p => storageService.getRichiesteEsamiByPatientId(p.id)));
+    return all.flat().sort((a, b) => new Date(b.dataRichiesta).getTime() - new Date(a.dataRichiesta).getTime());
+  }
+
+  static async getByPatientId(patientId: string): Promise<RichiestaEsameComplementare[]> {
+    return await storageService.getRichiesteEsamiByPatientId(patientId);
+  }
+
+  static async getById(id: string): Promise<RichiestaEsameComplementare | null> {
+    return await storageService.getRichiestaEsameById(id);
+  }
+
+  static async add(data: {
+    patientId: string;
+    nome: string;
+    note?: string;
+    dataRichiesta: string;
+  }): Promise<RichiestaEsameComplementare> {
+    return await storageService.addRichiestaEsame(data);
+  }
+
+  static async update(id: string, data: Partial<Pick<RichiestaEsameComplementare, 'nome' | 'note' | 'dataRichiesta'>>): Promise<RichiestaEsameComplementare> {
+    return await storageService.updateRichiestaEsame(id, data);
+  }
+
+  static async delete(id: string): Promise<void> {
+    return await storageService.deleteRichiestaEsame(id);
+  }
+}
+
+// Servizio per gestire il dottore offline
+export class DoctorService {
+  static async getDoctor(): Promise<Doctor | null> {
+    return await storageService.getDoctor();
+  }
+
+  static async updateDoctor(doctorData: {
+    nome?: string;
+    cognome?: string;
+    email?: string;
+    telefono?: string;
+    specializzazione?: string;
+    ambulatori?: any[];
+    profileImage?: string;
+  }): Promise<Doctor> {
+    return await storageService.updateDoctor(doctorData);
+  }
+
+  static async initializeDefaultDoctor(): Promise<Doctor> {
+    const existingDoctor = await this.getDoctor();
+    if (existingDoctor) {
+      return existingDoctor;
+    }
+
+    return await this.updateDoctor({
+      nome: 'Dottore',
+      cognome: 'Default',
+      email: 'dottore@example.com',
+      specializzazione: 'Medicina Generale'
+    });
+  }
+}
+
+// Servizio per backup e export
+export class BackupService {
+  static async exportData(): Promise<Blob> {
+    const data = await storageService.exportData();
+    const jsonString = JSON.stringify(data, null, 2);
+    return new Blob([jsonString], { type: 'application/json' });
+  }
+
+  static async importData(file: File, mode: BackupImportMode = 'replace'): Promise<void> {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.patients && !data.visits && !data.documents) {
+        throw new Error("Formato file non valido: mancano dati essenziali.");
+      }
+      await storageService.importData(data, mode);
+    } catch (error) {
+      console.error("Errore parsing backup:", error);
+      throw error;
+    }
+  }
+
+  static async downloadBackup(): Promise<void> {
+    const blob = await this.exportData();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup-corioli-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  static async uploadBackup(file: File, mode: BackupImportMode = 'replace'): Promise<void> {
+    await this.importData(file, mode);
+  }
+}
+
+// Servizio per gestire i documenti offline
+export class DocumentService {
+  // ... (rimane uguale)
+  static async getAllDocuments(): Promise<Document[]> {
+    return await storageService.getDocuments();
+  }
+
+  static async getDocumentById(id: string): Promise<Document | null> {
+    return await storageService.getDocumentById(id);
+  }
+
+  static async addDocument(documentData: {
+    title: string;
+    description?: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    category: 'corso_aggiornamento' | 'certificato' | 'altro';
+    uploadDate: string;
+    expiryDate?: string;
+    credits?: number;
+    fileData: string;
+  }): Promise<Document> {
+    return await storageService.addDocument(documentData);
+  }
+
+  static async updateDocument(id: string, documentData: Partial<Document>): Promise<Document> {
+    return await storageService.updateDocument(id, documentData);
+  }
+
+  static async deleteDocument(id: string): Promise<void> {
+    return await storageService.deleteDocument(id);
+  }
+
+  static async getDocumentsByCategory(category: string): Promise<Document[]> {
+    const documents = await this.getAllDocuments();
+    return documents.filter(doc => doc.category === category);
+  }
+
+  static async searchDocuments(searchTerm: string): Promise<Document[]> {
+    const documents = await this.getAllDocuments();
+    const term = searchTerm.toLowerCase();
+
+    return documents.filter(doc =>
+      doc.title.toLowerCase().includes(term) ||
+      doc.description?.toLowerCase().includes(term) ||
+      doc.fileName.toLowerCase().includes(term)
+    );
+  }
+
+  static convertFileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Rimuovi il prefisso data:mime/type;base64,
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = error => reject(error);
+    });
+  }
+
+  static downloadDocument(doc: Document): void {
+    try {
+      const byteCharacters = atob(doc.fileData);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: doc.mimeType });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Errore nel download del documento:', error);
+    }
+  }
+}
+
+// Servizio per gestire i template
+import { MedicalTemplate } from '../types/Storage';
+
+export class TemplateService {
+  static async getAllTemplates(): Promise<MedicalTemplate[]> {
+    return await storageService.getTemplates();
+  }
+
+  static async getTemplatesByCategoryAndSection(
+    category: 'ginecologia' | 'ostetricia' | 'terapie',
+    section: 'prestazione' | 'esameObiettivo' | 'conclusioni' | 'generale'
+  ): Promise<MedicalTemplate[]> {
+    const templates = await this.getAllTemplates();
+    return templates.filter(t => t.category === category && t.section === section);
+  }
+
+  static async addTemplate(templateData: Omit<MedicalTemplate, 'id' | 'isDefault'>): Promise<MedicalTemplate> {
+    return await storageService.addTemplate(templateData);
+  }
+
+  static async updateTemplate(id: string, templateData: Partial<MedicalTemplate>): Promise<MedicalTemplate> {
+    return await storageService.updateTemplate(id, templateData);
+  }
+
+  static async deleteTemplate(id: string): Promise<void> {
+    return await storageService.deleteTemplate(id);
+  }
+}
