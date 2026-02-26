@@ -23,26 +23,10 @@ interface PendingClinicalNote {
   note: string;
 }
 
-const MONTH_CODES = [
-  "A",
-  "B",
-  "C",
-  "D",
-  "E",
-  "H",
-  "L",
-  "M",
-  "P",
-  "R",
-  "S",
-  "T",
-];
+const MONTH_CODES = ["A", "B", "C", "D", "E", "H", "L", "M", "P", "R", "S", "T"];
 
 function normalizeHeader(header: string): string {
-  return header
-    .replace(/\uFEFF/g, "")
-    .trim()
-    .toLowerCase();
+  return header.replace(/\uFEFF/g, "").trim().toLowerCase();
 }
 
 function cleanValue(value: string | undefined): string {
@@ -143,17 +127,11 @@ function extractCodiceFiscale(...values: string[]): string {
   return "";
 }
 
-function composeIdentityKey(
-  nome: string,
-  cognome: string,
-  dataNascita: string,
-): string {
+function composeIdentityKey(nome: string, cognome: string, dataNascita: string): string {
   return `${safeLower(nome)}::${safeLower(cognome)}::${dataNascita}`;
 }
 
-function inferVisitType(
-  service: string,
-): "generale" | "ginecologica" | "ostetrica" {
+function inferVisitType(service: string): "generale" | "ginecologica" | "ostetrica" {
   const normalized = safeLower(service);
   if (
     normalized.includes("ostetric") ||
@@ -214,10 +192,8 @@ function shouldSkipAppointmentStatus(status: string): boolean {
 
 function mapStatusToConclusion(status: string): string {
   if (status === "scheduled") return "Appuntamento pianificato";
-  if (status === "confirmedbypatient")
-    return "Appuntamento confermato dalla paziente";
-  if (status === "confirmedbyadmin")
-    return "Appuntamento confermato dalla segreteria";
+  if (status === "confirmedbypatient") return "Appuntamento confermato dalla paziente";
+  if (status === "confirmedbyadmin") return "Appuntamento confermato dalla segreteria";
   if (status === "waitingforconfirmation") return "In attesa di conferma";
   if (!status) return "Importato da agenda";
   return `Stato agenda: ${status}`;
@@ -228,30 +204,22 @@ function generatePseudoCodiceFiscale(
   nome: string,
   cognome: string,
   dataNascita: string,
-  sesso: "M" | "F",
+  sesso: "M" | "F"
 ): string {
   const surnamePart = takeThreeLetters(cognome || "XXX");
   const namePart = takeThreeLetters(nome || "XXX");
   const parsedDate = parseDateLike(dataNascita);
 
-  const year = parsedDate
-    ? parsedDate.slice(2, 4)
-    : String(60 + (hashString(sourceId) % 40));
-  const monthNumber = parsedDate
-    ? Number(parsedDate.slice(5, 7))
-    : 1 + (hashString(sourceId + "m") % 12);
+  const year = parsedDate ? parsedDate.slice(2, 4) : String(60 + (hashString(sourceId) % 40));
+  const monthNumber = parsedDate ? Number(parsedDate.slice(5, 7)) : 1 + (hashString(sourceId + "m") % 12);
   const monthCode = MONTH_CODES[Math.max(0, Math.min(11, monthNumber - 1))];
 
-  const baseDay = parsedDate
-    ? Number(parsedDate.slice(8, 10))
-    : 1 + (hashString(sourceId + "d") % 28);
+  const baseDay = parsedDate ? Number(parsedDate.slice(8, 10)) : 1 + (hashString(sourceId + "d") % 28);
   const dayWithGender = sesso === "F" ? baseDay + 40 : baseDay;
   const dayPart = String(dayWithGender).padStart(2, "0");
 
   const placeCode = "Z";
-  const serialNumber = String(
-    hashString(sourceId + nome + cognome) % 1000,
-  ).padStart(3, "0");
+  const serialNumber = String(hashString(sourceId + nome + cognome) % 1000).padStart(3, "0");
   const partial = `${surnamePart}${namePart}${year}${monthCode}${dayPart}${placeCode}${serialNumber}`;
   const checkLetter = String.fromCharCode(65 + (hashString(partial) % 26));
   return `${partial}${checkLetter}`;
@@ -329,10 +297,8 @@ async function decodeFileText(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
 
-  const hasUtf16LeBom =
-    bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe;
-  const hasUtf16BeBom =
-    bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff;
+  const hasUtf16LeBom = bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe;
+  const hasUtf16BeBom = bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff;
 
   try {
     if (hasUtf16LeBom) return new TextDecoder("utf-16le").decode(buffer);
@@ -349,18 +315,17 @@ async function decodeFileText(file: File): Promise<string> {
   }
 }
 
-function composeVisitKey(
-  patientId: string,
-  date: string,
-  description: string,
-): string {
+function composeVisitKey(patientId: string, date: string, description: string): string {
   return `${patientId}::${date}::${description.trim().toLowerCase()}`;
 }
+
+export type CsvImportProgress = { phase: string; current: number; total: number };
 
 export class CsvImportService {
   static async importPatientsAndAppointments(
     patientsFile: File,
     appointmentsFile: File,
+    onProgress?: (p: CsvImportProgress) => void
   ): Promise<ImportResult> {
     const result: ImportResult = {
       patientsImported: 0,
@@ -378,36 +343,34 @@ export class CsvImportService {
     ]);
 
     const existingVisitKeys = new Set(
-      existingVisits.map((v) =>
-        composeVisitKey(v.patientId, v.dataVisita, v.descrizioneClinica),
-      ),
+      existingVisits.map((v) => composeVisitKey(v.patientId, v.dataVisita, v.descrizioneClinica))
     );
 
     const patientRows = parseCsvSemicolon(patientsText);
     const appointmentRows = parseCsvSemicolon(appointmentsText);
 
+    const totalPatients = patientRows.length;
     const sourceIdToInternalPatientId = new Map<string, string>();
     const pendingClinicalNotes: PendingClinicalNote[] = [];
 
+    if (onProgress) onProgress({ phase: 'Pazienti', current: 0, total: Math.max(1, totalPatients) });
+
     for (let patientRowIndex = 0; patientRowIndex < patientRows.length; patientRowIndex += 1) {
+      if (onProgress) onProgress({ phase: 'Pazienti', current: patientRowIndex + 1, total: Math.max(1, totalPatients) });
       const row = patientRows[patientRowIndex];
       const rowNum = patientRowIndex + 1;
       const sourceId = cleanValue(row["id"]);
       const nome = cleanValue(row["first name"]);
       const cognome = cleanValue(row["last name"]);
       const email = cleanValue(row["email"]);
-      const telefono = cleanValue(
-        row["phone"] || row["additional phone"] || row["number"],
-      );
+      const telefono = cleanValue(row["phone"] || row["additional phone"] || row["number"]);
       const dataNascita = parseDateLike(row["date of birth"]);
       const luogoNascita = cleanValue(row["born city"] || row["address city"]);
       const sesso = parseGender(row["gender"]);
       const indirizzo = buildAddress(row);
       const clinicalNote = buildClinicalNote(row);
 
-      const hasUsefulData = Boolean(
-        sourceId || nome || cognome || email || telefono,
-      );
+      const hasUsefulData = Boolean(sourceId || nome || cognome || email || telefono);
       if (!hasUsefulData) {
         result.patientsSkipped += 1;
         console.warn(`[Import CSV] Paziente riga ${rowNum} saltato: nessun dato utile (id, nome, cognome, email, telefono tutti vuoti).`);
@@ -419,7 +382,7 @@ export class CsvImportService {
         nome,
         cognome,
         dataNascita,
-        sesso,
+        sesso
       );
 
       let existingByCf = await PatientService.getPatientByCF(codiceFiscale);
@@ -432,9 +395,7 @@ export class CsvImportService {
         collisionGuard < 30
       ) {
         collisionGuard += 1;
-        const serial = String(
-          hashString(codiceFiscale + collisionGuard) % 1000,
-        ).padStart(3, "0");
+        const serial = String((hashString(codiceFiscale + collisionGuard) % 1000)).padStart(3, "0");
         const partial = `${codiceFiscale.slice(0, 12)}${serial}`;
         const check = String.fromCharCode(65 + (hashString(partial) % 26));
         codiceFiscale = `${partial}${check}`;
@@ -489,7 +450,11 @@ export class CsvImportService {
     }
 
 
+    const totalNotes = pendingClinicalNotes.length;
+    if (totalNotes > 0 && onProgress) onProgress({ phase: 'Note cliniche', current: 0, total: totalNotes });
+    let notesDone = 0;
     for (const note of pendingClinicalNotes) {
+      if (onProgress) onProgress({ phase: 'Note cliniche', current: ++notesDone, total: totalNotes });
       const description = "Anamnesi iniziale importata da storico paziente";
       const key = composeVisitKey(note.patientId, note.dataVisita, description);
       if (existingVisitKeys.has(key)) {
@@ -511,12 +476,14 @@ export class CsvImportService {
       result.notesImported += 1;
     }
 
+    const totalVisits = appointmentRows.length;
+    if (onProgress) onProgress({ phase: 'Visite', current: 0, total: Math.max(1, totalVisits) });
     for (let visitRowIndex = 0; visitRowIndex < appointmentRows.length; visitRowIndex += 1) {
+      if (onProgress) onProgress({ phase: 'Visite', current: visitRowIndex + 1, total: Math.max(1, totalVisits) });
       const row = appointmentRows[visitRowIndex];
       const visitRowNum = visitRowIndex + 1;
       const externalPatientId = cleanValue(row["patientid"]);
-      const internalPatientId =
-        sourceIdToInternalPatientId.get(externalPatientId);
+      const internalPatientId = sourceIdToInternalPatientId.get(externalPatientId);
       if (!internalPatientId) {
         result.visitsSkipped += 1;
         console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: patientId "${externalPatientId}" non trovato tra i pazienti importati (manca nel CSV pazienti o riga paziente saltata).`);
@@ -569,6 +536,7 @@ export class CsvImportService {
 
   static async importDoctorlibPatients(
     csvFile: File,
+    onProgress?: (p: CsvImportProgress) => void
   ): Promise<DoctorlibImportResult> {
     const result: DoctorlibImportResult = {
       patientsImported: 0,
@@ -582,6 +550,8 @@ export class CsvImportService {
     ]);
 
     const rows = parseCsvSemicolon(csvText);
+    const totalRows = rows.length;
+    if (onProgress) onProgress({ phase: 'Pazienti Doctorlib', current: 0, total: Math.max(1, totalRows) });
 
     const byCf = new Map<string, (typeof existingPatients)[number]>();
     const byIdentity = new Map<string, (typeof existingPatients)[number]>();
@@ -596,36 +566,24 @@ export class CsvImportService {
     }
 
     for (let docRowIndex = 0; docRowIndex < rows.length; docRowIndex += 1) {
+      if (onProgress) onProgress({ phase: 'Pazienti Doctorlib', current: docRowIndex + 1, total: Math.max(1, totalRows) });
       const row = rows[docRowIndex];
       const docRowNum = docRowIndex + 1;
       const sourceId = cleanValue(row["id"] || row["import_identifier"]);
-      const nome = cleanValue(
-        row["first_name"] || row["first name"] || row["name"],
-      );
-      const cognome = cleanValue(
-        row["last_name"] || row["last name"] || row["surname"],
-      );
-      const dataNascita = parseDateLike(
-        row["birthdate"] || row["date of birth"],
-      );
+      const nome = cleanValue(row["first_name"] || row["first name"] || row["name"]);
+      const cognome = cleanValue(row["last_name"] || row["last name"] || row["surname"]);
+      const dataNascita = parseDateLike(row["birthdate"] || row["date of birth"]);
       const email = cleanValue(row["email"]);
-      const telefono = normalizePhone(
-        row["phone_number"] || row["phone"] || row["secondary_phone_number"],
-      );
+      const telefono = normalizePhone(row["phone_number"] || row["phone"] || row["secondary_phone_number"]);
       const indirizzo = cleanValue(row["address"]);
       const cap = cleanValue(row["zipcode"]);
       const citta = cleanValue(row["city"]);
-      const luogoNascita =
-        citta || cleanValue(row["birthplace"] || row["born city"]);
+      const luogoNascita = citta || cleanValue(row["birthplace"] || row["born city"]);
       const sesso = parseGender(row["gender"]);
       const notes = cleanValue(row["notes"]);
-      const encryptedIdentifier = cleanValue(
-        row["server_encrypted_identifier"],
-      );
+      const encryptedIdentifier = cleanValue(row["server_encrypted_identifier"]);
 
-      const hasUsefulData = Boolean(
-        nome || cognome || email || telefono || dataNascita || sourceId,
-      );
+      const hasUsefulData = Boolean(nome || cognome || email || telefono || dataNascita || sourceId);
       if (!hasUsefulData) {
         result.patientsSkipped += 1;
         console.warn(`[Import CSV Doctorlib] Paziente riga ${docRowNum} saltato: nessun dato utile (nome, cognome, email, telefono, data nascita, id tutti vuoti).`);
@@ -641,16 +599,13 @@ export class CsvImportService {
           nome || "NOME",
           cognome || "COGNOME",
           dataNascita,
-          sesso,
+          sesso
         );
       }
       codiceFiscale = codiceFiscale.toUpperCase();
 
       const identityKey = composeIdentityKey(nome, cognome, dataNascita || "");
-      const fullAddress = [indirizzo, [cap, citta].filter(Boolean).join(" ")]
-        .filter(Boolean)
-        .join(", ")
-        .trim();
+      const fullAddress = [indirizzo, [cap, citta].filter(Boolean).join(" ")].filter(Boolean).join(", ").trim();
       const normalizedEmail = normalizeEmail(email);
 
       let existing =
@@ -688,28 +643,16 @@ export class CsvImportService {
         if (extractedCf && existingCf === codiceFiscale && existing.codiceFiscaleGenerato) {
           updatePayload.codiceFiscaleGenerato = false;
         }
-        if ((!existing.nome || existing.nome === "Sconosciuto") && nome)
-          updatePayload.nome = nome;
-        if (
-          (!existing.cognome || existing.cognome === "Sconosciuto") &&
-          cognome
-        )
-          updatePayload.cognome = cognome;
-        if (!existing.dataNascita && dataNascita)
-          updatePayload.dataNascita = dataNascita;
-        if (!existing.luogoNascita && luogoNascita)
-          updatePayload.luogoNascita = luogoNascita;
-        if (!existing.email && normalizedEmail)
-          updatePayload.email = normalizedEmail;
+        if ((!existing.nome || existing.nome === "Sconosciuto") && nome) updatePayload.nome = nome;
+        if ((!existing.cognome || existing.cognome === "Sconosciuto") && cognome) updatePayload.cognome = cognome;
+        if (!existing.dataNascita && dataNascita) updatePayload.dataNascita = dataNascita;
+        if (!existing.luogoNascita && luogoNascita) updatePayload.luogoNascita = luogoNascita;
+        if (!existing.email && normalizedEmail) updatePayload.email = normalizedEmail;
         if (!existing.telefono && telefono) updatePayload.telefono = telefono;
-        if (!existing.indirizzo && fullAddress)
-          updatePayload.indirizzo = fullAddress;
+        if (!existing.indirizzo && fullAddress) updatePayload.indirizzo = fullAddress;
 
         if (Object.keys(updatePayload).length > 0) {
-          const updated = await PatientService.updatePatient(
-            existing.id,
-            updatePayload,
-          );
+          const updated = await PatientService.updatePatient(existing.id, updatePayload);
           existing = updated;
           result.patientsUpdated += 1;
         } else {
