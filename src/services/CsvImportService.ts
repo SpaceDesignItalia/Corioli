@@ -23,8 +23,6 @@ interface PendingClinicalNote {
   note: string;
 }
 
-const MONTH_CODES = ["A", "B", "C", "D", "E", "H", "L", "M", "P", "R", "S", "T"];
-
 function normalizeHeader(header: string): string {
   return header.replace(/\uFEFF/g, "").trim().toLowerCase();
 }
@@ -40,27 +38,6 @@ function cleanValue(value: string | undefined): string {
 
 function safeLower(value: string): string {
   return value.trim().toLowerCase();
-}
-
-function normalizeTextForCode(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^A-Za-z]/g, "")
-    .toUpperCase();
-}
-
-function takeThreeLetters(value: string): string {
-  const cleaned = normalizeTextForCode(value);
-  return (cleaned + "XXX").slice(0, 3);
-}
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
-  }
-  return hash;
 }
 
 function parseDateLike(value: string): string {
@@ -199,32 +176,6 @@ function mapStatusToConclusion(status: string): string {
   return `Stato agenda: ${status}`;
 }
 
-function generatePseudoCodiceFiscale(
-  sourceId: string,
-  nome: string,
-  cognome: string,
-  dataNascita: string,
-  sesso: "M" | "F"
-): string {
-  const surnamePart = takeThreeLetters(cognome || "XXX");
-  const namePart = takeThreeLetters(nome || "XXX");
-  const parsedDate = parseDateLike(dataNascita);
-
-  const year = parsedDate ? parsedDate.slice(2, 4) : String(60 + (hashString(sourceId) % 40));
-  const monthNumber = parsedDate ? Number(parsedDate.slice(5, 7)) : 1 + (hashString(sourceId + "m") % 12);
-  const monthCode = MONTH_CODES[Math.max(0, Math.min(11, monthNumber - 1))];
-
-  const baseDay = parsedDate ? Number(parsedDate.slice(8, 10)) : 1 + (hashString(sourceId + "d") % 28);
-  const dayWithGender = sesso === "F" ? baseDay + 40 : baseDay;
-  const dayPart = String(dayWithGender).padStart(2, "0");
-
-  const placeCode = "Z";
-  const serialNumber = String(hashString(sourceId + nome + cognome) % 1000).padStart(3, "0");
-  const partial = `${surnamePart}${namePart}${year}${monthCode}${dayPart}${placeCode}${serialNumber}`;
-  const checkLetter = String.fromCharCode(65 + (hashString(partial) % 26));
-  return `${partial}${checkLetter}`;
-}
-
 function parseCsvSemicolon(content: string): CsvRow[] {
   const text = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const rows: string[][] = [];
@@ -353,6 +304,15 @@ export class CsvImportService {
     const sourceIdToInternalPatientId = new Map<string, string>();
     const pendingClinicalNotes: PendingClinicalNote[] = [];
 
+    const existingPatients = await PatientService.getAllPatients();
+    type PatientType = Awaited<ReturnType<typeof PatientService.getAllPatients>>[number];
+    const byCf = new Map<string, PatientType>();
+    const byIdentity = new Map<string, PatientType>();
+    for (const p of existingPatients) {
+      if (p.codiceFiscale) byCf.set(String(p.codiceFiscale).trim().toUpperCase(), p);
+      byIdentity.set(composeIdentityKey(p.nome || "", p.cognome || "", p.dataNascita || ""), p);
+    }
+
     if (onProgress) onProgress({ phase: 'Pazienti', current: 0, total: Math.max(1, totalPatients) });
 
     for (let patientRowIndex = 0; patientRowIndex < patientRows.length; patientRowIndex += 1) {
@@ -369,6 +329,7 @@ export class CsvImportService {
       const sesso = parseGender(row["gender"]);
       const indirizzo = buildAddress(row);
       const clinicalNote = buildClinicalNote(row);
+      const cfFromRow = cleanValue(row["codice fiscale"] || row["codicefiscale"] || row["cf"]);
 
       const hasUsefulData = Boolean(sourceId || nome || cognome || email || telefono);
       if (!hasUsefulData) {
@@ -377,55 +338,43 @@ export class CsvImportService {
         continue;
       }
 
-      let codiceFiscale = generatePseudoCodiceFiscale(
-        sourceId || `${nome}-${cognome}-${email}-${telefono}`,
-        nome,
-        cognome,
-        dataNascita,
-        sesso
-      );
+      const codiceFiscale = cfFromRow ? cfFromRow.trim().toUpperCase() : undefined;
+      const identityKey = composeIdentityKey(nome, cognome, dataNascita || "");
+      const existing =
+        (codiceFiscale ? byCf.get(codiceFiscale) : null) ??
+        (identityKey !== "::" ? byIdentity.get(identityKey) : null) ?? null;
 
-      let existingByCf = await PatientService.getPatientByCF(codiceFiscale);
-      let collisionGuard = 0;
-
-      while (
-        existingByCf &&
-        (safeLower(existingByCf.nome) !== safeLower(nome) ||
-          safeLower(existingByCf.cognome) !== safeLower(cognome)) &&
-        collisionGuard < 30
-      ) {
-        collisionGuard += 1;
-        const serial = String((hashString(codiceFiscale + collisionGuard) % 1000)).padStart(3, "0");
-        const partial = `${codiceFiscale.slice(0, 12)}${serial}`;
-        const check = String.fromCharCode(65 + (hashString(partial) % 26));
-        codiceFiscale = `${partial}${check}`;
-        existingByCf = await PatientService.getPatientByCF(codiceFiscale);
-      }
-
-      if (existingByCf) {
-        sourceIdToInternalPatientId.set(sourceId, existingByCf.id);
+      if (existing) {
+        sourceIdToInternalPatientId.set(sourceId, existing.id);
         const needsUpdate =
-          (!existingByCf.email && email) ||
-          (!existingByCf.telefono && telefono) ||
-          (!existingByCf.indirizzo && indirizzo) ||
-          (!existingByCf.dataNascita && dataNascita);
+          (!existing.email && email) ||
+          (!existing.telefono && telefono) ||
+          (!existing.indirizzo && indirizzo) ||
+          (!existing.dataNascita && dataNascita) ||
+          (codiceFiscale && !existing.codiceFiscale);
 
         if (needsUpdate) {
-          await PatientService.updatePatient(existingByCf.id, {
-            email: existingByCf.email || email || undefined,
-            telefono: existingByCf.telefono || telefono || undefined,
-            indirizzo: existingByCf.indirizzo || indirizzo,
-            dataNascita: existingByCf.dataNascita || dataNascita || "",
-          });
+          const updatePayload: Parameters<typeof PatientService.updatePatient>[1] = {
+            email: existing.email || email || undefined,
+            telefono: existing.telefono || telefono || undefined,
+            indirizzo: existing.indirizzo || indirizzo,
+            dataNascita: existing.dataNascita || dataNascita || "",
+          };
+          if (codiceFiscale && !existing.codiceFiscale) {
+            updatePayload.codiceFiscale = codiceFiscale;
+            updatePayload.codiceFiscaleGenerato = false;
+          }
+          const updated = await PatientService.updatePatient(existing.id, updatePayload);
+          if (updated.codiceFiscale) byCf.set(updated.codiceFiscale.trim().toUpperCase(), updated);
+          byIdentity.set(composeIdentityKey(updated.nome || "", updated.cognome || "", updated.dataNascita || ""), updated);
           result.patientsUpdated += 1;
         } else {
           result.patientsSkipped += 1;
-          console.warn(`[Import CSV] Paziente riga ${rowNum} saltato: già presente (CF ${codiceFiscale}), nessun aggiornamento necessario — "${nome} ${cognome}".`);
+          console.warn(`[Import CSV] Paziente riga ${rowNum} saltato: già presente${codiceFiscale ? ` (CF ${codiceFiscale})` : ""}, nessun aggiornamento necessario — "${nome} ${cognome}".`);
         }
       } else {
         const newPatient = await PatientService.addPatient({
-          codiceFiscale,
-          codiceFiscaleGenerato: true,
+          ...(codiceFiscale ? { codiceFiscale, codiceFiscaleGenerato: false } : {}),
           nome: nome || "Sconosciuto",
           cognome: cognome || "Sconosciuto",
           dataNascita: dataNascita || "",
@@ -437,6 +386,8 @@ export class CsvImportService {
         });
 
         sourceIdToInternalPatientId.set(sourceId, newPatient.id);
+        if (newPatient.codiceFiscale) byCf.set(newPatient.codiceFiscale.trim().toUpperCase(), newPatient);
+        byIdentity.set(composeIdentityKey(newPatient.nome || "", newPatient.cognome || "", newPatient.dataNascita || ""), newPatient);
         result.patientsImported += 1;
 
         if (clinicalNote) {
@@ -591,25 +542,14 @@ export class CsvImportService {
       }
 
       const extractedCf = extractCodiceFiscale(notes, encryptedIdentifier);
-      let codiceFiscale = extractedCf;
-      const generatedFromImport = !extractedCf;
-      if (!codiceFiscale) {
-        codiceFiscale = generatePseudoCodiceFiscale(
-          sourceId || `${nome}-${cognome}-${email}-${telefono}`,
-          nome || "NOME",
-          cognome || "COGNOME",
-          dataNascita,
-          sesso
-        );
-      }
-      codiceFiscale = codiceFiscale.toUpperCase();
+      const codiceFiscale = extractedCf ? extractedCf.toUpperCase() : undefined;
 
       const identityKey = composeIdentityKey(nome, cognome, dataNascita || "");
       const fullAddress = [indirizzo, [cap, citta].filter(Boolean).join(" ")].filter(Boolean).join(", ").trim();
       const normalizedEmail = normalizeEmail(email);
 
       let existing =
-        byCf.get(codiceFiscale) ||
+        (codiceFiscale ? byCf.get(codiceFiscale) : undefined) ||
         (identityKey !== "::" ? byIdentity.get(identityKey) : undefined) ||
         (normalizedEmail ? byEmail.get(normalizedEmail) : undefined) ||
         (telefono ? byPhone.get(telefono) : undefined);
@@ -631,16 +571,16 @@ export class CsvImportService {
 
         const existingCf = existing.codiceFiscale ? existing.codiceFiscale.toUpperCase() : '';
         const shouldReplaceCf =
-          Boolean(extractedCf) &&
-          existingCf !== extractedCf &&
+          Boolean(codiceFiscale) &&
+          existingCf !== codiceFiscale &&
           (sameIdentity || sameEmail || samePhone);
 
         const updatePayload: Record<string, any> = {};
-        if (shouldReplaceCf && existingCf !== codiceFiscale) {
+        if (shouldReplaceCf && codiceFiscale && existingCf !== codiceFiscale) {
           updatePayload.codiceFiscale = codiceFiscale;
           updatePayload.codiceFiscaleGenerato = false;
         }
-        if (extractedCf && existingCf === codiceFiscale && existing.codiceFiscaleGenerato) {
+        if (codiceFiscale && existingCf === codiceFiscale && existing.codiceFiscaleGenerato) {
           updatePayload.codiceFiscaleGenerato = false;
         }
         if ((!existing.nome || existing.nome === "Sconosciuto") && nome) updatePayload.nome = nome;
@@ -661,8 +601,7 @@ export class CsvImportService {
         }
       } else {
         const created = await PatientService.addPatient({
-          codiceFiscale,
-          codiceFiscaleGenerato: generatedFromImport,
+          ...(codiceFiscale ? { codiceFiscale, codiceFiscaleGenerato: false } : {}),
           nome: nome || "Sconosciuto",
           cognome: cognome || "Sconosciuto",
           dataNascita: dataNascita || "",

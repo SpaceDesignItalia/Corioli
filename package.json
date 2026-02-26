@@ -1,7 +1,7 @@
 {
   "name": "appdottori",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "Gestione pazienti e visite - Corioli",
   "author": "Pablo",
@@ -15,7 +15,9 @@
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"cross-env NODE_ENV=development ELECTRON_START_URL=http://localhost:5173 electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --publish=never"
+    "dist": "npm run build && electron-builder --publish=never",
+    "dist:win": "npm run build && electron-builder --win --publish=never",
+    "dist:all": "npm run build && electron-builder --mac --win --publish=never"
   },
   "dependencies": {
     "@date-io/date-fns": "^3.0.0",
@@ -76,7 +78,15 @@
       "electron/**/*"
     ],
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "icon": "public/dottoressa.png",
       "forceCodeSigning": false,
       "verifyUpdateCodeSignature": false
