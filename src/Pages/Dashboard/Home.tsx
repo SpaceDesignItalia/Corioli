@@ -1,13 +1,41 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, CardBody, CardHeader, Button, Chip, Spinner, Avatar } from "@nextui-org/react";
 import {
-  UserPlus, Users, FileText, ChevronRight, Activity,
-  Calendar, LayoutDashboard, TrendingUp, HeartPulse,
-  Baby, Stethoscope, Clock, ArrowRight, FlaskConical
+  Card,
+  CardBody,
+  CardHeader,
+  Button,
+  Chip,
+  Spinner,
+  Avatar,
+} from "@nextui-org/react";
+import {
+  UserPlus,
+  Users,
+  FileText,
+  ChevronRight,
+  Activity,
+  Calendar,
+  LayoutDashboard,
+  TrendingUp,
+  HeartPulse,
+  Baby,
+  Stethoscope,
+  Clock,
+  ArrowRight,
+  FlaskConical,
 } from "lucide-react";
-import { DoctorService, PatientService, VisitService, RichiestaEsameService } from "../../services/OfflineServices";
-import { Patient, Visit, RichiestaEsameComplementare } from "../../types/Storage";
+import {
+  DoctorService,
+  PatientService,
+  VisitService,
+  RichiestaEsameService,
+} from "../../services/OfflineServices";
+import {
+  Patient,
+  Visit,
+  RichiestaEsameComplementare,
+} from "../../types/Storage";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import { PageHeader } from "../../components/PageHeader";
@@ -18,7 +46,10 @@ interface DashboardStats {
   totalVisits: number;
   recentPatients: Patient[];
   recentVisits: (Visit & { patientName: string; patientCf: string })[];
-  recentEsami: (RichiestaEsameComplementare & { patientName: string; patientCf: string })[];
+  recentEsami: (RichiestaEsameComplementare & {
+    patientName: string;
+    patientCf: string;
+  })[];
   averageAge: number;
   visitsThisMonth: number;
   patientsThisMonth: number;
@@ -55,7 +86,9 @@ const getVisitTypeLabel = (tipo?: Visit["tipo"]) => {
   return "Generale";
 };
 
-const getVisitTypeColor = (tipo?: Visit["tipo"]): "secondary" | "warning" | "primary" => {
+const getVisitTypeColor = (
+  tipo?: Visit["tipo"],
+): "secondary" | "warning" | "primary" => {
   if (tipo === "ginecologica") return "secondary";
   if (tipo === "ostetrica") return "warning";
   return "primary";
@@ -75,7 +108,10 @@ export default function Home() {
     patientsThisMonth: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
+  const [toast, setToast] = useState<{ open: boolean; message: string }>({
+    open: false,
+    message: "",
+  });
 
   useEffect(() => {
     const msg = sessionStorage.getItem("appdottori_toast");
@@ -99,11 +135,19 @@ export default function Home() {
         setDoctorName(`${doctor.nome} ${doctor.cognome}`);
 
         const now = new Date();
-        const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const thisMonthStart = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          1,
+        ).toISOString();
 
         // This month counts
-        const visitsThisMonth = visits.filter(v => v.dataVisita >= thisMonthStart).length;
-        const patientsThisMonth = patients.filter(p => p.createdAt >= thisMonthStart).length;
+        const visitsThisMonth = visits.filter(
+          (v) => v.dataVisita >= thisMonthStart,
+        ).length;
+        const patientsThisMonth = patients.filter(
+          (p) => p.createdAt >= thisMonthStart,
+        ).length;
 
         // Recent patients sorted by activity
         const visitDatesByPatient = new Map<string, number>();
@@ -114,44 +158,64 @@ export default function Home() {
         }
         const sortedPatients = [...patients]
           .sort((a, b) => {
-            const lastA = Math.max(new Date(a.createdAt).getTime(), new Date(a.updatedAt).getTime(), visitDatesByPatient.get(a.id) ?? 0);
-            const lastB = Math.max(new Date(b.createdAt).getTime(), new Date(b.updatedAt).getTime(), visitDatesByPatient.get(b.id) ?? 0);
+            const lastA = Math.max(
+              new Date(a.createdAt).getTime(),
+              new Date(a.updatedAt).getTime(),
+              visitDatesByPatient.get(a.id) ?? 0,
+            );
+            const lastB = Math.max(
+              new Date(b.createdAt).getTime(),
+              new Date(b.updatedAt).getTime(),
+              visitDatesByPatient.get(b.id) ?? 0,
+            );
             return lastB - lastA;
           })
           .slice(0, 6);
 
         // Enrich visits with patient info
-        const patientMap = new Map(patients.map(p => [p.id, p]));
-        const enrichedVisits = visits.map(v => {
+        const patientMap = new Map(patients.map((p) => [p.id, p]));
+        const enrichedVisits = visits.map((v) => {
           const p = patientMap.get(v.patientId);
           return {
             ...v,
             patientName: p ? `${p.nome} ${p.cognome}` : "Paziente sconosciuto",
-            patientCf: p?.codiceFiscale || ""
+            patientCf: p?.codiceFiscale || "",
           };
         });
         const sortedVisits = enrichedVisits
-          .sort((a, b) => new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime())
+          .sort(
+            (a, b) =>
+              new Date(b.dataVisita).getTime() -
+              new Date(a.dataVisita).getTime(),
+          )
           .slice(0, 6);
 
         // Enrich esami with patient info
-        const enrichedEsami = allEsami.map(e => {
-          const p = patientMap.get(e.patientId);
-          return {
-            ...e,
-            patientName: p ? `${p.nome} ${p.cognome}` : "Paziente sconosciuto",
-            patientCf: p?.codiceFiscale || ""
-          };
-        }).slice(0, 6);
+        const enrichedEsami = allEsami
+          .map((e) => {
+            const p = patientMap.get(e.patientId);
+            return {
+              ...e,
+              patientName: p
+                ? `${p.nome} ${p.cognome}`
+                : "Paziente sconosciuto",
+              patientCf: p?.codiceFiscale || "",
+            };
+          })
+          .slice(0, 6);
 
         // Average age
         let validAgesCount = 0;
         const totalAge = patients.reduce((sum, p) => {
           const age = calculateAge(p.dataNascita);
-          if (age > 0) { validAgesCount++; return sum + age; }
+          if (age > 0) {
+            validAgesCount++;
+            return sum + age;
+          }
           return sum;
         }, 0);
-        const averageAge = validAgesCount > 0 ? Math.round(totalAge / validAgesCount) : 0;
+        const averageAge =
+          validAgesCount > 0 ? Math.round(totalAge / validAgesCount) : 0;
 
         setStats({
           totalPatients: patients.length,
@@ -163,7 +227,6 @@ export default function Home() {
           visitsThisMonth,
           patientsThisMonth,
         });
-
       } catch (e) {
         console.error(e);
       } finally {
@@ -184,7 +247,7 @@ export default function Home() {
   const HeaderActions = (
     <div className="flex gap-3 w-full md:w-auto">
       <Button
-        color="primary"
+        color="secondary"
         startContent={<UserPlus size={18} />}
         onPress={() => navigate("/add-patient")}
         className="font-medium shadow-md shadow-primary/20 flex-1 md:flex-none"
@@ -224,11 +287,16 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pazienti</p>
-                <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.totalPatients}</h3>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Pazienti
+                </p>
+                <h3 className="text-3xl font-bold text-gray-900 mt-1">
+                  {stats.totalPatients}
+                </h3>
                 {stats.patientsThisMonth > 0 && (
                   <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                    <TrendingUp size={12} /> +{stats.patientsThisMonth} questo mese
+                    <TrendingUp size={12} /> +{stats.patientsThisMonth} questo
+                    mese
                   </p>
                 )}
               </div>
@@ -248,11 +316,16 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Visite</p>
-                <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.totalVisits}</h3>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Visite
+                </p>
+                <h3 className="text-3xl font-bold text-gray-900 mt-1">
+                  {stats.totalVisits}
+                </h3>
                 {stats.visitsThisMonth > 0 && (
                   <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
-                    <TrendingUp size={12} /> +{stats.visitsThisMonth} questo mese
+                    <TrendingUp size={12} /> +{stats.visitsThisMonth} questo
+                    mese
                   </p>
                 )}
               </div>
@@ -268,10 +341,14 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Età Media</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Età Media
+                </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
                   {stats.averageAge}
-                  <span className="text-base font-normal text-gray-400 ml-1">anni</span>
+                  <span className="text-base font-normal text-gray-400 ml-1">
+                    anni
+                  </span>
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">dei pazienti</p>
               </div>
@@ -291,8 +368,12 @@ export default function Home() {
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Questo Mese</p>
-                <h3 className="text-3xl font-bold text-gray-900 mt-1">{stats.visitsThisMonth}</h3>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  Questo Mese
+                </p>
+                <h3 className="text-3xl font-bold text-gray-900 mt-1">
+                  {stats.visitsThisMonth}
+                </h3>
                 <p className="text-xs text-gray-400 mt-1">visite effettuate</p>
               </div>
               <div className="p-2.5 bg-amber-100/60 rounded-xl text-amber-600">
@@ -305,13 +386,14 @@ export default function Home() {
 
       {/* ─── Lists Row ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
         {/* Pazienti Recenti */}
         <Card className="shadow-md border border-gray-100">
           <CardHeader className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
             <div className="flex items-center gap-2">
               <Users className="text-emerald-600" size={18} />
-              <h3 className="text-base font-semibold text-gray-900">Pazienti Recenti</h3>
+              <h3 className="text-base font-semibold text-gray-900">
+                Pazienti Recenti
+              </h3>
             </div>
             <Button
               size="sm"
@@ -346,16 +428,28 @@ export default function Home() {
                         <p className="text-xs text-gray-500 truncate">
                           <CodiceFiscaleValue
                             value={patient.codiceFiscale}
-                            generatedFromImport={Boolean(patient.codiceFiscaleGenerato)}
+                            generatedFromImport={Boolean(
+                              patient.codiceFiscaleGenerato,
+                            )}
                           />
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                      <Chip size="sm" variant="flat" color={patient.sesso === "M" ? "primary" : "secondary"} className="text-xs">
-                        {calculateAge(patient.dataNascita) > 0 ? `${calculateAge(patient.dataNascita)}a` : "—"}
+                      <Chip
+                        size="sm"
+                        variant="flat"
+                        color={patient.sesso === "M" ? "primary" : "secondary"}
+                        className="text-xs"
+                      >
+                        {calculateAge(patient.dataNascita) > 0
+                          ? `${calculateAge(patient.dataNascita)}a`
+                          : "—"}
                       </Chip>
-                      <ArrowRight size={14} className="text-gray-300 group-hover:text-primary transition-colors" />
+                      <ArrowRight
+                        size={14}
+                        className="text-gray-300 group-hover:text-primary transition-colors"
+                      />
                     </div>
                   </div>
                 ))}
@@ -364,8 +458,13 @@ export default function Home() {
               <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
                 <Users size={32} className="text-gray-200" />
                 <p className="text-sm">Nessun paziente registrato.</p>
-                <Button size="sm" color="primary" variant="flat" onPress={() => navigate("/add-patient")}
-                  startContent={<UserPlus size={14} />}>
+                <Button
+                  size="sm"
+                  color="primary"
+                  variant="flat"
+                  onPress={() => navigate("/add-patient")}
+                  startContent={<UserPlus size={14} />}
+                >
                   Aggiungi
                 </Button>
               </div>
@@ -378,7 +477,9 @@ export default function Home() {
           <CardHeader className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
             <div className="flex items-center gap-2">
               <FileText className="text-blue-600" size={18} />
-              <h3 className="text-base font-semibold text-gray-900">Visite Recenti</h3>
+              <h3 className="text-base font-semibold text-gray-900">
+                Visite Recenti
+              </h3>
             </div>
             <Button
               size="sm"
@@ -397,16 +498,26 @@ export default function Home() {
                   <div
                     key={visit.id}
                     className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
-                    onClick={() => visit.patientId && navigate(`/patient-history/${visit.patientId}`)}
+                    onClick={() =>
+                      visit.patientId &&
+                      navigate(`/patient-history/${visit.patientId}`)
+                    }
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className={`p-1.5 rounded-lg flex-shrink-0 ${visit.tipo === "ginecologica"
-                          ? "bg-purple-100 text-purple-600"
-                          : visit.tipo === "ostetrica"
-                            ? "bg-amber-100 text-amber-600"
-                            : "bg-blue-100 text-blue-600"
-                        }`}>
-                        {visit.tipo === "ostetrica" ? <Baby size={14} /> : <Stethoscope size={14} />}
+                      <div
+                        className={`p-1.5 rounded-lg flex-shrink-0 ${
+                          visit.tipo === "ginecologica"
+                            ? "bg-purple-100 text-purple-600"
+                            : visit.tipo === "ostetrica"
+                              ? "bg-amber-100 text-amber-600"
+                              : "bg-blue-100 text-blue-600"
+                        }`}
+                      >
+                        {visit.tipo === "ostetrica" ? (
+                          <Baby size={14} />
+                        ) : (
+                          <Stethoscope size={14} />
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-gray-900 group-hover:text-primary transition-colors truncate text-sm">
@@ -419,14 +530,24 @@ export default function Home() {
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                       <div className="text-right">
-                        <Chip size="sm" variant="flat" color={getVisitTypeColor(visit.tipo)} className="text-xs">
+                        <Chip
+                          size="sm"
+                          variant="flat"
+                          color={getVisitTypeColor(visit.tipo)}
+                          className="text-xs"
+                        >
                           {getVisitTypeLabel(visit.tipo)}
                         </Chip>
                         <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(visit.dataVisita).toLocaleDateString("it-IT")}
+                          {new Date(visit.dataVisita).toLocaleDateString(
+                            "it-IT",
+                          )}
                         </p>
                       </div>
-                      <ArrowRight size={14} className="text-gray-300 group-hover:text-primary transition-colors" />
+                      <ArrowRight
+                        size={14}
+                        className="text-gray-300 group-hover:text-primary transition-colors"
+                      />
                     </div>
                   </div>
                 ))}
@@ -435,8 +556,13 @@ export default function Home() {
               <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
                 <FileText size={32} className="text-gray-200" />
                 <p className="text-sm">Nessuna visita registrata.</p>
-                <Button size="sm" color="secondary" variant="flat" onPress={() => navigate("/check-patient")}
-                  startContent={<Calendar size={14} />}>
+                <Button
+                  size="sm"
+                  color="secondary"
+                  variant="flat"
+                  onPress={() => navigate("/check-patient")}
+                  startContent={<Calendar size={14} />}
+                >
                   Inizia
                 </Button>
               </div>
@@ -449,7 +575,9 @@ export default function Home() {
           <CardHeader className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
             <div className="flex items-center gap-2">
               <FlaskConical className="text-teal-600" size={18} />
-              <h3 className="text-base font-semibold text-gray-900">Esami Recenti</h3>
+              <h3 className="text-base font-semibold text-gray-900">
+                Esami Recenti
+              </h3>
             </div>
             <Chip size="sm" variant="flat" color="default" className="text-xs">
               {stats.recentEsami.length} mostrati
@@ -462,7 +590,10 @@ export default function Home() {
                   <div
                     key={esame.id}
                     className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
-                    onClick={() => esame.patientId && navigate(`/patient-history/${esame.patientId}`)}
+                    onClick={() =>
+                      esame.patientId &&
+                      navigate(`/patient-history/${esame.patientId}`)
+                    }
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="p-1.5 rounded-lg flex-shrink-0 bg-teal-100 text-teal-600">
@@ -480,13 +611,20 @@ export default function Home() {
                     <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                       <div className="text-right">
                         <p className="text-xs text-gray-400">
-                          {new Date(esame.dataRichiesta).toLocaleDateString("it-IT")}
+                          {new Date(esame.dataRichiesta).toLocaleDateString(
+                            "it-IT",
+                          )}
                         </p>
                         {esame.note && (
-                          <p className="text-xs text-teal-500 truncate max-w-[80px]">{esame.note}</p>
+                          <p className="text-xs text-teal-500 truncate max-w-[80px]">
+                            {esame.note}
+                          </p>
                         )}
                       </div>
-                      <ArrowRight size={14} className="text-gray-300 group-hover:text-primary transition-colors" />
+                      <ArrowRight
+                        size={14}
+                        className="text-gray-300 group-hover:text-primary transition-colors"
+                      />
                     </div>
                   </div>
                 ))}
@@ -502,7 +640,6 @@ export default function Home() {
             )}
           </CardBody>
         </Card>
-
       </div>
 
       <Snackbar
