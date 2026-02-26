@@ -110,5 +110,25 @@ export function calcolaStimePesoFetale(b: BiometriaMm): Record<string, StimaPeso
   };
 }
 
+/** Campi biometria (in mm) richiesti da ogni formula per la stima del peso fetale */
+export type BiometriaFieldKey = "bpdMm" | "hcMm" | "acMm" | "flMm";
+
+export const FORMULA_BIOMETRIA_FIELDS: Record<string, BiometriaFieldKey[]> = {
+  hadlock4: ["bpdMm", "hcMm", "acMm", "flMm"],
+  hadlock1: ["bpdMm", "acMm", "flMm"],
+  hadlock2: ["hcMm", "acMm", "flMm"],
+  hadlock3: ["acMm", "flMm"],
+  shepard: ["bpdMm", "acMm"],
+  campbell: ["acMm"],
+};
+
+/** Etichette per i campi biometria (visite / UI) */
+export const BIOMETRIA_FIELD_LABELS: Record<BiometriaFieldKey, string> = {
+  bpdMm: "DBP (mm)",
+  hcMm: "CC (mm)",
+  acMm: "CA (mm)",
+  flMm: "FL (mm)",
+};
+
 /** Backward compatibility alias */
 export const calcolaTreScalePesoFetale = calcolaStimePesoFetale;

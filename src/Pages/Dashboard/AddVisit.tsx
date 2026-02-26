@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Card,
   CardBody,
@@ -29,6 +29,7 @@ import { PatientService, VisitService, TemplateService } from "../../services/Of
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, MedicalTemplate } from "../../types/Storage";
 import { calculateAge } from "../../utils/dateUtils";
+import { calcolaStimePesoFetale, FORMULA_BIOMETRIA_FIELDS, BIOMETRIA_FIELD_LABELS } from "../../utils/fetalWeightUtils";
 import { ArrowLeft, Printer, ClipboardList, AlertCircle, Save, User, ImagePlus, Trash2, Copy, X } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -190,7 +191,8 @@ const createDefaultOstetriciaData = () => ({
   noteOstetriche: "",
   prestazione: "",
   esameObiettivo: "",
-  ecografiaImmagini: [] as string[]
+  ecografiaImmagini: [] as string[],
+  biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
 });
 
 export default function AddVisit() {
@@ -208,6 +210,7 @@ export default function AddVisit() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [isPediatricVisitEnabled, setIsPediatricVisitEnabled] = useState(false);
+  const [fetalFormula, setFetalFormula] = useState("hadlock4");
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] = useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
   const [copiedPreviousType, setCopiedPreviousType] = useState<"ginecologica" | "ginecologica_pediatrica" | "ostetrica" | null>(null);
@@ -280,7 +283,8 @@ export default function AddVisit() {
                 partiPrecSpontanei: visit.ostetricia?.partiPrecSpontanei ?? 0,
                 partiPrecCesarei: visit.ostetricia?.partiPrecCesarei ?? 0,
                 abortiPrecSpontanei: visit.ostetricia?.abortiPrecSpontanei ?? 0,
-                ivgPrec: visit.ostetricia?.ivgPrec ?? 0
+                ivgPrec: visit.ostetricia?.ivgPrec ?? 0,
+                biometriaFetale: visit.ostetricia?.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
               }));
             }
             const patientData = await PatientService.getPatientById(visit.patientId);
@@ -361,8 +365,10 @@ export default function AddVisit() {
       try {
         const prefs = JSON.parse(raw);
         setIsPediatricVisitEnabled(Boolean(prefs?.visitaGinecologicaPediatricaEnabled));
+        setFetalFormula(prefs?.formulaPesoFetale || "hadlock4");
       } catch {
         setIsPediatricVisitEnabled(false);
+        setFetalFormula("hadlock4");
       }
     };
 
@@ -530,7 +536,8 @@ export default function AddVisit() {
         partiPrecCesarei: previousVisit.ostetricia?.partiPrecCesarei ?? 0,
         abortiPrecSpontanei: previousVisit.ostetricia?.abortiPrecSpontanei ?? 0,
         ivgPrec: previousVisit.ostetricia?.ivgPrec ?? 0,
-        ecografiaImmagini: previousVisit.ostetricia?.ecografiaImmagini ?? []
+        ecografiaImmagini: previousVisit.ostetricia?.ecografiaImmagini ?? [],
+        biometriaFetale: previousVisit.ostetricia?.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
       }));
     }
 
@@ -728,6 +735,22 @@ export default function AddVisit() {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
     setOstetriciaData(prev => ({ ...prev, [field]: value }));
   };
+
+  const handleBiometriaFetaleChange = (field: "bpdMm" | "hcMm" | "acMm" | "flMm", value: number) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setOstetriciaData(prev => ({
+      ...prev,
+      biometriaFetale: {
+        ...(prev.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }),
+        [field]: value
+      }
+    }));
+  };
+
+  const scalePesoFetale = useMemo(() => {
+    const b = ostetriciaData.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
+    return calcolaStimePesoFetale(b);
+  }, [ostetriciaData.biometriaFetale?.bpdMm, ostetriciaData.biometriaFetale?.hcMm, ostetriciaData.biometriaFetale?.acMm, ostetriciaData.biometriaFetale?.flMm]);
 
   const handleNavigateCronologia = () => {
     if (hasUnsavedChanges && !window.confirm("Modifiche non salvate. Uscire comunque?")) return;
@@ -1565,6 +1588,50 @@ export default function AddVisit() {
 
               {/* RIGHT COLUMN: Referto Testuale */}
               <div className="w-full lg:flex-1 space-y-6">
+                {/* Biometria fetale e peso stimato */}
+                <Card className="shadow-sm border border-default-200 bg-white">
+                  <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
+                    Biometria fetale
+                  </CardHeader>
+                  <CardBody className="px-4 py-6 space-y-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {(FORMULA_BIOMETRIA_FIELDS[fetalFormula] ?? FORMULA_BIOMETRIA_FIELDS.hadlock4).map((field) => (
+                        <Input
+                          key={field}
+                          type="number"
+                          label={BIOMETRIA_FIELD_LABELS[field]}
+                          size="sm"
+                          variant="bordered"
+                          labelPlacement="outside"
+                          value={ostetriciaData.biometriaFetale?.[field] ? String(ostetriciaData.biometriaFetale[field]) : ""}
+                          onValueChange={(v) => handleBiometriaFetaleChange(field, parseInt(v) || 0)}
+                          min={0}
+                          classNames={{ label: "pb-1" }}
+                        />
+                      ))}
+                    </div>
+                    <div className="bg-primary-50/50 rounded-xl p-4 flex items-center justify-between">
+                      <p className="font-semibold text-gray-900">
+                        Peso fetale stimato{" "}
+                        <span className="font-normal text-default-500">
+                          ({scalePesoFetale[fetalFormula as keyof typeof scalePesoFetale]?.nome ?? fetalFormula})
+                        </span>
+                      </p>
+                      <div className="text-right">
+                        {(() => {
+                          const result = scalePesoFetale[fetalFormula as keyof typeof scalePesoFetale];
+                          if (result?.calcolabile && result.pesoGrammi != null) {
+                            return (
+                              <p className="text-xl font-bold text-primary">{result.pesoGrammi} g</p>
+                            );
+                          }
+                          return <p className="text-gray-400 font-medium text-sm">Dati insufficienti</p>;
+                        })()}
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+
                 <Card className="shadow-sm border border-default-200 bg-white">
                   <CardHeader className="pb-0 pt-4 px-6 font-semibold text-gray-700 uppercase text-xs tracking-wider">
                     Referto Medico
