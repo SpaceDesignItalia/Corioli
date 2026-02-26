@@ -26,6 +26,7 @@ import {
   ModalBody,
   ModalFooter,
   useDisclosure,
+  Progress,
 } from "@nextui-org/react";
 import {
   User,
@@ -33,6 +34,7 @@ import {
   Search,
   Download,
   Upload,
+  RefreshCw,
   Settings as SettingsIcon,
   FileText,
   Plus,
@@ -120,6 +122,10 @@ const SettingsScreen = () => {
   const [processingDuplicateGroupKey, setProcessingDuplicateGroupKey] =
     useState<string | null>(null);
   const [duplicateSearch, setDuplicateSearch] = useState("");
+  const [duplicateCheckProgress, setDuplicateCheckProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [mergeConflictOpen, setMergeConflictOpen] = useState(false);
   const [mergeConflictData, setMergeConflictData] = useState<{
     groupKey: string;
@@ -137,6 +143,12 @@ const SettingsScreen = () => {
   const [mergeSelections, setMergeSelections] = useState<
     Record<string, string>
   >({});
+
+  const [appVersion, setAppVersion] = useState<string>("");
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const handleNotificationsToggle = () => {
     setNotificationsEnabled(!notificationsEnabled);
@@ -240,6 +252,60 @@ const SettingsScreen = () => {
     };
     loadCounts();
   }, []);
+
+  useEffect(() => {
+    const api = (window as unknown as {
+      electronAPI?: {
+        getAppVersion?: () => Promise<string>;
+        updaterCheck?: () => Promise<{ version?: string; noUpdate?: boolean; error?: string }>;
+        updaterQuitAndInstall?: () => void;
+        onUpdaterChecking?: (cb: () => void) => void;
+        onUpdaterAvailable?: (cb: (info: { version: string }) => void) => void;
+        onUpdaterNotAvailable?: (cb: () => void) => void;
+        onUpdaterProgress?: (cb: (p: { percent: number }) => void) => void;
+        onUpdaterDownloaded?: (cb: () => void) => void;
+        onUpdaterError?: (cb: (msg: string) => void) => void;
+        removeAllListeners?: (channel: string) => void;
+      };
+    }).electronAPI;
+    if (!api?.getAppVersion) return;
+    api.getAppVersion().then((v) => setAppVersion(v || ""));
+    api.onUpdaterChecking?.(() => { setUpdateError(null); setUpdateChecking(true); });
+    api.onUpdaterAvailable?.((info) => { setUpdateChecking(false); setUpdateAvailable(info?.version ?? "Nuova versione"); });
+    api.onUpdaterNotAvailable?.(() => { setUpdateChecking(false); setUpdateAvailable(null); setUpdateError(null); });
+    api.onUpdaterDownloaded?.(() => { setUpdateDownloaded(true); });
+    api.onUpdaterError?.((msg) => { setUpdateChecking(false); setUpdateError(msg); });
+    return () => {
+      api.removeAllListeners?.("updater:checking");
+      api.removeAllListeners?.("updater:available");
+      api.removeAllListeners?.("updater:not-available");
+      api.removeAllListeners?.("updater:progress");
+      api.removeAllListeners?.("updater:downloaded");
+      api.removeAllListeners?.("updater:error");
+    };
+  }, []);
+
+  const handleCheckForUpdates = async () => {
+    const api = (window as unknown as { electronAPI?: { updaterCheck?: () => Promise<{ version?: string; noUpdate?: boolean; error?: string }> } }).electronAPI;
+    if (!api?.updaterCheck) return;
+    setUpdateError(null);
+    setUpdateAvailable(null);
+    setUpdateDownloaded(false);
+    setUpdateChecking(true);
+    try {
+      const result = await api.updaterCheck();
+      if (result?.error) setUpdateError(result.error);
+      else if (result?.noUpdate) setUpdateAvailable(null);
+      else if (result?.version) setUpdateAvailable(result.version);
+    } finally {
+      setUpdateChecking(false);
+    }
+  };
+
+  const handleQuitAndInstall = () => {
+    const api = (window as unknown as { electronAPI?: { updaterQuitAndInstall?: () => void } }).electronAPI;
+    api?.updaterQuitAndInstall?.();
+  };
 
   const loadTemplates = async () => {
     try {
@@ -569,9 +635,11 @@ const SettingsScreen = () => {
 
   const loadDuplicateGroups = async () => {
     setLoadingDuplicates(true);
+    setDuplicateCheckProgress(null);
     try {
       const patients = await PatientService.getAllPatients();
       const n = patients.length;
+      setDuplicateCheckProgress({ current: 0, total: Math.max(1, n) });
       const parent = Array.from({ length: n }, (_, i) => i);
       const find = (x: number): number => {
         if (parent[x] !== x) parent[x] = find(parent[x]);
@@ -584,6 +652,10 @@ const SettingsScreen = () => {
       };
 
       for (let i = 0; i < n; i++) {
+        setDuplicateCheckProgress({ current: i + 1, total: Math.max(1, n) });
+        if (i > 0 && i % 25 === 0) {
+          await new Promise((r) => setTimeout(r, 0));
+        }
         for (let j = i + 1; j < n; j++) {
           if (areLikelyDuplicatePatients(patients[i], patients[j])) {
             union(i, j);
@@ -615,6 +687,7 @@ const SettingsScreen = () => {
       setError("Errore durante il controllo doppioni.");
     } finally {
       setLoadingDuplicates(false);
+      setDuplicateCheckProgress(null);
     }
   };
 
@@ -1016,6 +1089,71 @@ const SettingsScreen = () => {
         </Card>
       )}
 
+      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
+        <Card className="shadow-lg border border-default-200">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between w-full flex-wrap gap-2">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Aggiornamenti
+              </h2>
+              {appVersion && (
+                <Chip variant="flat" size="sm">
+                  Corioli {appVersion}
+                </Chip>
+              )}
+            </div>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <p className="text-sm text-default-600">
+              Controlla se è disponibile una nuova versione su{" "}
+              <a
+                href="https://github.com/SpaceDesignItalia/Corioli/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                GitHub Releases
+              </a>
+              .
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="flat"
+                color="primary"
+                onPress={handleCheckForUpdates}
+                isLoading={updateChecking}
+                startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
+              >
+                Controlla aggiornamenti
+              </Button>
+              {updateAvailable && !updateDownloaded && (
+                <Chip color="primary" variant="flat">
+                  Disponibile: {updateAvailable}
+                </Chip>
+              )}
+              {updateDownloaded && (
+                <>
+                  <Chip color="success">Download completato</Chip>
+                  <Button
+                    size="sm"
+                    color="success"
+                    onPress={handleQuitAndInstall}
+                  >
+                    Riavvia per installare
+                  </Button>
+                </>
+              )}
+              {updateError && (
+                <Chip color="danger" variant="flat">
+                  {updateError}
+                </Chip>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         {/* Colonna Sinistra: Profilo e Backup */}
         <div className="space-y-8">
@@ -1399,9 +1537,11 @@ const SettingsScreen = () => {
                   variant="flat"
                   color="warning"
                   onPress={loadDuplicateGroups}
-                  isLoading={loadingDuplicates}
+                  isLoading={loadingDuplicates && !duplicateCheckProgress}
                 >
-                  Aggiorna
+                  {duplicateCheckProgress
+                    ? `Analisi: ${duplicateCheckProgress.current} / ${duplicateCheckProgress.total}`
+                    : "Aggiorna"}
                 </Button>
               </div>
             </div>
@@ -1429,10 +1569,25 @@ const SettingsScreen = () => {
             </div>
 
             {loadingDuplicates ? (
-              <div className="py-6 flex justify-center">
-                <span className="text-sm text-gray-500">
-                  Analisi doppioni in corso...
+              <div className="py-6 space-y-3 flex flex-col items-stretch">
+                <span className="text-sm text-gray-500 text-center">
+                  {duplicateCheckProgress
+                    ? `Analisi doppioni: ${duplicateCheckProgress.current} / ${duplicateCheckProgress.total} pazienti`
+                    : "Analisi doppioni in corso..."}
                 </span>
+                {duplicateCheckProgress && (
+                  <Progress
+                    size="md"
+                    value={
+                      (duplicateCheckProgress.current /
+                        Math.max(1, duplicateCheckProgress.total)) *
+                      100
+                    }
+                    color="warning"
+                    className="max-w-full"
+                    aria-label={`Analisi doppioni ${duplicateCheckProgress.current}/${duplicateCheckProgress.total}`}
+                  />
+                )}
               </div>
             ) : filteredDuplicateGroups.length === 0 ? (
               <div className="py-6 text-sm text-gray-500">

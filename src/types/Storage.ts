@@ -99,13 +99,6 @@ export interface Visit {
     esameObiettivo: string;
     /** Data URL (base64) immagini ecografia */
     ecografiaImmagini?: string[];
-    /** Biometria fetale per stima peso (mm). Usato per le 3 scale: Hadlock 4p, Shepard, Hadlock 3p */
-    biometriaFetale?: {
-      bpdMm: number;
-      hcMm: number;
-      acMm: number;
-      flMm: number;
-    };
   };
   createdAt: string;
   updatedAt: string;
