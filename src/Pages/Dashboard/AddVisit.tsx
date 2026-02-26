@@ -30,6 +30,7 @@ import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, MedicalTemplate } from "../../types/Storage";
 import { calculateAge } from "../../utils/dateUtils";
 import { calcolaStimePesoFetale, FORMULA_BIOMETRIA_FIELDS, BIOMETRIA_FIELD_LABELS } from "../../utils/fetalWeightUtils";
+import { parseGestationalWeeks, getCentileForWeight, getCentileLabel } from "../../utils/fetalGrowthCentiles";
 import { ArrowLeft, Printer, ClipboardList, AlertCircle, Save, User, ImagePlus, Trash2, Copy, X } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -1621,8 +1622,21 @@ export default function AddVisit() {
                         {(() => {
                           const result = scalePesoFetale[fetalFormula as keyof typeof scalePesoFetale];
                           if (result?.calcolabile && result.pesoGrammi != null) {
+                            const ga = parseGestationalWeeks(ostetriciaData.settimaneGestazione ?? "");
+                            const centile = ga != null ? getCentileForWeight(result.pesoGrammi, ga) : null;
+                            const centileStr = getCentileLabel(centile);
                             return (
-                              <p className="text-xl font-bold text-primary">{result.pesoGrammi} g</p>
+                              <div>
+                                <p className="text-xl font-bold text-primary">{result.pesoGrammi} g</p>
+                                {centileStr && (
+                                  <p className="text-sm text-default-500 mt-0.5">
+                                    {centileStr} centile
+                                    {ga != null && (
+                                      <span className="text-default-400"> (per {ostetriciaData.settimaneGestazione} sett.)</span>
+                                    )}
+                                  </p>
+                                )}
+                              </div>
                             );
                           }
                           return <p className="text-gray-400 font-medium text-sm">Dati insufficienti</p>;

@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import { Patient, Visit, Doctor, RichiestaEsameComplementare } from "../types/Storage";
 import { DoctorService } from "./OfflineServices";
 import { calcolaStimePesoFetale } from "../utils/fetalWeightUtils";
+import { parseGestationalWeeks, getCentileForWeight, getCentileLabel } from "../utils/fetalGrowthCentiles";
 
     // ─── Layout Constants ───────────────────────────────────────────────────────
     const MARGIN_L = 15;
@@ -454,9 +455,13 @@ interface VisitPdfOptions {
         const biometria = obs.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
         const stimePeso = calcolaStimePesoFetale(biometria);
         const stima = stimePeso[formulaPesoFetale] ?? stimePeso.hadlock4;
-        const pesoFetaleValue = stima?.calcolabile && stima.pesoGrammi != null
-            ? `${stima.pesoGrammi} g`
-            : "-";
+        let pesoFetaleValue = "-";
+        if (stima?.calcolabile && stima.pesoGrammi != null) {
+            const ga = parseGestationalWeeks(obs.settimaneGestazione ?? "");
+            const centile = ga != null ? getCentileForWeight(stima.pesoGrammi, ga) : null;
+            const centileStr = getCentileLabel(centile);
+            pesoFetaleValue = centileStr ? `${stima.pesoGrammi} g (${centileStr} centile)` : `${stima.pesoGrammi} g`;
+        }
 
         doc.setFont("helvetica", "bold");
         doc.setFontSize(9);

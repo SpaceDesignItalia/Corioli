@@ -31,6 +31,7 @@ import { PatientService, VisitService, DoctorService, RichiestaEsameService, Tem
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, Doctor, RichiestaEsameComplementare, MedicalTemplate } from "../../types/Storage";
 import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
+import { parseGestationalWeeks, getCentileForWeight, getCentileLabel } from "../../utils/fetalGrowthCentiles";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -1093,9 +1094,13 @@ export default function PatientHistory() {
                               const b = selectedVisit.ostetricia.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
                               const stime = calcolaStimePesoFetale(b);
                               const stima = stime[formula] ?? stime.hadlock4;
-                              const pesoFetaleStr = stima?.calcolabile && stima.pesoGrammi != null
-                                ? `${stima.pesoGrammi} g`
-                                : "-";
+                              let pesoFetaleStr = "-";
+                              if (stima?.calcolabile && stima.pesoGrammi != null) {
+                                const ga = parseGestationalWeeks(selectedVisit.ostetricia.settimaneGestazione ?? "");
+                                const centile = ga != null ? getCentileForWeight(stima.pesoGrammi, ga) : null;
+                                const centileStr = getCentileLabel(centile);
+                                pesoFetaleStr = centileStr ? `${stima.pesoGrammi} g (${centileStr} centile)` : `${stima.pesoGrammi} g`;
+                              }
                               return [
                                 { label: "SETT. GESTAZIONE", value: selectedVisit.ostetricia.settimaneGestazione || "-" },
                                 { label: "DATA PRESUNTA", value: formatPdfDate(selectedVisit.ostetricia.dataPresunta) },
