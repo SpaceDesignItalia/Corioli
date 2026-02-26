@@ -34,6 +34,7 @@ import {
   Search,
   Download,
   Upload,
+  RefreshCw,
   Settings as SettingsIcon,
   FileText,
   Plus,
@@ -143,6 +144,12 @@ const SettingsScreen = () => {
     Record<string, string>
   >({});
 
+  const [appVersion, setAppVersion] = useState<string>("");
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
   const handleNotificationsToggle = () => {
     setNotificationsEnabled(!notificationsEnabled);
   };
@@ -245,6 +252,60 @@ const SettingsScreen = () => {
     };
     loadCounts();
   }, []);
+
+  useEffect(() => {
+    const api = (window as unknown as {
+      electronAPI?: {
+        getAppVersion?: () => Promise<string>;
+        updaterCheck?: () => Promise<{ version?: string; noUpdate?: boolean; error?: string }>;
+        updaterQuitAndInstall?: () => void;
+        onUpdaterChecking?: (cb: () => void) => void;
+        onUpdaterAvailable?: (cb: (info: { version: string }) => void) => void;
+        onUpdaterNotAvailable?: (cb: () => void) => void;
+        onUpdaterProgress?: (cb: (p: { percent: number }) => void) => void;
+        onUpdaterDownloaded?: (cb: () => void) => void;
+        onUpdaterError?: (cb: (msg: string) => void) => void;
+        removeAllListeners?: (channel: string) => void;
+      };
+    }).electronAPI;
+    if (!api?.getAppVersion) return;
+    api.getAppVersion().then((v) => setAppVersion(v || ""));
+    api.onUpdaterChecking?.(() => { setUpdateError(null); setUpdateChecking(true); });
+    api.onUpdaterAvailable?.((info) => { setUpdateChecking(false); setUpdateAvailable(info?.version ?? "Nuova versione"); });
+    api.onUpdaterNotAvailable?.(() => { setUpdateChecking(false); setUpdateAvailable(null); setUpdateError(null); });
+    api.onUpdaterDownloaded?.(() => { setUpdateDownloaded(true); });
+    api.onUpdaterError?.((msg) => { setUpdateChecking(false); setUpdateError(msg); });
+    return () => {
+      api.removeAllListeners?.("updater:checking");
+      api.removeAllListeners?.("updater:available");
+      api.removeAllListeners?.("updater:not-available");
+      api.removeAllListeners?.("updater:progress");
+      api.removeAllListeners?.("updater:downloaded");
+      api.removeAllListeners?.("updater:error");
+    };
+  }, []);
+
+  const handleCheckForUpdates = async () => {
+    const api = (window as unknown as { electronAPI?: { updaterCheck?: () => Promise<{ version?: string; noUpdate?: boolean; error?: string }> } }).electronAPI;
+    if (!api?.updaterCheck) return;
+    setUpdateError(null);
+    setUpdateAvailable(null);
+    setUpdateDownloaded(false);
+    setUpdateChecking(true);
+    try {
+      const result = await api.updaterCheck();
+      if (result?.error) setUpdateError(result.error);
+      else if (result?.noUpdate) setUpdateAvailable(null);
+      else if (result?.version) setUpdateAvailable(result.version);
+    } finally {
+      setUpdateChecking(false);
+    }
+  };
+
+  const handleQuitAndInstall = () => {
+    const api = (window as unknown as { electronAPI?: { updaterQuitAndInstall?: () => void } }).electronAPI;
+    api?.updaterQuitAndInstall?.();
+  };
 
   const loadTemplates = async () => {
     try {
@@ -1024,6 +1085,71 @@ const SettingsScreen = () => {
         <Card className="border-l-4 border-l-success">
           <CardBody className="py-3">
             <p className="text-success text-sm">{success}</p>
+          </CardBody>
+        </Card>
+      )}
+
+      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
+        <Card className="shadow-lg border border-default-200">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between w-full flex-wrap gap-2">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Aggiornamenti
+              </h2>
+              {appVersion && (
+                <Chip variant="flat" size="sm">
+                  Corioli {appVersion}
+                </Chip>
+              )}
+            </div>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <p className="text-sm text-default-600">
+              Controlla se è disponibile una nuova versione su{" "}
+              <a
+                href="https://github.com/SpaceDesignItalia/Corioli/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                GitHub Releases
+              </a>
+              .
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="flat"
+                color="primary"
+                onPress={handleCheckForUpdates}
+                isLoading={updateChecking}
+                startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
+              >
+                Controlla aggiornamenti
+              </Button>
+              {updateAvailable && !updateDownloaded && (
+                <Chip color="primary" variant="flat">
+                  Disponibile: {updateAvailable}
+                </Chip>
+              )}
+              {updateDownloaded && (
+                <>
+                  <Chip color="success">Download completato</Chip>
+                  <Button
+                    size="sm"
+                    color="success"
+                    onPress={handleQuitAndInstall}
+                  >
+                    Riavvia per installare
+                  </Button>
+                </>
+              )}
+              {updateError && (
+                <Chip color="danger" variant="flat">
+                  {updateError}
+                </Chip>
+              )}
+            </div>
           </CardBody>
         </Card>
       )}

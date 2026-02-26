@@ -21,4 +21,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Rimuovi listener
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+
+  // Auto-update (GitHub Releases)
+  updaterCheck: () => ipcRenderer.invoke('updater:check'),
+  updaterQuitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
+  onUpdaterChecking: (callback) => ipcRenderer.on('updater:checking', callback),
+  onUpdaterAvailable: (callback) => ipcRenderer.on('updater:available', (_e, info) => callback(info)),
+  onUpdaterNotAvailable: (callback) => ipcRenderer.on('updater:not-available', (_e, info) => callback(info)),
+  onUpdaterProgress: (callback) => ipcRenderer.on('updater:progress', (_e, progress) => callback(progress)),
+  onUpdaterDownloaded: (callback) => ipcRenderer.on('updater:downloaded', (_e, info) => callback(info)),
+  onUpdaterError: (callback) => ipcRenderer.on('updater:error', (_e, message) => callback(message)),
+  getAppVersion: () => ipcRenderer.invoke('app:version'),
 });
