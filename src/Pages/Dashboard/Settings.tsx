@@ -49,6 +49,7 @@ import {
   TemplateService,
   PatientService,
   VisitService,
+  PreferenceService,
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
 
@@ -392,31 +393,30 @@ const SettingsScreen = () => {
     }
   };
 
-  const loadPreferences = () => {
-    const savedPrefs = localStorage.getItem("AppDottori_preferences");
-    if (savedPrefs) {
-      try {
-        const prefs = JSON.parse(savedPrefs);
+  const loadPreferences = async () => {
+    try {
+      const prefs = await PreferenceService.getPreferences();
+      if (prefs) {
         setPreferences((prev) => ({ ...prev, ...prefs }));
-        setNotificationsEnabled(prefs.notificationsEnabled ?? true);
-        setPdfTheme(prefs.pdfTheme ?? "light");
-      } catch (error) {
-        console.error("Errore nel caricamento preferenze:", error);
+        setNotificationsEnabled((prefs.notificationsEnabled as boolean) ?? true);
+        setPdfTheme((prefs.pdfTheme as string) ?? "light");
       }
+    } catch (error) {
+      console.error("Errore nel caricamento preferenze:", error);
     }
   };
 
-  const savePreferences = () => {
+  const savePreferences = async () => {
     const prefs = {
       ...preferences,
       notificationsEnabled,
       pdfTheme,
     };
-    localStorage.setItem("AppDottori_preferences", JSON.stringify(prefs));
+    await PreferenceService.savePreferences(prefs);
   };
 
   useEffect(() => {
-    savePreferences();
+    savePreferences().catch(console.error);
   }, [preferences, notificationsEnabled, pdfTheme]);
 
   const handleDoctorInfoChange = (field: string, value: string) => {
@@ -710,7 +710,14 @@ const SettingsScreen = () => {
       ]);
       setPatientCount(patients.length);
       setVisitCount(visits.length);
-      await loadDuplicateGroups();
+      setDuplicateGroups((prev) =>
+        prev
+          .map((g) => ({
+            ...g,
+            patients: g.patients.filter((p) => p.id !== patientId),
+          }))
+          .filter((g) => g.patients.length > 1),
+      );
     } catch (e: any) {
       setError(
         "Errore durante eliminazione duplicato: " + (e?.message || "errore"),
@@ -745,17 +752,17 @@ const SettingsScreen = () => {
         await PatientService.deletePatient(source.id);
       }
 
-      setSuccess(
-        `Doppioni uniti con successo (mantenuto: ${target.nome} ${target.cognome}).`,
-      );
-      setTimeout(() => setSuccess(null), 3000);
+      setDuplicateGroups((prev) => prev.filter((g) => g.key !== groupKey));
       const [patients, visits] = await Promise.all([
         PatientService.getAllPatients(),
         VisitService.getAllVisits(),
       ]);
       setPatientCount(patients.length);
       setVisitCount(visits.length);
-      await loadDuplicateGroups();
+      setSuccess(
+        `Doppioni uniti con successo (mantenuto: ${target.nome} ${target.cognome}).`,
+      );
+      setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
       setError("Errore durante merge duplicati: " + (e?.message || "errore"));
     } finally {
@@ -764,12 +771,16 @@ const SettingsScreen = () => {
     }
   };
 
-  const mergeDuplicateGroup = async (
-    groupKey: string,
-    groupPatients: any[],
-  ) => {
-    if (!groupPatients || groupPatients.length < 2) return;
+  type ConflictField = {
+    key: string;
+    label: string;
+    options: string[];
+    defaultValue: string;
+    generatedByValue?: Record<string, boolean>;
+  };
 
+  const buildMergeData = (groupPatients: any[]) => {
+    if (!groupPatients || groupPatients.length < 2) return null;
     const completenessScore = (p: any) =>
       [
         p.nome,
@@ -799,13 +810,7 @@ const SettingsScreen = () => {
     ];
 
     const basePayload: Record<string, any> = {};
-    const conflictFields: Array<{
-      key: string;
-      label: string;
-      options: string[];
-      defaultValue: string;
-      generatedByValue?: Record<string, boolean>;
-    }> = [];
+    const conflictFields: ConflictField[] = [];
 
     for (const field of fieldDefs) {
       const rawValues = uniqueValues(
@@ -874,25 +879,93 @@ const SettingsScreen = () => {
       });
     }
 
-    if (conflictFields.length === 0) {
-      await executeMergeDuplicateGroup(groupKey, target, sources, basePayload);
+    return { target, sources, basePayload, conflictFields };
+  };
+
+  const mergeDuplicateGroup = async (
+    groupKey: string,
+    groupPatients: any[],
+  ) => {
+    const data = buildMergeData(groupPatients);
+    if (!data) return;
+
+    if (data.conflictFields.length === 0) {
+      await executeMergeDuplicateGroup(
+        groupKey,
+        data.target,
+        data.sources,
+        data.basePayload,
+      );
       return;
     }
 
     const initialSelections: Record<string, string> = {};
-    for (const f of conflictFields) {
+    for (const f of data.conflictFields) {
       initialSelections[f.key] = f.defaultValue;
     }
 
     setMergeConflictData({
       groupKey,
-      target,
-      sources,
-      conflictFields,
-      basePayload,
+      target: data.target,
+      sources: data.sources,
+      conflictFields: data.conflictFields,
+      basePayload: data.basePayload,
     });
     setMergeSelections(initialSelections);
     setMergeConflictOpen(true);
+  };
+
+  const mergeDuplicateGroupAuto = async (
+    groupKey: string,
+    groupPatients: any[],
+  ) => {
+    const data = buildMergeData(groupPatients);
+    if (!data) return;
+    const finalPayload: Record<string, any> = { ...data.basePayload };
+    for (const f of data.conflictFields) {
+      finalPayload[f.key] = f.defaultValue;
+      if (f.key === "codiceFiscale") {
+        finalPayload.codiceFiscaleGenerato = Boolean(
+          f.generatedByValue?.[f.defaultValue],
+        );
+      }
+    }
+    await executeMergeDuplicateGroup(
+      groupKey,
+      data.target,
+      data.sources,
+      finalPayload,
+    );
+  };
+
+  const [mergingAll, setMergingAll] = useState(false);
+
+  const mergeAllDuplicateGroups = async () => {
+    if (duplicateGroups.length === 0) return;
+    if (
+      !confirm(
+        `Unire tutti i ${duplicateGroups.length} gruppi di doppioni? Per ogni gruppo verrà mantenuto il paziente con più dati e i conflitti risolti con i valori predefiniti.`,
+      )
+    )
+      return;
+    setError(null);
+    setMergingAll(true);
+    const groups = [...duplicateGroups];
+    let done = 0;
+    try {
+      for (const group of groups) {
+        await mergeDuplicateGroupAuto(group.key, group.patients);
+        done += 1;
+      }
+      setSuccess(`Uniti ${done} gruppi di doppioni.`);
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (e: any) {
+      setError(
+        `Errore durante unione gruppi: ${e?.message || "errore"}. Uniti ${done} di ${groups.length}.`,
+      );
+    } finally {
+      setMergingAll(false);
+    }
   };
 
   const confirmMergeWithSelections = async () => {
@@ -1542,6 +1615,19 @@ const SettingsScreen = () => {
                   {duplicateCheckProgress
                     ? `Analisi: ${duplicateCheckProgress.current} / ${duplicateCheckProgress.total}`
                     : "Aggiorna"}
+                </Button>
+                <Button
+                  size="sm"
+                  color="warning"
+                  onPress={mergeAllDuplicateGroups}
+                  isLoading={mergingAll}
+                  isDisabled={
+                    loadingDuplicates ||
+                    duplicateGroups.length === 0 ||
+                    !!processingDuplicateGroupKey
+                  }
+                >
+                  {mergingAll ? "Unione in corso..." : "Unisci tutto"}
                 </Button>
               </div>
             </div>

@@ -15,7 +15,7 @@ import {
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import { SearchIcon } from "../../components/navbar/SearchIcon";
-import { PatientService, DoctorService } from "../../services/OfflineServices";
+import { PatientService, DoctorService, PreferenceService } from "../../services/OfflineServices";
 import { Patient } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -97,20 +97,27 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(RECENT_PATIENT_SEARCHES_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setRecentPatientSearches(
-          parsed
-            .filter((p) => p && typeof p.id === "string")
-            .slice(0, MAX_RECENT_PATIENT_SEARCHES)
-        );
+    const load = async () => {
+      try {
+        let raw = await PreferenceService.getRecentPatientSearches();
+        if (!raw && typeof localStorage !== "undefined") {
+          raw = localStorage.getItem(RECENT_PATIENT_SEARCHES_KEY);
+          if (raw) await PreferenceService.setRecentPatientSearches(raw);
+        }
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setRecentPatientSearches(
+            parsed
+              .filter((p) => p && typeof p.id === "string")
+              .slice(0, MAX_RECENT_PATIENT_SEARCHES)
+          );
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore invalid local storage
-    }
+    };
+    void load();
   }, []);
 
   useEffect(() => {
@@ -190,7 +197,7 @@ export default function Dashboard() {
 
     if (normalized.length !== recentPatientSearches.length) {
       setRecentPatientSearches(normalized);
-      localStorage.setItem(RECENT_PATIENT_SEARCHES_KEY, JSON.stringify(normalized));
+      PreferenceService.setRecentPatientSearches(JSON.stringify(normalized)).catch(() => {});
     }
   }, [patients, recentPatientSearches]);
 
@@ -212,7 +219,7 @@ export default function Dashboard() {
     };
     setRecentPatientSearches((prev) => {
       const next = [entry, ...prev.filter((p) => p.id !== patient.id)].slice(0, MAX_RECENT_PATIENT_SEARCHES);
-      localStorage.setItem(RECENT_PATIENT_SEARCHES_KEY, JSON.stringify(next));
+      PreferenceService.setRecentPatientSearches(JSON.stringify(next)).catch(() => {});
       return next;
     });
   }, []);
@@ -272,7 +279,7 @@ export default function Dashboard() {
                     className="h-6 min-w-0 px-2 text-xs"
                     onPress={() => {
                       setRecentPatientSearches([]);
-                      localStorage.removeItem(RECENT_PATIENT_SEARCHES_KEY);
+                      PreferenceService.setRecentPatientSearches("[]").catch(() => {});
                     }}
                   >
                     Pulisci

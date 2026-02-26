@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import { Patient, Visit, Doctor, RichiestaEsameComplementare } from "../types/Storage";
-import { DoctorService } from "./OfflineServices";
+import { DoctorService, PreferenceService } from "./OfflineServices";
 import { calcolaStimePesoFetale } from "../utils/fetalWeightUtils";
 
     // ─── Layout Constants ───────────────────────────────────────────────────────
@@ -420,7 +420,11 @@ interface VisitPdfOptions {
     static async generateObstetricPDF(patient: Patient, visit: Visit, options?: VisitPdfOptions) {
         if (!visit.ostetricia) return;
         const obs = visit.ostetricia;
-        const doctor = await DoctorService.getDoctor();
+        const [doctor, prefs] = await Promise.all([
+            DoctorService.getDoctor(),
+            PreferenceService.getPreferences(),
+        ]);
+        const formulaPesoFetale = (prefs?.formulaPesoFetale as string) || "hadlock4";
         const doc = new jsPDF();
 
         let y = this.drawHeader(doc, "VISITA OSTETRICA", "Monitoraggio della Gravidanza", doctor);
@@ -441,16 +445,6 @@ interface VisitPdfOptions {
         ], y);
 
         // ── Pregnancy Parameters Grid (con Peso fetale stimato) ──
-        let formulaPesoFetale = "hadlock4";
-        try {
-            const raw = typeof localStorage !== "undefined" ? localStorage.getItem("AppDottori_preferences") : null;
-            if (raw) {
-                const prefs = JSON.parse(raw) as { formulaPesoFetale?: string };
-                if (prefs.formulaPesoFetale) formulaPesoFetale = prefs.formulaPesoFetale;
-            }
-        } catch {
-            // keep hadlock4
-        }
         const biometria = obs.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
         const stimePeso = calcolaStimePesoFetale(biometria);
         const stima = stimePeso[formulaPesoFetale] ?? stimePeso.hadlock4;
