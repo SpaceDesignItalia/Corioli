@@ -69,6 +69,24 @@ class LocalStorageFallbackService implements StorageService {
     }
   }
 
+  /** Chiave/valore per preferenze e altri dati (in Electron usa il db). */
+  async getPreference(key: string): Promise<string | null> {
+    const fullKey = this.getStorageKey(key);
+    if (useSqlite()) {
+      return await window.electronAPI!.kvGet(fullKey);
+    }
+    return localStorage.getItem(fullKey);
+  }
+
+  async setPreference(key: string, value: string): Promise<void> {
+    const fullKey = this.getStorageKey(key);
+    if (useSqlite()) {
+      await window.electronAPI!.kvSet(fullKey, value);
+    } else {
+      localStorage.setItem(fullKey, value);
+    }
+  }
+
   // Pazienti
   async getPatients(): Promise<Patient[]> {
     return await this.getFromStorage<Patient>('patients');
@@ -700,6 +718,8 @@ class LocalStorageFallbackService implements StorageService {
       localStorage.removeItem(this.getStorageKey('doctor'));
       localStorage.removeItem(this.getStorageKey('documents'));
       localStorage.removeItem(this.getStorageKey('templates'));
+      localStorage.removeItem(this.getStorageKey('preferences'));
+      localStorage.removeItem(this.getStorageKey('recent_patient_searches'));
     }
   }
 }

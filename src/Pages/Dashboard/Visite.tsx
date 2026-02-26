@@ -19,7 +19,7 @@ import {
   SelectItem
 } from "@nextui-org/react";
 import { FileText, ChevronRight, Plus, Calendar, Eye } from "lucide-react";
-import { PatientService, VisitService } from "../../services/OfflineServices";
+import { PatientService, VisitService, PreferenceService } from "../../services/OfflineServices";
 import { Visit } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
 import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
@@ -73,15 +73,11 @@ export default function Visite() {
   const rowsPerPage = 10;
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("AppDottori_preferences");
-      if (raw) {
-        const prefs = JSON.parse(raw);
-        setFetalFormula(prefs?.formulaPesoFetale || "hadlock4");
-      }
-    } catch {
-      // ignore
-    }
+    PreferenceService.getPreferences()
+      .then((prefs) => {
+        if (prefs?.formulaPesoFetale) setFetalFormula(prefs.formulaPesoFetale as string);
+      })
+      .catch(() => {});
   }, [isOpen]); // Reload when modal opens
 
   useEffect(() => {

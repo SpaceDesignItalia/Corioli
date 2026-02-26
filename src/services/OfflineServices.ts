@@ -160,6 +160,31 @@ export class DoctorService {
   }
 }
 
+/** Preferenze app e ricerche recenti (in Electron salvate nel db). */
+export class PreferenceService {
+  static async getPreferences(): Promise<Record<string, unknown> | null> {
+    const raw = await storageService.getPreference('preferences');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  static async savePreferences(prefs: Record<string, unknown>): Promise<void> {
+    await storageService.setPreference('preferences', JSON.stringify(prefs));
+  }
+
+  static async getRecentPatientSearches(): Promise<string | null> {
+    return await storageService.getPreference('recent_patient_searches');
+  }
+
+  static async setRecentPatientSearches(json: string): Promise<void> {
+    await storageService.setPreference('recent_patient_searches', json);
+  }
+}
+
 // Servizio per backup e export
 export class BackupService {
   static async exportData(): Promise<Blob> {
