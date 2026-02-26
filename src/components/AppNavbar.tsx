@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Navbar,
   NavbarBrand,
@@ -15,8 +15,7 @@ import {
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { AcmeIcon } from "./sidebar/AcmeIcon";
 import { DoctorService } from "../services/OfflineServices";
-import { MapPin, RefreshCw, History } from "lucide-react";
-import { useOrbyt } from "@orbytapp/orbyt-sdk/react";
+import { MapPin, RefreshCw } from "lucide-react";
 
 const menuItems = [
   { label: "Dashboard", href: "/" },
@@ -30,14 +29,9 @@ const menuItems = [
 export default function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { getFeatureFlag } = useOrbyt();
   const [primaryAmbulatorio, setPrimaryAmbulatorio] = useState<string | null>(
     null,
   );
-  const versioneApp = "1.0.0";
-  const [versioneAppDisponibile, setVersioneAppDisponibile] = useState<
-    string | null
-  >(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
 
   const loadDoctor = async () => {
@@ -55,13 +49,6 @@ export default function AppNavbar() {
   };
 
   useEffect(() => {
-    const checkFeature = async () => {
-      const result = await getFeatureFlag("new_version_available", {
-        version: versioneApp,
-      });
-      setVersioneAppDisponibile(result.value);
-    };
-    checkFeature();
     loadDoctor();
   }, []);
 
@@ -136,38 +123,6 @@ export default function AppNavbar() {
               role="button"
             >
               {primaryAmbulatorio || "Nessun ambulatorio"}
-            </Chip>
-          </Tooltip>
-        </NavbarItem>
-
-        {/* Versione attuale dell'app */}
-        <NavbarItem className="hidden sm:flex ml-2 pl-2 border-l border-default-200">
-          <Tooltip
-            content={
-              versioneAppDisponibile
-                ? "Nuova versione disponibile"
-                : "Versione attuale dell'app"
-            }
-          >
-            <Chip
-              size="sm"
-              variant="flat"
-              color={versioneAppDisponibile ? "warning" : "success"}
-              startContent={
-                <History
-                  size={14}
-                  className={
-                    versioneAppDisponibile ? "text-warning" : "text-success"
-                  }
-                />
-              }
-              className="cursor-pointer font-medium hover:opacity-90 transition-opacity"
-              onClick={() => navigate("/settings")}
-              role="button"
-            >
-              {versioneAppDisponibile
-                ? "Nuova versione disponibile"
-                : versioneApp}
             </Chip>
           </Tooltip>
         </NavbarItem>
