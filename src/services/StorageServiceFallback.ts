@@ -1,6 +1,30 @@
 import { StorageService, Patient, Visit, Doctor, Document, AppData, MedicalTemplate, BackupImportMode, RichiestaEsameComplementare } from '../types/Storage';
 import { MedicalTemplates } from '../data/medicalTemplates';
 
+declare global {
+  interface Window {
+    electronAPI?: {
+      kvGet: (key: string) => Promise<string | null>;
+      kvSet: (key: string, value: string) => Promise<void>;
+      kvRemove: (key: string) => Promise<void>;
+      kvClearAppDottori: () => Promise<void>;
+    };
+  }
+}
+
+function useSqlite(): boolean {
+  return typeof window !== 'undefined' && !!window.electronAPI?.kvGet;
+}
+
+function generateUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const hex = '0123456789abcdef';
+  const r = (n: number) => Array.from({ length: n }, () => hex[Math.floor(Math.random() * 16)]).join('');
+  return `${r(8)}-${r(4)}-4${r(3)}-${['8', '9', 'a', 'b'][Math.floor(Math.random() * 4)]}${r(3)}-${r(12)}`;
+}
+
 class LocalStorageFallbackService implements StorageService {
   private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -16,7 +40,13 @@ class LocalStorageFallbackService implements StorageService {
 
   private async getFromStorage<T>(key: string): Promise<T[]> {
     try {
-      const data = localStorage.getItem(this.getStorageKey(key));
+      const fullKey = this.getStorageKey(key);
+      let data: string | null;
+      if (useSqlite()) {
+        data = await window.electronAPI!.kvGet(fullKey);
+      } else {
+        data = localStorage.getItem(fullKey);
+      }
       return data ? JSON.parse(data) : [];
     } catch (error) {
       console.error(`Errore nel recupero dei dati per ${key}:`, error);
@@ -26,7 +56,13 @@ class LocalStorageFallbackService implements StorageService {
 
   private async saveToStorage<T>(key: string, data: T[]): Promise<void> {
     try {
-      localStorage.setItem(this.getStorageKey(key), JSON.stringify(data));
+      const fullKey = this.getStorageKey(key);
+      const value = JSON.stringify(data);
+      if (useSqlite()) {
+        await window.electronAPI!.kvSet(fullKey, value);
+      } else {
+        localStorage.setItem(fullKey, value);
+      }
     } catch (error) {
       console.error(`Errore nel salvataggio dei dati per ${key}:`, error);
       throw error;
@@ -55,17 +91,18 @@ class LocalStorageFallbackService implements StorageService {
 
   async addPatient(patientData: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Patient> {
     const patients = await this.getPatients();
-    const normalizedCf = String(patientData.codiceFiscale || "").trim().toUpperCase();
-    const duplicate = patients.some(
-      (p) => String(p.codiceFiscale || "").trim().toUpperCase() === normalizedCf
-    );
-    if (duplicate) {
-      throw new Error('Codice fiscale già presente');
+    const cfValue = patientData.codiceFiscale != null ? String(patientData.codiceFiscale).trim() : '';
+    const normalizedCf = cfValue ? cfValue.toUpperCase() : '';
+    if (normalizedCf) {
+      const duplicate = patients.some(
+        (p) => String(p.codiceFiscale || '').trim().toUpperCase() === normalizedCf
+      );
+      if (duplicate) throw new Error('Codice fiscale già presente');
     }
     const patient: Patient = {
       ...patientData,
-      codiceFiscale: normalizedCf,
-      id: this.generateId(),
+      codiceFiscale: normalizedCf || undefined,
+      id: generateUuid(),
       createdAt: this.getCurrentTimestamp(),
       updatedAt: this.getCurrentTimestamp()
     };
@@ -83,20 +120,19 @@ class LocalStorageFallbackService implements StorageService {
       throw new Error('Paziente non trovato');
     }
 
-    const nextCf = String(patientData.codiceFiscale ?? patients[index].codiceFiscale)
-      .trim()
-      .toUpperCase();
-    const duplicate = patients.some(
-      (p) => p.id !== id && String(p.codiceFiscale || "").trim().toUpperCase() === nextCf
-    );
-    if (duplicate) {
-      throw new Error('Codice fiscale già presente');
+    const rawNextCf = patientData.codiceFiscale ?? patients[index].codiceFiscale;
+    const nextCf = rawNextCf != null ? String(rawNextCf).trim().toUpperCase() : '';
+    if (nextCf) {
+      const duplicate = patients.some(
+        (p) => p.id !== id && String(p.codiceFiscale || '').trim().toUpperCase() === nextCf
+      );
+      if (duplicate) throw new Error('Codice fiscale già presente');
     }
 
     patients[index] = {
       ...patients[index],
       ...patientData,
-      codiceFiscale: nextCf,
+      codiceFiscale: nextCf || undefined,
       id,
       updatedAt: this.getCurrentTimestamp()
     };
@@ -270,7 +306,13 @@ class LocalStorageFallbackService implements StorageService {
   // Dottore
   async getDoctor(): Promise<Doctor | null> {
     try {
-      const data = localStorage.getItem(this.getStorageKey('doctor'));
+      const fullKey = this.getStorageKey('doctor');
+      let data: string | null;
+      if (useSqlite()) {
+        data = await window.electronAPI!.kvGet(fullKey);
+      } else {
+        data = localStorage.getItem(fullKey);
+      }
       return data ? JSON.parse(data) : null;
     } catch (error) {
       console.error('Errore nel recupero dei dati del dottore:', error);
@@ -296,7 +338,13 @@ class LocalStorageFallbackService implements StorageService {
     };
 
     try {
-      localStorage.setItem(this.getStorageKey('doctor'), JSON.stringify(doctor));
+      const fullKey = this.getStorageKey('doctor');
+      const value = JSON.stringify(doctor);
+      if (useSqlite()) {
+        await window.electronAPI!.kvSet(fullKey, value);
+      } else {
+        localStorage.setItem(fullKey, value);
+      }
     } catch (error) {
       console.error('Errore nel salvataggio dei dati del dottore:', error);
       throw error;
@@ -450,7 +498,13 @@ class LocalStorageFallbackService implements StorageService {
       }
 
       if (data.doctor) {
-        localStorage.setItem(this.getStorageKey('doctor'), JSON.stringify(data.doctor));
+        const fullKey = this.getStorageKey('doctor');
+        const value = JSON.stringify(data.doctor);
+        if (useSqlite()) {
+          await window.electronAPI!.kvSet(fullKey, value);
+        } else {
+          localStorage.setItem(fullKey, value);
+        }
       }
 
       if (data.documents && data.documents.length > 0) {
@@ -487,23 +541,32 @@ class LocalStorageFallbackService implements StorageService {
 
     const patientIdMap = new Map<string, string>();
     const existingPatientIds = new Set(currentPatients.map((p) => p.id));
-    const patientByCf = new Map(
-      currentPatients.map((p) => [String(p.codiceFiscale || '').toUpperCase(), p])
-    );
+    const patientByCf = new Map<string, Patient>();
+    for (const p of currentPatients) {
+      const cf = String(p.codiceFiscale || '').trim().toUpperCase();
+      if (cf) patientByCf.set(cf, p);
+    }
+    const patientById = new Map(currentPatients.map((p) => [p.id, p]));
 
     for (const p of incomingPatients) {
-      const cf = String(p.codiceFiscale || '').toUpperCase();
-      const existingByCf = patientByCf.get(cf);
+      const existingById = patientById.get(p.id);
+      if (existingById) {
+        patientIdMap.set(p.id, existingById.id);
+        continue;
+      }
+      const cf = String(p.codiceFiscale || '').trim().toUpperCase();
+      const existingByCf = cf ? patientByCf.get(cf) : undefined;
       if (existingByCf) {
         patientIdMap.set(p.id, existingByCf.id);
         continue;
       }
 
-      const nextId = existingPatientIds.has(p.id) ? this.generateId() : p.id;
+      const nextId = existingPatientIds.has(p.id) ? generateUuid() : p.id;
       existingPatientIds.add(nextId);
       const patientToAdd: Patient = { ...p, id: nextId };
       mergedPatients.push(patientToAdd);
-      patientByCf.set(cf, patientToAdd);
+      patientById.set(nextId, patientToAdd);
+      if (cf) patientByCf.set(cf, patientToAdd);
       patientIdMap.set(p.id, nextId);
     }
 
@@ -568,7 +631,13 @@ class LocalStorageFallbackService implements StorageService {
       const incomingDoctor = data.doctor;
 
       if (!currentDoctor) {
-        localStorage.setItem(this.getStorageKey('doctor'), JSON.stringify(incomingDoctor));
+        const fullKey = this.getStorageKey('doctor');
+        const value = JSON.stringify(incomingDoctor);
+        if (useSqlite()) {
+          await window.electronAPI!.kvSet(fullKey, value);
+        } else {
+          localStorage.setItem(fullKey, value);
+        }
       } else {
         const currentAmbulatori = currentDoctor.ambulatori || [];
         const incomingAmbulatori = incomingDoctor.ambulatori || [];
@@ -610,18 +679,28 @@ class LocalStorageFallbackService implements StorageService {
           updatedAt: this.getCurrentTimestamp(),
         };
 
-        localStorage.setItem(this.getStorageKey('doctor'), JSON.stringify(mergedDoctor));
+        const fullKey = this.getStorageKey('doctor');
+        const value = JSON.stringify(mergedDoctor);
+        if (useSqlite()) {
+          await window.electronAPI!.kvSet(fullKey, value);
+        } else {
+          localStorage.setItem(fullKey, value);
+        }
       }
     }
   }
 
   async clearAllData(): Promise<void> {
-    localStorage.removeItem(this.getStorageKey('patients'));
-    localStorage.removeItem(this.getStorageKey('visits'));
-    localStorage.removeItem(this.getStorageKey('richieste_esami'));
-    localStorage.removeItem(this.getStorageKey('doctor'));
-    localStorage.removeItem(this.getStorageKey('documents'));
-    localStorage.removeItem(this.getStorageKey('templates'));
+    if (useSqlite()) {
+      await window.electronAPI!.kvClearAppDottori();
+    } else {
+      localStorage.removeItem(this.getStorageKey('patients'));
+      localStorage.removeItem(this.getStorageKey('visits'));
+      localStorage.removeItem(this.getStorageKey('richieste_esami'));
+      localStorage.removeItem(this.getStorageKey('doctor'));
+      localStorage.removeItem(this.getStorageKey('documents'));
+      localStorage.removeItem(this.getStorageKey('templates'));
+    }
   }
 }
 

@@ -50,11 +50,10 @@ export default function CheckPatient() {
   }, [cf, allPatients]);
 
   const handleSuggestionClick = (patient: Patient) => {
-    const selectedCf = patient.codiceFiscale.toUpperCase();
-    setCf(selectedCf);
+    setCf(patient.codiceFiscale?.toUpperCase() ?? '');
     if (error) setError(null);
     if (success) setSuccess(null);
-    navigate(`/patient-history/${selectedCf}`);
+    navigate(`/patient-history/${patient.id}`);
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -90,7 +89,7 @@ export default function CheckPatient() {
 
       if (patient) {
         setSuccess("Paziente trovato!");
-        navigate(`/patient-history/${cf}`);
+        navigate(`/patient-history/${patient.id}`);
       } else {
         setSuccess("Paziente non trovato.");
         navigate(`/add-patient?cf=${cf}`);

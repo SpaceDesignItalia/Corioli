@@ -8,8 +8,9 @@ import {
   Button,
   Chip,
   Avatar,
-  Divider,
-  Spinner
+  Spinner,
+  Select,
+  SelectItem
 } from "@nextui-org/react";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
@@ -18,7 +19,7 @@ import { PatientService, DoctorService } from "../../services/OfflineServices";
 import { Patient } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
-import { Users } from "lucide-react";
+import { Users, ChevronLeft, ChevronRight } from "lucide-react";
 import { calculateAge } from "../../utils/dateUtils";
 
 // Interfaccia compatibile con il componente esistente
@@ -46,6 +47,9 @@ interface RecentPatientSearchEntry {
 const RECENT_PATIENT_SEARCHES_KEY = "appdottori_recent_patient_searches";
 const MAX_RECENT_PATIENT_SEARCHES = 6;
 
+const PAGE_SIZE_OPTIONS = [12, 24, 48, 96] as const;
+const DEFAULT_PAGE_SIZE = 24;
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
@@ -55,12 +59,14 @@ export default function Dashboard() {
   const [doctorName, setDoctorName] = useState<string | null>(null);
   const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
   const [recentPatientSearches, setRecentPatientSearches] = useState<RecentPatientSearchEntry[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_PAGE_SIZE);
 
   const loadPatients = useCallback(async () => {
     setLoading(true);
     try {
       const patients = await PatientService.getAllPatients();
-      const sorted = [...patients].sort((a, b) => parseInt(b.id) - parseInt(a.id));
+      const sorted = [...patients].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
       const convertedPatients: PatientData[] = sorted.map(patient => ({
         id: patient.id,
         name: patient.nome,
@@ -153,6 +159,17 @@ export default function Dashboard() {
     });
   }, [patients, deferredSearch]);
 
+  const totalFiltered = filteredPatients.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
+  const paginatedPatients = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filteredPatients.slice(start, start + rowsPerPage);
+  }, [filteredPatients, currentPage, rowsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [deferredSearch, rowsPerPage]);
+
   useEffect(() => {
     // Mantieni in memoria solo pazienti ancora esistenti/aggiornati.
     if (patients.length === 0 || recentPatientSearches.length === 0) return;
@@ -201,9 +218,8 @@ export default function Dashboard() {
   }, []);
 
   const handleOpenPatientHistory = useCallback((patient: PatientData) => {
-    if (!patient.cf) return;
     saveRecentPatientSearch(patient);
-    navigate(`/patient-history/${patient.cf}`);
+    navigate(`/patient-history/${patient.id}`);
   }, [navigate, saveRecentPatientSearch]);
 
   const HeaderActions = (
@@ -298,10 +314,34 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Patients Grid */}
+      {/* Patients Grid (paginated) */}
       {!loading && (
+        <>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <p className="text-sm text-default-500">
+            {totalFiltered === 0
+              ? "Nessun paziente"
+              : `${totalFiltered} paziente${totalFiltered === 1 ? "" : "i"} — pagina ${currentPage} di ${totalPages}`}
+          </p>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-default-500">Righe per pagina:</span>
+            <Select
+              size="sm"
+              className="w-20"
+              selectedKeys={[String(rowsPerPage)]}
+              onSelectionChange={(keys) => {
+                const v = Array.from(keys)[0];
+                if (v) setRowsPerPage(Number(v));
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <SelectItem key={String(n)} value={String(n)}>{n}</SelectItem>
+              ))}
+            </Select>
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredPatients.map((patient, index) => (
+          {paginatedPatients.map((patient) => (
             <Card
               key={patient.id}
               isPressable
@@ -354,6 +394,32 @@ export default function Dashboard() {
             </Card>
           ))}
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 mt-8">
+            <Button
+              size="md"
+              variant="flat"
+              isDisabled={currentPage <= 1}
+              onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              startContent={<ChevronLeft size={18} />}
+            >
+              Precedente
+            </Button>
+            <span className="text-sm text-default-600">
+              Pagina {currentPage} di {totalPages}
+            </span>
+            <Button
+              size="md"
+              variant="flat"
+              isDisabled={currentPage >= totalPages}
+              onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              endContent={<ChevronRight size={18} />}
+            >
+              Successiva
+            </Button>
+          </div>
+        )}
+        </>
       )}
 
       {/* Empty State */}

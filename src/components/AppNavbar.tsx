@@ -15,7 +15,8 @@ import {
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { AcmeIcon } from "./sidebar/AcmeIcon";
 import { DoctorService } from "../services/OfflineServices";
-import { MapPin, RefreshCw } from "lucide-react";
+import { MapPin, RefreshCw, History } from "lucide-react";
+import { useOrbyt } from "@orbytapp/orbyt-sdk/react";
 
 const menuItems = [
   { label: "Dashboard", href: "/" },
@@ -29,13 +30,22 @@ const menuItems = [
 export default function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [primaryAmbulatorio, setPrimaryAmbulatorio] = useState<string | null>(null);
+  const { getFeatureFlag } = useOrbyt();
+  const [primaryAmbulatorio, setPrimaryAmbulatorio] = useState<string | null>(
+    null,
+  );
+  const versioneApp = "1.0.0";
+  const [versioneAppDisponibile, setVersioneAppDisponibile] = useState<
+    string | null
+  >(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
 
   const loadDoctor = async () => {
     try {
       const doctor = await DoctorService.getDoctor();
-      const primary = doctor?.ambulatori?.find((a: { isPrimario?: boolean }) => a.isPrimario);
+      const primary = doctor?.ambulatori?.find(
+        (a: { isPrimario?: boolean }) => a.isPrimario,
+      );
       setPrimaryAmbulatorio(primary?.nome ?? null);
       setProfileImage(doctor?.profileImage ?? null);
     } catch {
@@ -45,13 +55,21 @@ export default function AppNavbar() {
   };
 
   useEffect(() => {
+    const checkFeature = async () => {
+      const result = await getFeatureFlag("new_version_available", {
+        version: versioneApp,
+      });
+      setVersioneAppDisponibile(result.value);
+    };
+    checkFeature();
     loadDoctor();
   }, []);
 
   useEffect(() => {
     const onDoctorUpdated = () => loadDoctor();
     window.addEventListener("appdottori-doctor-updated", onDoctorUpdated);
-    return () => window.removeEventListener("appdottori-doctor-updated", onDoctorUpdated);
+    return () =>
+      window.removeEventListener("appdottori-doctor-updated", onDoctorUpdated);
   }, []);
 
   const handleReloadApp = () => {
@@ -77,7 +95,11 @@ export default function AppNavbar() {
         {/* Logo / Foto profilo */}
         <NavbarBrand className="mr-4 w-[40vw] md:w-auto md:max-w-fit">
           {profileImage ? (
-            <Avatar src={profileImage} className="w-10 h-10 flex-shrink-0" size="md" />
+            <Avatar
+              src={profileImage}
+              className="w-10 h-10 flex-shrink-0"
+              size="md"
+            />
           ) : (
             <div className="bg-emerald-500 text-white rounded-full p-2">
               <AcmeIcon className="text-white" />
@@ -118,6 +140,38 @@ export default function AppNavbar() {
           </Tooltip>
         </NavbarItem>
 
+        {/* Versione attuale dell'app */}
+        <NavbarItem className="hidden sm:flex ml-2 pl-2 border-l border-default-200">
+          <Tooltip
+            content={
+              versioneAppDisponibile
+                ? "Nuova versione disponibile"
+                : "Versione attuale dell'app"
+            }
+          >
+            <Chip
+              size="sm"
+              variant="flat"
+              color={versioneAppDisponibile ? "warning" : "success"}
+              startContent={
+                <History
+                  size={14}
+                  className={
+                    versioneAppDisponibile ? "text-warning" : "text-success"
+                  }
+                />
+              }
+              className="cursor-pointer font-medium hover:opacity-90 transition-opacity"
+              onClick={() => navigate("/settings")}
+              role="button"
+            >
+              {versioneAppDisponibile
+                ? "Nuova versione disponibile"
+                : versioneApp}
+            </Chip>
+          </Tooltip>
+        </NavbarItem>
+
         <NavbarItem className="hidden md:flex">
           <Tooltip content="Ricarica l'app (utile dopo import/backup)">
             <Button
@@ -154,7 +208,12 @@ export default function AppNavbar() {
             onClick={() => navigate("/settings")}
           >
             <MapPin size={16} className="text-success flex-shrink-0" />
-            <span>Ambulatorio: <strong className="text-foreground">{primaryAmbulatorio || "—"}</strong></span>
+            <span>
+              Ambulatorio:{" "}
+              <strong className="text-foreground">
+                {primaryAmbulatorio || "—"}
+              </strong>
+            </span>
           </button>
         </NavbarMenuItem>
         <NavbarMenuItem className="pb-3 border-b border-default-100">

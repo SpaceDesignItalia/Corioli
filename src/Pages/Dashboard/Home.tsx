@@ -330,7 +330,7 @@ export default function Home() {
                   <div
                     key={patient.id}
                     className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
-                    onClick={() => navigate(`/patient-history/${patient.codiceFiscale}`)}
+                    onClick={() => navigate(`/patient-history/${patient.id}`)}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <Avatar
@@ -397,7 +397,7 @@ export default function Home() {
                   <div
                     key={visit.id}
                     className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
-                    onClick={() => visit.patientCf && navigate(`/patient-history/${visit.patientCf}`)}
+                    onClick={() => visit.patientId && navigate(`/patient-history/${visit.patientId}`)}
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className={`p-1.5 rounded-lg flex-shrink-0 ${visit.tipo === "ginecologica"
@@ -462,7 +462,7 @@ export default function Home() {
                   <div
                     key={esame.id}
                     className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
-                    onClick={() => esame.patientCf && navigate(`/patient-history/${esame.patientCf}`)}
+                    onClick={() => esame.patientId && navigate(`/patient-history/${esame.patientId}`)}
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="p-1.5 rounded-lg flex-shrink-0 bg-teal-100 text-teal-600">

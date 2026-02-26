@@ -389,7 +389,9 @@ export class CsvImportService {
     const sourceIdToInternalPatientId = new Map<string, string>();
     const pendingClinicalNotes: PendingClinicalNote[] = [];
 
-    for (const row of patientRows) {
+    for (let patientRowIndex = 0; patientRowIndex < patientRows.length; patientRowIndex += 1) {
+      const row = patientRows[patientRowIndex];
+      const rowNum = patientRowIndex + 1;
       const sourceId = cleanValue(row["id"]);
       const nome = cleanValue(row["first name"]);
       const cognome = cleanValue(row["last name"]);
@@ -408,6 +410,7 @@ export class CsvImportService {
       );
       if (!hasUsefulData) {
         result.patientsSkipped += 1;
+        console.warn(`[Import CSV] Paziente riga ${rowNum} saltato: nessun dato utile (id, nome, cognome, email, telefono tutti vuoti).`);
         continue;
       }
 
@@ -456,6 +459,7 @@ export class CsvImportService {
           result.patientsUpdated += 1;
         } else {
           result.patientsSkipped += 1;
+          console.warn(`[Import CSV] Paziente riga ${rowNum} saltato: già presente (CF ${codiceFiscale}), nessun aggiornamento necessario — "${nome} ${cognome}".`);
         }
       } else {
         const newPatient = await PatientService.addPatient({
@@ -484,6 +488,7 @@ export class CsvImportService {
       }
     }
 
+
     for (const note of pendingClinicalNotes) {
       const description = "Anamnesi iniziale importata da storico paziente";
       const key = composeVisitKey(note.patientId, note.dataVisita, description);
@@ -506,24 +511,29 @@ export class CsvImportService {
       result.notesImported += 1;
     }
 
-    for (const row of appointmentRows) {
+    for (let visitRowIndex = 0; visitRowIndex < appointmentRows.length; visitRowIndex += 1) {
+      const row = appointmentRows[visitRowIndex];
+      const visitRowNum = visitRowIndex + 1;
       const externalPatientId = cleanValue(row["patientid"]);
       const internalPatientId =
         sourceIdToInternalPatientId.get(externalPatientId);
       if (!internalPatientId) {
         result.visitsSkipped += 1;
+        console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: patientId "${externalPatientId}" non trovato tra i pazienti importati (manca nel CSV pazienti o riga paziente saltata).`);
         continue;
       }
 
       const status = normalizeAppointmentStatus(row["appointment status"]);
       if (shouldSkipAppointmentStatus(status)) {
         result.visitsSkipped += 1;
+        console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: stato cancellato — "${status}" (patientId: ${externalPatientId}, start time: ${row["start time"]}).`);
         continue;
       }
 
       const date = parseDateTimeForVisit(row["start time"]);
       if (!date) {
         result.visitsSkipped += 1;
+        console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: data non valida — "start time" = "${row["start time"]}" (patientId: ${externalPatientId}). Formato atteso: YYYY-MM-DD o GG/MM/AAAA.`);
         continue;
       }
 
@@ -535,6 +545,7 @@ export class CsvImportService {
       const key = composeVisitKey(internalPatientId, date, description);
       if (existingVisitKeys.has(key)) {
         result.visitsSkipped += 1;
+        console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: visita già presente (stesso paziente, data ${date}, descrizione "${description}").`);
         continue;
       }
 
@@ -578,16 +589,15 @@ export class CsvImportService {
     const byPhone = new Map<string, (typeof existingPatients)[number]>();
 
     for (const p of existingPatients) {
-      byCf.set(p.codiceFiscale.toUpperCase(), p);
-      byIdentity.set(
-        composeIdentityKey(p.nome, p.cognome, p.dataNascita || ""),
-        p,
-      );
+      if (p.codiceFiscale) byCf.set(p.codiceFiscale.toUpperCase(), p);
+      byIdentity.set(composeIdentityKey(p.nome, p.cognome, p.dataNascita || ""), p);
       if (p.email) byEmail.set(normalizeEmail(p.email), p);
       if (p.telefono) byPhone.set(normalizePhone(p.telefono), p);
     }
 
-    for (const row of rows) {
+    for (let docRowIndex = 0; docRowIndex < rows.length; docRowIndex += 1) {
+      const row = rows[docRowIndex];
+      const docRowNum = docRowIndex + 1;
       const sourceId = cleanValue(row["id"] || row["import_identifier"]);
       const nome = cleanValue(
         row["first_name"] || row["first name"] || row["name"],
@@ -618,6 +628,7 @@ export class CsvImportService {
       );
       if (!hasUsefulData) {
         result.patientsSkipped += 1;
+        console.warn(`[Import CSV Doctorlib] Paziente riga ${docRowNum} saltato: nessun dato utile (nome, cognome, email, telefono, data nascita, id tutti vuoti).`);
         continue;
       }
 
@@ -663,21 +674,18 @@ export class CsvImportService {
           Boolean(existing.telefono) &&
           normalizePhone(existing.telefono || "") === telefono;
 
+        const existingCf = existing.codiceFiscale ? existing.codiceFiscale.toUpperCase() : '';
         const shouldReplaceCf =
           Boolean(extractedCf) &&
-          existing.codiceFiscale.toUpperCase() !== extractedCf &&
+          existingCf !== extractedCf &&
           (sameIdentity || sameEmail || samePhone);
 
         const updatePayload: Record<string, any> = {};
-        if (shouldReplaceCf && existing.codiceFiscale !== codiceFiscale) {
+        if (shouldReplaceCf && existingCf !== codiceFiscale) {
           updatePayload.codiceFiscale = codiceFiscale;
           updatePayload.codiceFiscaleGenerato = false;
         }
-        if (
-          extractedCf &&
-          existing.codiceFiscale.toUpperCase() === codiceFiscale &&
-          existing.codiceFiscaleGenerato
-        ) {
+        if (extractedCf && existingCf === codiceFiscale && existing.codiceFiscaleGenerato) {
           updatePayload.codiceFiscaleGenerato = false;
         }
         if ((!existing.nome || existing.nome === "Sconosciuto") && nome)
@@ -706,6 +714,7 @@ export class CsvImportService {
           result.patientsUpdated += 1;
         } else {
           result.patientsSkipped += 1;
+          console.warn(`[Import CSV Doctorlib] Paziente riga ${docRowNum} saltato: già presente (${existing.nome} ${existing.cognome}${existing.codiceFiscale ? `, CF ${existing.codiceFiscale}` : ''}), nessun aggiornamento necessario.`);
         }
       } else {
         const created = await PatientService.addPatient({
@@ -725,19 +734,10 @@ export class CsvImportService {
       }
 
       if (existing) {
-        byCf.set(existing.codiceFiscale.toUpperCase(), existing);
-        byIdentity.set(
-          composeIdentityKey(
-            existing.nome,
-            existing.cognome,
-            existing.dataNascita || "",
-          ),
-          existing,
-        );
-        if (existing.email)
-          byEmail.set(normalizeEmail(existing.email), existing);
-        if (existing.telefono)
-          byPhone.set(normalizePhone(existing.telefono), existing);
+        if (existing.codiceFiscale) byCf.set(existing.codiceFiscale.toUpperCase(), existing);
+        byIdentity.set(composeIdentityKey(existing.nome, existing.cognome, existing.dataNascita || ""), existing);
+        if (existing.email) byEmail.set(normalizeEmail(existing.email), existing);
+        if (existing.telefono) byPhone.set(normalizePhone(existing.telefono), existing);
       }
     }
 

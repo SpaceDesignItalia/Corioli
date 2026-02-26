@@ -80,7 +80,7 @@ function sortRichiesteEsamiByDateAndCreation(list: RichiestaEsameComplementare[]
 }
 
 export default function PatientHistory() {
-  const { patientCf } = useParams<{ patientCf: string }>();
+  const { patientId: patientIdParam } = useParams<{ patientId: string }>();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [doctor, setDoctor] = useState<Doctor | null>(null);
@@ -114,8 +114,8 @@ export default function PatientHistory() {
   const { showToast } = useToast();
 
   const loadData = async () => {
-    if (!patientCf) {
-      setError("Codice fiscale paziente non fornito");
+    if (!patientIdParam) {
+      setError("Identificativo paziente non fornito");
       setLoading(false);
       return;
     }
@@ -123,8 +123,11 @@ export default function PatientHistory() {
     try {
       setLoading(true);
 
-      // Recupera il paziente
-      const patientData = await PatientService.getPatientByCF(patientCf);
+      // Recupera il paziente per id (UUID) o, per retrocompatibilità, per codice fiscale
+      let patientData = await PatientService.getPatientById(patientIdParam);
+      if (!patientData) {
+        patientData = await PatientService.getPatientByCF(patientIdParam);
+      }
       if (!patientData) {
         setError("Paziente non trovato");
         setLoading(false);
@@ -161,7 +164,7 @@ export default function PatientHistory() {
     TemplateService.getAllTemplates().then(results => {
       setExamTemplates(results.filter(t => t.category === 'esame_complementare'));
     }).catch(console.error);
-  }, [patientCf]);
+  }, [patientIdParam]);
 
   const handleVisitClick = (visit: Visit) => {
     setSelectedVisit(visit);
@@ -372,7 +375,7 @@ export default function PatientHistory() {
         updatedAt: new Date().toISOString(),
       });
       // Refresh patient data
-      const updated = await PatientService.getPatientByCF(editData.codiceFiscale || patient.codiceFiscale);
+      const updated = await PatientService.getPatientById(patient.id);
       if (updated) setPatient(updated);
       setSuccessMsg("Paziente aggiornato con successo!");
       setTimeout(() => {
@@ -700,7 +703,7 @@ export default function PatientHistory() {
               color="success"
               className="text-white font-medium shadow-sm"
               size="sm"
-              onPress={() => navigate(`/add-visit?patientCf=${patient.codiceFiscale}`)}
+              onPress={() => navigate(`/add-visit?patientId=${patient.id}`)}
               startContent={<PlusIcon size={16} />}
             >
               Nuova Visita
@@ -717,7 +720,7 @@ export default function PatientHistory() {
                   color="success"
                   size="sm"
                   className="text-white"
-                  onPress={() => navigate(`/add-visit?patientCf=${patient.codiceFiscale}`)}
+                  onPress={() => navigate(`/add-visit?patientId=${patient.id}`)}
                 >
                   Aggiungi Prima Visita
                 </Button>

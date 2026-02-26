@@ -459,7 +459,7 @@ export default function AddVisit() {
         setHasUnsavedChanges(false);
         showToast("Visita salvata con successo!");
       }
-      setTimeout(() => navigate(`/patient-history/${patient.codiceFiscale}`), 1000);
+      setTimeout(() => navigate(`/patient-history/${patient.id}`), 1000);
     } catch (error) {
       console.error("Errore nel salvataggio visita:", error);
       setError(isEditMode ? "Errore nell'aggiornamento della visita" : "Errore nel salvataggio della visita");
@@ -755,7 +755,7 @@ export default function AddVisit() {
 
   const handleNavigateCronologia = () => {
     if (hasUnsavedChanges && !window.confirm("Modifiche non salvate. Uscire comunque?")) return;
-    navigate(`/patient-history/${patient?.codiceFiscale}`);
+    navigate(`/patient-history/${patient?.id}`);
   };
 
   if (!patient) {
@@ -786,7 +786,7 @@ export default function AddVisit() {
   const breadcrumbItems = [
     { label: "Dashboard", path: "/" },
     { label: "Pazienti", path: "/pazienti" },
-    { label: `${patient.nome} ${patient.cognome}`, path: `/patient-history/${patient.codiceFiscale}` },
+    { label: `${patient.nome} ${patient.cognome}`, path: `/patient-history/${patient.id}` },
     { label: isEditMode ? "Modifica" : "Nuova visita" }
   ];
 

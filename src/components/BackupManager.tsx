@@ -834,13 +834,14 @@ const BackupManager: React.FC = () => {
                           <Button
                             color="danger"
                             variant="flat"
-                            onPress={() => {
-                              if (
-                                confirm("SEI SICURO DI VOLER CANCELLARE TUTTO?")
-                              ) {
+                            onPress={async () => {
+                              if (!confirm("SEI SICURO DI VOLER CANCELLARE TUTTO?")) return;
+                              if (window.electronAPI?.kvClearAppDottori) {
+                                await window.electronAPI.kvClearAppDottori();
+                              } else {
                                 localStorage.clear();
-                                window.location.reload();
                               }
+                              window.location.reload();
                             }}
                           >
                             Reset Totale

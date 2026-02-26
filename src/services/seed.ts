@@ -49,7 +49,7 @@ export async function seedDemoDataIfNeeded(): Promise<void> {
     ]);
     const allPatients = await PatientService.getAllPatients();
     for (const p of allPatients) {
-      if (demoCFs.has(p.codiceFiscale)) {
+      if (p.codiceFiscale && demoCFs.has(p.codiceFiscale)) {
         await PatientService.deletePatient(p.id); // elimina anche le visite correlate
       }
     }

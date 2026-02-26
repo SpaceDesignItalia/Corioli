@@ -1,7 +1,9 @@
 // Tipi per i dati dell'applicazione offline
 export interface Patient {
+  /** Identificativo univoco del paziente (UUID). Non usare il codice fiscale come id. */
   id: string;
-  codiceFiscale: string;
+  /** Codice fiscale, opzionale (non tutti i pazienti lo hanno). */
+  codiceFiscale?: string;
   /** True se il CF è stato generato automaticamente in fase di import */
   codiceFiscaleGenerato?: boolean;
   nome: string;

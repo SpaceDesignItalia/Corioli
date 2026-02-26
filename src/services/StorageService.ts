@@ -58,6 +58,15 @@ class LocalStorageService implements StorageService {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
 
+  private generateUuid(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    const hex = '0123456789abcdef';
+    const r = (n: number) => Array.from({ length: n }, () => hex[Math.floor(Math.random() * 16)]).join('');
+    return `${r(8)}-${r(4)}-4${r(3)}-${['8', '9', 'a', 'b'][Math.floor(Math.random() * 4)]}${r(3)}-${r(12)}`;
+  }
+
   private getCurrentTimestamp(): string {
     return new Date().toISOString();
   }
@@ -88,7 +97,7 @@ class LocalStorageService implements StorageService {
   }
 
   async getPatientByCF(cf: string): Promise<Patient | null> {
-    const normalizedCf = String(cf || "").trim().toUpperCase();
+    const normalizedCf = String(cf || '').trim().toUpperCase();
     if (!normalizedCf) return null;
     const patients = await this.getPatients();
     return (
@@ -100,18 +109,19 @@ class LocalStorageService implements StorageService {
 
   async addPatient(patientData: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Patient> {
     const db = await this.initDB();
-    const normalizedCf = String(patientData.codiceFiscale || "").trim().toUpperCase();
-    const existingPatients = await this.getPatients();
-    const duplicate = existingPatients.some(
-      (p) => String(p.codiceFiscale || "").trim().toUpperCase() === normalizedCf
-    );
-    if (duplicate) {
-      throw new Error("Codice fiscale già presente");
+    const cfValue = patientData.codiceFiscale != null ? String(patientData.codiceFiscale).trim() : '';
+    const normalizedCf = cfValue ? cfValue.toUpperCase() : '';
+    if (normalizedCf) {
+      const existingPatients = await this.getPatients();
+      const duplicate = existingPatients.some(
+        (p) => String(p.codiceFiscale || '').trim().toUpperCase() === normalizedCf
+      );
+      if (duplicate) throw new Error('Codice fiscale già presente');
     }
     const patient: Patient = {
       ...patientData,
-      codiceFiscale: normalizedCf,
-      id: this.generateId(),
+      codiceFiscale: normalizedCf || undefined,
+      id: this.generateUuid(),
       createdAt: this.getCurrentTimestamp(),
       updatedAt: this.getCurrentTimestamp()
     };
@@ -134,25 +144,22 @@ class LocalStorageService implements StorageService {
       throw new Error('Paziente non trovato');
     }
 
-    const nextCf = String(
-      patientData.codiceFiscale ?? existingPatient.codiceFiscale
-    )
-      .trim()
-      .toUpperCase();
-    const patients = await this.getPatients();
-    const duplicate = patients.some(
-      (p) =>
-        p.id !== id &&
-        String(p.codiceFiscale || "").trim().toUpperCase() === nextCf
-    );
-    if (duplicate) {
-      throw new Error("Codice fiscale già presente");
+    const rawNextCf = patientData.codiceFiscale ?? existingPatient.codiceFiscale;
+    const nextCf = rawNextCf != null ? String(rawNextCf).trim().toUpperCase() : '';
+    if (nextCf) {
+      const patients = await this.getPatients();
+      const duplicate = patients.some(
+        (p) =>
+          p.id !== id &&
+          String(p.codiceFiscale || '').trim().toUpperCase() === nextCf
+      );
+      if (duplicate) throw new Error('Codice fiscale già presente');
     }
 
     const updatedPatient: Patient = {
       ...existingPatient,
       ...patientData,
-      codiceFiscale: nextCf,
+      codiceFiscale: nextCf || undefined,
       id,
       updatedAt: this.getCurrentTimestamp()
     };
@@ -460,7 +467,7 @@ class LocalStorageService implements StorageService {
       this.getDoctor(),
     ]);
 
-    const byCf = new Set(existingPatients.map((p) => p.codiceFiscale.toUpperCase()));
+    const byCf = new Set(existingPatients.map((p) => String(p.codiceFiscale || '').toUpperCase()).filter(Boolean));
     const visitKeys = new Set(
       existingVisits.map((v) => `${v.patientId}::${v.dataVisita}::${(v.descrizioneClinica || '').trim().toLowerCase()}`)
     );
@@ -472,10 +479,10 @@ class LocalStorageService implements StorageService {
     const doctorStore = tx.objectStore('doctor');
 
     for (const p of data.patients || []) {
-      if (!byCf.has(String(p.codiceFiscale || '').toUpperCase())) {
-        patientStore.put(p);
-        byCf.add(String(p.codiceFiscale || '').toUpperCase());
-      }
+      const cf = String(p.codiceFiscale || '').toUpperCase();
+      if (cf && byCf.has(cf)) continue;
+      patientStore.put(p);
+      if (cf) byCf.add(cf);
     }
 
     for (const v of data.visits || []) {

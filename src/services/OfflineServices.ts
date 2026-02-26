@@ -16,7 +16,7 @@ export class PatientService {
   }
 
   static async addPatient(patientData: {
-    codiceFiscale: string;
+    codiceFiscale?: string;
     codiceFiscaleGenerato?: boolean;
     nome: string;
     cognome: string;
@@ -45,7 +45,7 @@ export class PatientService {
     return patients.filter(patient =>
       patient.nome.toLowerCase().includes(term) ||
       patient.cognome.toLowerCase().includes(term) ||
-      patient.codiceFiscale.toLowerCase().includes(term)
+      (patient.codiceFiscale && patient.codiceFiscale.toLowerCase().includes(term))
     );
   }
 }

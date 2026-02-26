@@ -60,18 +60,51 @@ export default function AddPatient() {
 
   useEffect(() => {
     const cf = searchParams.get("cf");
+    const id = searchParams.get("id");
     const mode = searchParams.get("mode");
 
-    if (mode === "edit" && cf) {
+    if (mode === "edit" && id) {
       setIsEditMode(true);
-      loadPatientData(cf);
+      loadPatientDataById(id);
+    } else if (mode === "edit" && cf) {
+      setIsEditMode(true);
+      loadPatientDataByCf(cf);
     } else if (cf) {
-      // Just prefill CF for new patient
       setRegisterData((prevData) => ({ ...prevData, cf }));
     }
   }, [searchParams]);
 
-  const loadPatientData = async (cf: string) => {
+  const loadPatientDataById = async (id: string) => {
+    setIsLoading(true);
+    try {
+      const patient = await PatientService.getPatientById(id);
+      if (patient) {
+        setPatientId(patient.id);
+        initialLoadDone.current = false;
+        setRegisterData({
+          firstName: patient.nome,
+          lastName: patient.cognome,
+          email: patient.email || "",
+          phone: patient.telefono || "",
+          birthday: patient.dataNascita,
+          birthplace: patient.luogoNascita,
+          cf: patient.codiceFiscale || "",
+          gender: patient.sesso,
+          address: patient.indirizzo || ""
+        });
+      } else {
+        setError("Paziente non trovato");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Errore nel caricamento dei dati del paziente");
+    } finally {
+      setIsLoading(false);
+      setTimeout(() => { initialLoadDone.current = true; }, 200);
+    }
+  };
+
+  const loadPatientDataByCf = async (cf: string) => {
     setIsLoading(true);
     try {
       const patient = await PatientService.getPatientByCF(cf);
@@ -85,7 +118,7 @@ export default function AddPatient() {
           phone: patient.telefono || "",
           birthday: patient.dataNascita,
           birthplace: patient.luogoNascita,
-          cf: patient.codiceFiscale,
+          cf: patient.codiceFiscale || "",
           gender: patient.sesso,
           address: patient.indirizzo || ""
         });
@@ -139,12 +172,7 @@ export default function AddPatient() {
     e.preventDefault();
     setError(null);
 
-    // Solo il codice fiscale è obbligatorio
-    if (!registerData.cf.trim()) {
-      setError("Il codice fiscale è obbligatorio");
-      return;
-    }
-    if (!validateCF(registerData.cf)) {
+    if (registerData.cf.trim() && !validateCF(registerData.cf)) {
       setError("Codice fiscale non valido (formato: 16 caratteri)");
       return;
     }
@@ -156,42 +184,31 @@ export default function AddPatient() {
     setIsLoading(true);
 
     try {
+      const cfVal = registerData.cf.trim();
+      const payload = {
+        ...(cfVal ? { codiceFiscale: cfVal.toUpperCase(), codiceFiscaleGenerato: false as const } : {}),
+        nome: registerData.firstName.trim(),
+        cognome: registerData.lastName.trim(),
+        dataNascita: registerData.birthday || "",
+        luogoNascita: registerData.birthplace.trim(),
+        sesso: (registerData.gender === "M" || registerData.gender === "F" ? registerData.gender : "M") as "M" | "F",
+        email: registerData.email.trim() || undefined,
+        telefono: registerData.phone.trim() || undefined,
+        indirizzo: registerData.address.trim() || undefined,
+      };
       if (isEditMode && patientId) {
-        // Update
-        await PatientService.updatePatient(patientId, {
-          codiceFiscale: registerData.cf.toUpperCase().trim(),
-          codiceFiscaleGenerato: false,
-          nome: registerData.firstName.trim(),
-          cognome: registerData.lastName.trim(),
-          dataNascita: registerData.birthday || "",
-          luogoNascita: registerData.birthplace.trim(),
-          sesso: (registerData.gender === "M" || registerData.gender === "F" ? registerData.gender : "M") as "M" | "F",
-          email: registerData.email.trim() || undefined,
-          telefono: registerData.phone.trim() || undefined,
-          indirizzo: registerData.address.trim() || undefined,
-        });
+        await PatientService.updatePatient(patientId, payload);
         setHasUnsavedChanges(false);
         showToast("Paziente aggiornato con successo");
       } else {
-        await PatientService.addPatient({
-          codiceFiscale: registerData.cf.toUpperCase().trim(),
-          codiceFiscaleGenerato: false,
-          nome: registerData.firstName.trim(),
-          cognome: registerData.lastName.trim(),
-          dataNascita: registerData.birthday || "",
-          luogoNascita: registerData.birthplace.trim(),
-          sesso: (registerData.gender === "M" || registerData.gender === "F" ? registerData.gender : "M") as "M" | "F",
-          email: registerData.email.trim() || undefined,
-          telefono: registerData.phone.trim() || undefined,
-          indirizzo: registerData.address.trim() || undefined,
-        });
+        await PatientService.addPatient(payload);
         setHasUnsavedChanges(false);
         showToast("Paziente aggiunto con successo");
       }
       navigate("/pazienti");
     } catch (error: any) {
       console.error("Error saving patient:", error);
-      setError("Errore durante il salvataggio del paziente. Potrebbe esistere già un paziente con questo Codice Fiscale.");
+      setError(error?.message || "Errore durante il salvataggio del paziente.");
     } finally {
       setIsLoading(false);
     }
@@ -210,7 +227,7 @@ export default function AddPatient() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
-  if (isLoading && isEditMode && !registerData.cf) {
+  if (isLoading && isEditMode && !patientId) {
     return (
       <div className="flex justify-center items-center h-[50vh]">
         <Spinner size="lg" />
@@ -327,17 +344,16 @@ export default function AddPatient() {
               <h3 className="text-lg font-medium text-gray-900 mb-4 bg-gray-50 p-2 rounded">Documenti</h3>
               <Input
                 name="cf"
-                label="Codice Fiscale (obbligatorio)"
+                label="Codice Fiscale (opzionale)"
                 placeholder="RSSMRA80A01H501U"
                 value={registerData.cf}
                 onChange={handleChange}
                 variant="bordered"
-                isRequired
                 classNames={{
                   label: "text-gray-700 font-medium",
                   input: "uppercase",
                 }}
-                description={isEditMode ? "Modificabile: aggiorna con attenzione (è l'identificativo del paziente)" : "Inserisci il codice fiscale (16 caratteri)"}
+                description="Non tutti i pazienti hanno il codice fiscale. Se inserito, deve essere di 16 caratteri."
               />
             </div>
 
