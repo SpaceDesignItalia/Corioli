@@ -22,6 +22,7 @@ import { FileText, ChevronRight, Plus, Calendar, Eye } from "lucide-react";
 import { PatientService, VisitService } from "../../services/OfflineServices";
 import { Visit } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
+import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
 
 // Helper for search icon
 const SearchIcon = (props: any) => (
@@ -68,7 +69,20 @@ export default function Visite() {
   const [filterTipo, setFilterTipo] = useState<string>("tutti");
   const [page, setPage] = useState(1);
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const [fetalFormula, setFetalFormula] = useState("hadlock4");
   const rowsPerPage = 10;
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("AppDottori_preferences");
+      if (raw) {
+        const prefs = JSON.parse(raw);
+        setFetalFormula(prefs?.formulaPesoFetale || "hadlock4");
+      }
+    } catch {
+      // ignore
+    }
+  }, [isOpen]); // Reload when modal opens
 
   useEffect(() => {
     const load = async () => {
@@ -465,6 +479,47 @@ export default function Visite() {
                         </div>
                       </CardBody>
                     </Card>
+
+                    {selectedVisit.ostetricia.biometriaFetale && (() => {
+                      const bio = selectedVisit.ostetricia!.biometriaFetale!;
+                      const hasMisura = (bio.bpdMm > 0 || bio.hcMm > 0 || bio.acMm > 0 || bio.flMm > 0);
+                      if (!hasMisura) return null;
+                      const scale = calcolaStimePesoFetale(bio);
+                      const result = scale[fetalFormula as keyof typeof scale];
+                      
+                      return (
+                        <Card shadow="sm" className="bg-purple-50/30 border border-purple-100">
+                          <CardBody className="space-y-3">
+                            <p className="text-xs uppercase tracking-wide text-purple-700">BIOMETRIA FETALE</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm mb-3">
+                              {bio.bpdMm > 0 && <p><span className="font-medium">DBP:</span> {bio.bpdMm} mm</p>}
+                              {bio.hcMm > 0 && <p><span className="font-medium">CC:</span> {bio.hcMm} mm</p>}
+                              {bio.acMm > 0 && <p><span className="font-medium">CA:</span> {bio.acMm} mm</p>}
+                              {bio.flMm > 0 && <p><span className="font-medium">FL:</span> {bio.flMm} mm</p>}
+                            </div>
+                            
+                            <div className="bg-white/60 rounded-lg border border-purple-100 p-3 flex justify-between items-center">
+                              <div>
+                                <p className="text-sm font-semibold text-purple-900">
+                                  Peso Fetale Stimato
+                                  <span className="text-purple-600 font-normal ml-1">
+                                    {result?.nome || fetalFormula}
+                                  </span>
+                                </p>
+                              </div>
+                              <div>
+                                {result && result.calcolabile ? (
+                                  <p className="text-xl font-bold text-purple-800">{result.pesoGrammi} g</p>
+                                ) : (
+                                  <p className="text-sm text-gray-500">Dati insufficienti</p>
+                                )}
+                              </div>
+                            </div>
+                          </CardBody>
+                        </Card>
+                      );
+                    })()}
+
                     {renderEcografiaImages(selectedVisit.ostetricia.ecografiaImmagini)}
                   </>
                 )}

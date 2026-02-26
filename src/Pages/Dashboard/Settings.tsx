@@ -95,7 +95,8 @@ const SettingsScreen = () => {
     promemoriGiornalieri: false,
     modalitaCompatta: false,
     animazioniRidotte: false,
-    visitaGinecologicaPediatricaEnabled: false
+    visitaGinecologicaPediatricaEnabled: false,
+    formulaPesoFetale: 'hadlock4' // hadlock4, shepard, hadlock3
   });
   const [duplicateGroups, setDuplicateGroups] = useState<Array<{ key: string; patients: any[] }>>([]);
   const [loadingDuplicates, setLoadingDuplicates] = useState(false);
@@ -326,7 +327,7 @@ const SettingsScreen = () => {
     setDoctorInfo(prev => ({ ...prev, [field]: value }));
   };
 
-  const handlePreferenceChange = (field: string, value: boolean) => {
+  const handlePreferenceChange = (field: string, value: boolean | string) => {
     setPreferences(prev => ({ ...prev, [field]: value }));
   };
 
@@ -1005,9 +1006,26 @@ const SettingsScreen = () => {
               >
                 Abilita visita ginecologica pediatrica
               </Switch>
-              <p className="text-xs text-default-500 mt-2">
+              <p className="text-xs text-default-500 mt-2 mb-4">
                 Se attiva, nella pagina Nuova Visita comparira anche il tab dedicato alla visita ginecologica pediatrica.
               </p>
+
+              <Divider className="my-4" />
+              
+              <Select
+                label="Formula Stima Peso Fetale"
+                selectedKeys={[preferences.formulaPesoFetale || 'hadlock4']}
+                onSelectionChange={(keys) => handlePreferenceChange("formulaPesoFetale", Array.from(keys)[0] as string)}
+                variant="bordered"
+                description="Seleziona la formula da utilizzare per il calcolo del peso stimato nella biometria fetale."
+              >
+                <SelectItem key="hadlock4" value="hadlock4">Hadlock IV (BPD, HC, AC, FL)</SelectItem>
+                <SelectItem key="hadlock1" value="hadlock1">Hadlock I (BPD, AC, FL)</SelectItem>
+                <SelectItem key="hadlock2" value="hadlock2">Hadlock II (HC, AC, FL)</SelectItem>
+                <SelectItem key="hadlock3" value="hadlock3">Hadlock III (AC, FL)</SelectItem>
+                <SelectItem key="shepard" value="shepard">Shepard (BPD, AC)</SelectItem>
+                <SelectItem key="campbell" value="campbell">Campbell (AC)</SelectItem>
+              </Select>
             </CardBody>
           </Card>
         </div>
