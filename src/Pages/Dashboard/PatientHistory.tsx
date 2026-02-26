@@ -27,7 +27,7 @@ import { FlaskConical, PlusIcon, EditIcon, Trash2Icon, SaveIcon, Printer, Maximi
 import { useParams, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { it } from "date-fns/locale";
-import { PatientService, VisitService, DoctorService, RichiestaEsameService, TemplateService } from "../../services/OfflineServices";
+import { PatientService, VisitService, DoctorService, RichiestaEsameService, TemplateService, PreferenceService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, Doctor, RichiestaEsameComplementare, MedicalTemplate } from "../../types/Storage";
 import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
@@ -109,6 +109,7 @@ export default function PatientHistory() {
   const [savingEsame, setSavingEsame] = useState(false);
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] = useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
+  const [fetalFormulaPref, setFetalFormulaPref] = useState("hadlock4");
   const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
   // Gestione Templates Esami (via Settings/Storage)
   const [examTemplates, setExamTemplates] = useState<MedicalTemplate[]>([]);
@@ -167,6 +168,12 @@ export default function PatientHistory() {
       setExamTemplates(results.filter(t => t.category === 'esame_complementare'));
     }).catch(console.error);
   }, [patientIdParam]);
+
+  useEffect(() => {
+    PreferenceService.getPreferences().then((prefs) => {
+      if (prefs?.formulaPesoFetale) setFetalFormulaPref(prefs.formulaPesoFetale as string);
+    }).catch(() => {});
+  }, []);
 
   const handleVisitClick = (visit: Visit) => {
     setSelectedVisit(visit);
@@ -1081,16 +1088,6 @@ export default function PatientHistory() {
                         <div className="mx-4 border-t border-b border-l border-r border-gray-300">
                           <div className="grid grid-cols-6 divide-x divide-gray-300">
                             {(() => {
-                              let formula = "hadlock4";
-                              try {
-                                const raw = localStorage.getItem("AppDottori_preferences");
-                                if (raw) {
-                                  const prefs = JSON.parse(raw) as { formulaPesoFetale?: string };
-                                  if (prefs.formulaPesoFetale) formula = prefs.formulaPesoFetale;
-                                }
-                              } catch {
-                                // keep hadlock4
-                              }
                               const b = selectedVisit.ostetricia.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
                               const stime = calcolaStimePesoFetale(b);
                               const stima = stime[formula] ?? stime.hadlock4;

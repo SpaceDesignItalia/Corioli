@@ -25,7 +25,7 @@ import {
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { addDays, differenceInDays, parseISO, isValid } from "date-fns";
-import { PatientService, VisitService, TemplateService } from "../../services/OfflineServices";
+import { PatientService, VisitService, TemplateService, PreferenceService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, MedicalTemplate } from "../../types/Storage";
 import { calculateAge } from "../../utils/dateUtils";
@@ -357,29 +357,26 @@ export default function AddVisit() {
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
-    const loadVisitPreferences = () => {
-      const raw = localStorage.getItem("AppDottori_preferences");
-      if (!raw) {
-        setIsPediatricVisitEnabled(false);
-        return;
-      }
+    const loadVisitPreferences = async () => {
       try {
-        const prefs = JSON.parse(raw);
+        const prefs = await PreferenceService.getPreferences();
+        if (!prefs) {
+          setIsPediatricVisitEnabled(false);
+          setFetalFormula("hadlock4");
+          return;
+        }
         setIsPediatricVisitEnabled(Boolean(prefs?.visitaGinecologicaPediatricaEnabled));
-        setFetalFormula(prefs?.formulaPesoFetale || "hadlock4");
+        setFetalFormula((prefs?.formulaPesoFetale as string) || "hadlock4");
       } catch {
         setIsPediatricVisitEnabled(false);
         setFetalFormula("hadlock4");
       }
     };
 
-    loadVisitPreferences();
-    window.addEventListener("storage", loadVisitPreferences);
-    window.addEventListener("focus", loadVisitPreferences);
-    return () => {
-      window.removeEventListener("storage", loadVisitPreferences);
-      window.removeEventListener("focus", loadVisitPreferences);
-    };
+    void loadVisitPreferences();
+    const onFocus = () => void loadVisitPreferences();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   useEffect(() => {
