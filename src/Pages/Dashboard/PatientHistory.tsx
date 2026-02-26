@@ -30,6 +30,7 @@ import { it } from "date-fns/locale";
 import { PatientService, VisitService, DoctorService, RichiestaEsameService, TemplateService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, Doctor, RichiestaEsameComplementare, MedicalTemplate } from "../../types/Storage";
+import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -1077,14 +1078,33 @@ export default function PatientHistory() {
                         </div>
                         <p className="mx-4 mt-1 text-[10px] font-bold text-[#3c3c3c]">PARAMETRI ATTUALI</p>
                         <div className="mx-4 border-t border-b border-l border-r border-gray-300">
-                          <div className="grid grid-cols-5 divide-x divide-gray-300">
-                            {[
-                              { label: "SETT. GESTAZIONE", value: selectedVisit.ostetricia.settimaneGestazione || "-" },
-                              { label: "DATA PRESUNTA", value: formatPdfDate(selectedVisit.ostetricia.dataPresunta) },
-                              { label: "PRESSIONE", value: selectedVisit.ostetricia.pressioneArteriosa || "-" },
-                              { label: "PESO ATTUALE", value: selectedVisit.ostetricia.pesoAttuale ? `${selectedVisit.ostetricia.pesoAttuale} kg` : "-" },
-                              { label: "INCREM. PONDERALE", value: (selectedVisit.ostetricia.pesoAttuale != null && selectedVisit.ostetricia.pesoPreGravidanza != null) ? `${(Number(selectedVisit.ostetricia.pesoAttuale) - Number(selectedVisit.ostetricia.pesoPreGravidanza)).toFixed(1)} kg` : "-" }
-                            ].map((item, i) => (
+                          <div className="grid grid-cols-6 divide-x divide-gray-300">
+                            {(() => {
+                              let formula = "hadlock4";
+                              try {
+                                const raw = localStorage.getItem("AppDottori_preferences");
+                                if (raw) {
+                                  const prefs = JSON.parse(raw) as { formulaPesoFetale?: string };
+                                  if (prefs.formulaPesoFetale) formula = prefs.formulaPesoFetale;
+                                }
+                              } catch {
+                                // keep hadlock4
+                              }
+                              const b = selectedVisit.ostetricia.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
+                              const stime = calcolaStimePesoFetale(b);
+                              const stima = stime[formula] ?? stime.hadlock4;
+                              const pesoFetaleStr = stima?.calcolabile && stima.pesoGrammi != null
+                                ? `${stima.pesoGrammi} g`
+                                : "-";
+                              return [
+                                { label: "SETT. GESTAZIONE", value: selectedVisit.ostetricia.settimaneGestazione || "-" },
+                                { label: "DATA PRESUNTA", value: formatPdfDate(selectedVisit.ostetricia.dataPresunta) },
+                                { label: "PRESSIONE", value: selectedVisit.ostetricia.pressioneArteriosa || "-" },
+                                { label: "PESO ATTUALE", value: selectedVisit.ostetricia.pesoAttuale ? `${selectedVisit.ostetricia.pesoAttuale} kg` : "-" },
+                                { label: "INCREM. PONDERALE", value: (selectedVisit.ostetricia.pesoAttuale != null && selectedVisit.ostetricia.pesoPreGravidanza != null) ? `${(Number(selectedVisit.ostetricia.pesoAttuale) - Number(selectedVisit.ostetricia.pesoPreGravidanza)).toFixed(1)} kg` : "-" },
+                                { label: "PESO FETALE STIMATO", value: pesoFetaleStr }
+                              ];
+                            })().map((item, i) => (
                               <div key={i} className="py-2 text-center">
                                 <p className="text-[10px] font-bold text-[#3c3c3c]">{item.label}</p>
                                 <p className="text-xs mt-0.5">{item.value}</p>
@@ -1104,7 +1124,7 @@ export default function PatientHistory() {
                             </div>
                             <div className="px-2 py-1.5 text-[11px] whitespace-pre-wrap border-x border-b border-gray-300">
                               {sec.content?.trim() || "-"}
-                              {sec.note && (
+                              {"note" in sec && sec.note && (
                                 <p className="text-[10px] italic text-[#3c3c3c] mt-2">{sec.note}</p>
                               )}
                             </div>

@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import { Patient, Visit, Doctor, RichiestaEsameComplementare } from "../types/Storage";
 import { DoctorService } from "./OfflineServices";
+import { calcolaStimePesoFetale } from "../utils/fetalWeightUtils";
 
     // ─── Layout Constants ───────────────────────────────────────────────────────
     const MARGIN_L = 15;
@@ -439,8 +440,24 @@ interface VisitPdfOptions {
             { label: "ULTIMA MESTRUAZIONE", value: this.formatDate(obs.ultimaMestruazione) }
         ], y);
 
-        // ── Pregnancy Parameters Grid ──
-        // Header for this specific sub-grid
+        // ── Pregnancy Parameters Grid (con Peso fetale stimato) ──
+        let formulaPesoFetale = "hadlock4";
+        try {
+            const raw = typeof localStorage !== "undefined" ? localStorage.getItem("AppDottori_preferences") : null;
+            if (raw) {
+                const prefs = JSON.parse(raw) as { formulaPesoFetale?: string };
+                if (prefs.formulaPesoFetale) formulaPesoFetale = prefs.formulaPesoFetale;
+            }
+        } catch {
+            // keep hadlock4
+        }
+        const biometria = obs.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
+        const stimePeso = calcolaStimePesoFetale(biometria);
+        const stima = stimePeso[formulaPesoFetale] ?? stimePeso.hadlock4;
+        const pesoFetaleValue = stima?.calcolabile && stima.pesoGrammi != null
+            ? `${stima.pesoGrammi} g`
+            : "-";
+
         doc.setFont("helvetica", "bold");
         doc.setFontSize(9);
         doc.setTextColor(SECONDARY_COLOR[0], SECONDARY_COLOR[1], SECONDARY_COLOR[2]);
@@ -451,15 +468,14 @@ interface VisitPdfOptions {
             { label: "DATA PRESUNTA", value: this.formatDate(obs.dataPresunta) },
             { label: "PRESSIONE", value: obs.pressioneArteriosa },
             { label: "PESO ATTUALE", value: obs.pesoAttuale ? `${obs.pesoAttuale} kg` : "-" },
-            { label: "INCREM. PONDERALE", value: (obs.pesoAttuale && obs.pesoPreGravidanza) ? `${(Number(obs.pesoAttuale) - Number(obs.pesoPreGravidanza)).toFixed(1)} kg` : "-" }
+            { label: "INCREM. PONDERALE", value: (obs.pesoAttuale && obs.pesoPreGravidanza) ? `${(Number(obs.pesoAttuale) - Number(obs.pesoPreGravidanza)).toFixed(1)} kg` : "-" },
+            { label: "PESO FETALE STIMATO", value: pesoFetaleValue }
         ], y);
-
 
         // ── Sections ──
         y = this.drawSection(doc, "ANAMNESI", obs.prestazione, y);
         y = this.drawSection(doc, "Dati Clinici", obs.problemaClinico, y);
         const SIEOG_NOTE = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di ciò si informa la persona assistita.";
-
         y = this.drawSection(doc, "ECOGRAFIA OFFICE / ESAME OBIETTIVO", obs.esameObiettivo, y, SIEOG_NOTE);
         if (options?.includeEcografiaImages) {
             y = this.drawEcografiaImages(doc, obs.ecografiaImmagini, y);
