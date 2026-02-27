@@ -499,8 +499,9 @@ interface VisitPdfOptions {
         y += 10;
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
-        doc.text(this.s(richiesta.nome), MARGIN_L + 4, y);
-        y += 8;
+        const nomeLines = doc.splitTextToSize(this.s(richiesta.nome), PAGE_W - 8);
+        doc.text(nomeLines, MARGIN_L + 4, y);
+        y += nomeLines.length * LINE_H + 2;
         if (richiesta.note && richiesta.note.trim()) {
             doc.setFont("helvetica", "normal");
             doc.setFontSize(9.5);
