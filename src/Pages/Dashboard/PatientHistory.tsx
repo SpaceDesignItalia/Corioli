@@ -35,6 +35,7 @@ import { parseGestationalWeeks, getCentileForWeight, getCentileLabel } from "../
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
+import { getDoctorProfileIncompleteMessage, isDoctorProfileComplete } from "../../utils/doctorProfile";
 
 const SIEOG_NOTE = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di ciò si informa la persona assistita.";
 
@@ -110,6 +111,8 @@ export default function PatientHistory() {
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] = useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
   const [fetalFormulaPref, setFetalFormulaPref] = useState("hadlock4");
+  const [showDoctorPhoneInPdf, setShowDoctorPhoneInPdf] = useState(true);
+  const [showDoctorEmailInPdf, setShowDoctorEmailInPdf] = useState(true);
   const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
   // Gestione Templates Esami (via Settings/Storage)
   const [examTemplates, setExamTemplates] = useState<MedicalTemplate[]>([]);
@@ -172,8 +175,22 @@ export default function PatientHistory() {
   useEffect(() => {
     PreferenceService.getPreferences().then((prefs) => {
       if (prefs?.formulaPesoFetale) setFetalFormulaPref(prefs.formulaPesoFetale as string);
+      if (typeof prefs?.showDoctorPhoneInPdf === "boolean") {
+        setShowDoctorPhoneInPdf(prefs.showDoctorPhoneInPdf as boolean);
+      }
+      if (typeof prefs?.showDoctorEmailInPdf === "boolean") {
+        setShowDoctorEmailInPdf(prefs.showDoctorEmailInPdf as boolean);
+      }
     }).catch(() => {});
   }, []);
+
+  const ensureDoctorProfileComplete = () => {
+    if (isDoctorProfileComplete(doctor)) return true;
+    const message = getDoctorProfileIncompleteMessage(doctor);
+    showToast(message, "error");
+    navigate("/settings");
+    return false;
+  };
 
   const handleVisitClick = (visit: Visit) => {
     setSelectedVisit(visit);
@@ -181,6 +198,7 @@ export default function PatientHistory() {
   };
 
   const handleOpenNuovaRichiestaEsame = () => {
+    if (!ensureDoctorProfileComplete()) return;
     setEditingRichiestaEsame(null);
     setModelloEsameSelezionato("");
     setNuovaRichiestaNome("");
@@ -224,6 +242,7 @@ export default function PatientHistory() {
   };
 
   const handleSaveRichiestaEsame = async () => {
+    if (!ensureDoctorProfileComplete()) return;
     if (!patient || !nuovaRichiestaNome.trim()) return;
     setSavingEsame(true);
     try {
@@ -712,7 +731,10 @@ export default function PatientHistory() {
               color="success"
               className="text-white font-medium shadow-sm"
               size="sm"
-              onPress={() => navigate(`/add-visit?patientId=${patient.id}`)}
+              onPress={() => {
+                if (!ensureDoctorProfileComplete()) return;
+                navigate(`/add-visit?patientId=${patient.id}`);
+              }}
               startContent={<PlusIcon size={16} />}
             >
               Nuova Visita
@@ -729,7 +751,10 @@ export default function PatientHistory() {
                   color="success"
                   size="sm"
                   className="text-white"
-                  onPress={() => navigate(`/add-visit?patientId=${patient.id}`)}
+                  onPress={() => {
+                    if (!ensureDoctorProfileComplete()) return;
+                    navigate(`/add-visit?patientId=${patient.id}`);
+                  }}
                 >
                   Aggiungi Prima Visita
                 </Button>
@@ -1163,8 +1188,8 @@ export default function PatientHistory() {
                             const amb = doctor.ambulatori.find((a) => a.isPrimario) || doctor.ambulatori[0];
                             parts.push(amb.nome, `${amb.indirizzo}, ${amb.citta}`);
                           }
-                          if (doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
-                          if (doctor?.email) parts.push(doctor.email);
+                          if (showDoctorPhoneInPdf && doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
+                          if (showDoctorEmailInPdf && doctor?.email) parts.push(doctor.email);
                           return parts.length ? parts.join("  •  ") : "—";
                         })()}
                       </p>
@@ -1444,8 +1469,8 @@ export default function PatientHistory() {
                             const amb = doctor.ambulatori.find((a) => a.isPrimario) || doctor.ambulatori[0];
                             parts.push(amb.nome, `${amb.indirizzo}, ${amb.citta}`);
                           }
-                          if (doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
-                          if (doctor?.email) parts.push(doctor.email);
+                          if (showDoctorPhoneInPdf && doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
+                          if (showDoctorEmailInPdf && doctor?.email) parts.push(doctor.email);
                           return parts.length ? parts.join("  •  ") : "—";
                         })()}
                       </p>

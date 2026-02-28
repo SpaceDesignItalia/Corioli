@@ -21,6 +21,11 @@ interface VisitPdfOptions {
     includeEcografiaImages?: boolean;
 }
 
+interface FooterVisibilityOptions {
+    showDoctorPhoneInPdf?: boolean;
+    showDoctorEmailInPdf?: boolean;
+}
+
     export class PdfService {
 
     // ─── Text Sanitization ──────────────────────────────────────────────────
@@ -339,7 +344,7 @@ interface VisitPdfOptions {
     }
 
     // ─── Footer ─────────────────────────────────────────────────────────────
-    private static drawFooter(doc: jsPDF, doctor: Doctor | null) {
+    private static drawFooter(doc: jsPDF, doctor: Doctor | null, visibility?: FooterVisibilityOptions) {
         const pageH = doc.internal.pageSize.height;
         const footerY = pageH - 15; // Lower footer
         
@@ -356,8 +361,10 @@ interface VisitPdfOptions {
             footerTextParts.push(`${amb.nome}`);
             footerTextParts.push(`${amb.indirizzo}, ${amb.citta}`);
         }
-        if (doctor?.telefono) footerTextParts.push(`Tel: ${doctor.telefono}`);
-        if (doctor?.email) footerTextParts.push(`${doctor.email}`);
+        const showPhone = visibility?.showDoctorPhoneInPdf !== false;
+        const showEmail = visibility?.showDoctorEmailInPdf !== false;
+        if (showPhone && doctor?.telefono) footerTextParts.push(`Tel: ${doctor.telefono}`);
+        if (showEmail && doctor?.email) footerTextParts.push(`${doctor.email}`);
 
         const footerText = footerTextParts.join("  •  ");
         doc.text(this.s(footerText), 105, footerY + 6, { align: "center" });
@@ -371,7 +378,10 @@ interface VisitPdfOptions {
         if (!visit.ginecologia) return;
         const gyn = visit.ginecologia;
         const isPediatric = visit.tipo === "ginecologica_pediatrica";
-        const doctor = await DoctorService.getDoctor();
+        const [doctor, prefs] = await Promise.all([
+            DoctorService.getDoctor(),
+            PreferenceService.getPreferences(),
+        ]);
         const doc = new jsPDF();
 
         let y = this.drawHeader(
@@ -414,7 +424,10 @@ interface VisitPdfOptions {
             y = this.drawEcografiaImages(doc, gyn.ecografiaImmagini, y);
         }
         y = this.drawSection(doc, "Conclusioni e Terapia", gyn.terapiaSpecifica, y);
-        this.drawFooter(doc, doctor);
+        this.drawFooter(doc, doctor, {
+            showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+            showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
+        });
         return doc.output("blob") as Blob;
     }
 
@@ -480,7 +493,10 @@ interface VisitPdfOptions {
             y = this.drawEcografiaImages(doc, obs.ecografiaImmagini, y);
         }
         y = this.drawSection(doc, "Conclusioni e Terapia", obs.noteOstetriche, y);
-        this.drawFooter(doc, doctor);
+        this.drawFooter(doc, doctor, {
+            showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+            showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
+        });
         return doc.output("blob") as Blob;
     }
 
@@ -513,7 +529,11 @@ interface VisitPdfOptions {
         doc.setFontSize(9);
         doc.setTextColor(SECONDARY_COLOR[0], SECONDARY_COLOR[1], SECONDARY_COLOR[2]);
         doc.text("Data richiesta: " + this.formatDate(richiesta.dataRichiesta), MARGIN_L + 4, y);
-        this.drawFooter(doc, doctor);
+        const prefs = await PreferenceService.getPreferences();
+        this.drawFooter(doc, doctor, {
+            showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+            showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
+        });
         return doc.output("blob") as Blob;
     }
 }

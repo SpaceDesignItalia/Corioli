@@ -52,6 +52,7 @@ import {
   PreferenceService,
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
+import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
 
 const SettingsScreen = () => {
   // ... state declarations ...
@@ -111,7 +112,9 @@ const SettingsScreen = () => {
     modalitaCompatta: false,
     animazioniRidotte: false,
     visitaGinecologicaPediatricaEnabled: false,
-    formulaPesoFetale: 'hadlock4' // hadlock4, shepard, hadlock3
+    formulaPesoFetale: 'hadlock4', // hadlock4, shepard, hadlock3
+    showDoctorPhoneInPdf: true,
+    showDoctorEmailInPdf: true,
   });
   const [duplicateGroups, setDuplicateGroups] = useState<
     Array<{ key: string; patients: any[] }>
@@ -1109,6 +1112,28 @@ const SettingsScreen = () => {
     setIsLoading(true);
     setError(null);
     setSuccess(null);
+    const profileToValidate: {
+      nome: string;
+      cognome: string;
+      email: string;
+      telefono: string;
+      specializzazione: string;
+    } = {
+      ...doctorInfo,
+      nome: doctorInfo.nome.trim(),
+      cognome: doctorInfo.cognome.trim(),
+      email: doctorInfo.email.trim(),
+      telefono: doctorInfo.telefono.trim(),
+      specializzazione: doctorInfo.specializzazione.trim(),
+    };
+    const missingFields = getMissingDoctorProfileFields(profileToValidate);
+    if (missingFields.length > 0) {
+      setError(
+        `Compila tutti i campi obbligatori del profilo: ${missingFields.join(", ")}.`,
+      );
+      setIsLoading(false);
+      return;
+    }
 
     try {
       await DoctorService.updateDoctor({
@@ -1163,65 +1188,59 @@ const SettingsScreen = () => {
       )}
 
       {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
-        <Card className="shadow-lg border border-default-200">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between w-full flex-wrap gap-2">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Aggiornamenti
-              </h2>
-              {appVersion && (
-                <Chip variant="flat" size="sm">
-                  Corioli {appVersion}
-                </Chip>
-              )}
-            </div>
-          </CardHeader>
-          <CardBody className="space-y-3">
-            <p className="text-sm text-default-600">
-              Controlla se è disponibile una nuova versione su{" "}
-              <a
-                href="https://github.com/SpaceDesignItalia/Corioli/releases"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                GitHub Releases
-              </a>
-              .
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="flat"
-                color="primary"
-                onPress={handleCheckForUpdates}
-                isLoading={updateChecking}
-                startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
-              >
-                Controlla aggiornamenti
-              </Button>
-              {updateAvailable && !updateDownloaded && (
-                <Chip color="primary" variant="flat">
-                  Disponibile: {updateAvailable}
-                </Chip>
-              )}
-              {updateDownloaded && (
-                <>
-                  <Chip color="success">Download completato</Chip>
-                  <Button
-                    size="sm"
-                    color="success"
-                    onPress={handleQuitAndInstall}
-                  >
-                    Riavvia per installare
-                  </Button>
-                </>
-              )}
-              {updateError && (
-                <Chip color="danger" variant="flat">
-                  {updateError}
-                </Chip>
-              )}
+        <Card className="shadow-sm border border-default-200">
+          <CardBody className="py-2 px-4">
+            <div className="flex items-center justify-between w-full gap-3">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <h2 className="text-base font-semibold text-gray-900">Aggiornamenti</h2>
+              </div>
+              <div className="flex items-center gap-2 ml-auto overflow-x-auto whitespace-nowrap">
+                {appVersion && (
+                  <Chip variant="flat" size="sm">
+                    v{appVersion}
+                  </Chip>
+                )}
+                <Button
+                  size="sm"
+                  variant="flat"
+                  color="primary"
+                  onPress={handleCheckForUpdates}
+                  isLoading={updateChecking}
+                  startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
+                >
+                  Controlla
+                </Button>
+                {updateAvailable && !updateDownloaded && (
+                  <Chip color="primary" variant="flat">
+                    Disponibile: {updateAvailable}
+                  </Chip>
+                )}
+                {updateDownloaded && (
+                  <>
+                    <Chip color="success">Pronto da installare</Chip>
+                    <Button
+                      size="sm"
+                      color="success"
+                      onPress={handleQuitAndInstall}
+                    >
+                      Installa ora
+                    </Button>
+                  </>
+                )}
+                {updateError && (
+                  <Chip color="danger" variant="flat">
+                    {updateError}
+                  </Chip>
+                )}
+                <a
+                  href="https://github.com/SpaceDesignItalia/Corioli/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary underline"
+                >
+                  Release notes
+                </a>
+              </div>
             </div>
           </CardBody>
         </Card>
@@ -1277,6 +1296,7 @@ const SettingsScreen = () => {
                 <Input
                   label="Nome"
                   value={doctorInfo.nome}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("nome", value)
                   }
@@ -1285,6 +1305,7 @@ const SettingsScreen = () => {
                 <Input
                   label="Cognome"
                   value={doctorInfo.cognome}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("cognome", value)
                   }
@@ -1294,6 +1315,7 @@ const SettingsScreen = () => {
                   label="Email"
                   type="email"
                   value={doctorInfo.email}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("email", value)
                   }
@@ -1302,6 +1324,7 @@ const SettingsScreen = () => {
                 <Input
                   label="Telefono"
                   value={doctorInfo.telefono}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("telefono", value)
                   }
@@ -1312,6 +1335,7 @@ const SettingsScreen = () => {
                 <Input
                   label="Specializzazione"
                   value={doctorInfo.specializzazione}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("specializzazione", value)
                   }
@@ -1363,46 +1387,106 @@ const SettingsScreen = () => {
           </Card>
 
           <Card className="shadow-lg">
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-1">
               <div className="flex items-center gap-3">
                 <SettingsIcon className="w-5 h-5 text-secondary" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Funzionalita Visite
-                </h2>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Funzionalita Visite
+                  </h2>
+                  <p className="text-xs text-default-500">
+                    Configura comportamento visite e contenuto PDF
+                  </p>
+                </div>
               </div>
             </CardHeader>
-            <CardBody>
-              <Switch
-                isSelected={preferences.visitaGinecologicaPediatricaEnabled}
-                onValueChange={(value) =>
-                  handlePreferenceChange(
-                    "visitaGinecologicaPediatricaEnabled",
-                    value,
-                  )
-                }
-              >
-                Abilita visita ginecologica pediatrica
-              </Switch>
-              <p className="text-xs text-default-500 mt-2 mb-4">
-                Se attiva, nella pagina Nuova Visita comparira anche il tab dedicato alla visita ginecologica pediatrica.
-              </p>
+            <CardBody className="space-y-4">
+              <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      Visita ginecologica pediatrica
+                    </p>
+                    <p className="text-xs text-default-500 mt-1">
+                      Mostra il tab dedicato nella pagina Nuova Visita.
+                    </p>
+                  </div>
+                  <Switch
+                    aria-label="Abilita visita ginecologica pediatrica"
+                    isSelected={preferences.visitaGinecologicaPediatricaEnabled}
+                    onValueChange={(value) =>
+                      handlePreferenceChange(
+                        "visitaGinecologicaPediatricaEnabled",
+                        value,
+                      )
+                    }
+                  />
+                </div>
+              </div>
 
-              <Divider className="my-4" />
-              
-              <Select
-                label="Formula Stima Peso Fetale"
-                selectedKeys={[preferences.formulaPesoFetale || 'hadlock4']}
-                onSelectionChange={(keys) => handlePreferenceChange("formulaPesoFetale", Array.from(keys)[0] as string)}
-                variant="bordered"
-                description="Seleziona la formula da utilizzare per il calcolo del peso stimato nella biometria fetale."
-              >
-                <SelectItem key="hadlock4" value="hadlock4">Hadlock IV (BPD, HC, AC, FL)</SelectItem>
-                <SelectItem key="hadlock1" value="hadlock1">Hadlock I (BPD, AC, FL)</SelectItem>
-                <SelectItem key="hadlock2" value="hadlock2">Hadlock II (HC, AC, FL)</SelectItem>
-                <SelectItem key="hadlock3" value="hadlock3">Hadlock III (AC, FL)</SelectItem>
-                <SelectItem key="shepard" value="shepard">Shepard (BPD, AC)</SelectItem>
-                <SelectItem key="campbell" value="campbell">Campbell (AC)</SelectItem>
-              </Select>
+              <div className="rounded-lg border border-default-200 p-4">
+                <p className="text-sm font-medium text-gray-800 mb-2">
+                  Formula stima peso fetale
+                </p>
+                <Select
+                  label="Formula"
+                  selectedKeys={[preferences.formulaPesoFetale || "hadlock4"]}
+                  onSelectionChange={(keys) =>
+                    handlePreferenceChange(
+                      "formulaPesoFetale",
+                      Array.from(keys)[0] as string,
+                    )
+                  }
+                  variant="bordered"
+                  description="Usata nel calcolo della biometria fetale."
+                >
+                  <SelectItem key="hadlock4" value="hadlock4">
+                    Hadlock IV (BPD, HC, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock1" value="hadlock1">
+                    Hadlock I (BPD, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock2" value="hadlock2">
+                    Hadlock II (HC, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock3" value="hadlock3">
+                    Hadlock III (AC, FL)
+                  </SelectItem>
+                  <SelectItem key="shepard" value="shepard">
+                    Shepard (BPD, AC)
+                  </SelectItem>
+                  <SelectItem key="campbell" value="campbell">
+                    Campbell (AC)
+                  </SelectItem>
+                </Select>
+              </div>
+
+              <div className="rounded-lg border border-default-200 p-4 space-y-3">
+                <p className="text-sm font-medium text-gray-800">
+                  Dati dottore nel PDF
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-default-700">Mostra telefono</p>
+                  <Switch
+                    aria-label="Mostra telefono nel PDF"
+                    isSelected={Boolean(preferences.showDoctorPhoneInPdf)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange("showDoctorPhoneInPdf", value)
+                    }
+                  />
+                </div>
+                <Divider />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-default-700">Mostra email</p>
+                  <Switch
+                    aria-label="Mostra email nel PDF"
+                    isSelected={Boolean(preferences.showDoctorEmailInPdf)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange("showDoctorEmailInPdf", value)
+                    }
+                  />
+                </div>
+              </div>
             </CardBody>
           </Card>
         </div>

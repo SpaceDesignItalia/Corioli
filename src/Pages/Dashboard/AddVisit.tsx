@@ -25,7 +25,7 @@ import {
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { addDays, differenceInDays, parseISO, isValid } from "date-fns";
-import { PatientService, VisitService, TemplateService, PreferenceService } from "../../services/OfflineServices";
+import { PatientService, VisitService, TemplateService, PreferenceService, DoctorService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, MedicalTemplate } from "../../types/Storage";
 import { calculateAge } from "../../utils/dateUtils";
@@ -35,6 +35,7 @@ import { ArrowLeft, Printer, ClipboardList, AlertCircle, Save, User, ImagePlus, 
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
+import { getDoctorProfileIncompleteMessage, isDoctorProfileComplete } from "../../utils/doctorProfile";
 
 /** Controlli anamnesi ginecologica */
 function ginecologiaAnamnesiErrors(g: {
@@ -434,6 +435,14 @@ export default function AddVisit() {
     setError(null);
 
     try {
+      const doctor = await DoctorService.getDoctor();
+      if (!isDoctorProfileComplete(doctor)) {
+        const message = getDoctorProfileIncompleteMessage(doctor);
+        setError(message);
+        showToast(message, "error");
+        return;
+      }
+
       const visitToSave = {
         patientId: patient.id,
         dataVisita: visitData.dataVisita,

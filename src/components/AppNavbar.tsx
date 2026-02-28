@@ -15,7 +15,7 @@ import {
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { AcmeIcon } from "./sidebar/AcmeIcon";
 import { DoctorService } from "../services/OfflineServices";
-import { MapPin, RefreshCw } from "lucide-react";
+import { Download, MapPin, RefreshCw } from "lucide-react";
 import { useOrbyt } from "@orbytapp/orbyt-sdk/react";
 import { storageService } from "../services/StorageServiceFallback";
 
@@ -36,6 +36,8 @@ export default function AppNavbar() {
     null,
   );
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   const loadDoctor = async () => {
     try {
@@ -106,8 +108,61 @@ export default function AppNavbar() {
       window.removeEventListener("appdottori-doctor-updated", onDoctorUpdated);
   }, []);
 
+  useEffect(() => {
+    const api = (window as unknown as {
+      electronAPI?: {
+        updaterCheck?: () => Promise<{
+          version?: string;
+          noUpdate?: boolean;
+          error?: string;
+        }>;
+        updaterQuitAndInstall?: () => void;
+        onUpdaterChecking?: (cb: () => void) => void;
+        onUpdaterAvailable?: (cb: (info: { version?: string }) => void) => void;
+        onUpdaterNotAvailable?: (cb: () => void) => void;
+        onUpdaterDownloaded?: (cb: () => void) => void;
+      };
+    }).electronAPI;
+
+    if (!api) return;
+
+    api.onUpdaterChecking?.(() => {
+      setUpdateAvailable(null);
+      setUpdateDownloaded(false);
+    });
+    api.onUpdaterAvailable?.((info) => {
+      setUpdateAvailable(info?.version || "Nuova versione");
+      setUpdateDownloaded(false);
+    });
+    api.onUpdaterNotAvailable?.(() => {
+      setUpdateAvailable(null);
+      setUpdateDownloaded(false);
+    });
+    api.onUpdaterDownloaded?.(() => {
+      setUpdateDownloaded(true);
+      setUpdateAvailable(null);
+    });
+
+    // Controllo automatico all'apertura dell'app.
+    api
+      .updaterCheck?.()
+      .then((result) => {
+        if (result?.version) setUpdateAvailable(result.version);
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, []);
+
   const handleReloadApp = () => {
     window.location.reload();
+  };
+
+  const handleInstallUpdate = () => {
+    const api = (window as unknown as {
+      electronAPI?: { updaterQuitAndInstall?: () => void };
+    }).electronAPI;
+    api?.updaterQuitAndInstall?.();
   };
 
   return (
@@ -174,6 +229,36 @@ export default function AppNavbar() {
           </Tooltip>
         </NavbarItem>
 
+        {(updateAvailable || updateDownloaded) && (
+          <NavbarItem className="hidden md:flex">
+            {updateDownloaded ? (
+              <Tooltip content="Installa l'aggiornamento e riavvia">
+                <Button
+                  size="sm"
+                  color="success"
+                  onPress={handleInstallUpdate}
+                  startContent={<Download size={14} />}
+                >
+                  Installa update
+                </Button>
+              </Tooltip>
+            ) : (
+              <Tooltip content="Aggiornamento disponibile: apri Impostazioni">
+                <Chip
+                  size="sm"
+                  color="primary"
+                  variant="flat"
+                  className="cursor-pointer font-medium hover:opacity-90 transition-opacity"
+                  onClick={() => navigate("/settings")}
+                  role="button"
+                >
+                  Aggiornamento disponibile
+                </Chip>
+              </Tooltip>
+            )}
+          </NavbarItem>
+        )}
+
         <NavbarItem className="hidden md:flex">
           <Tooltip content="Ricarica l'app (utile dopo import/backup)">
             <Button
@@ -228,6 +313,29 @@ export default function AppNavbar() {
             <span>Ricarica app</span>
           </button>
         </NavbarMenuItem>
+        {(updateAvailable || updateDownloaded) && (
+          <NavbarMenuItem className="pb-3 border-b border-default-100">
+            {updateDownloaded ? (
+              <button
+                type="button"
+                className="flex items-center gap-2 text-success text-sm w-full text-left hover:opacity-80"
+                onClick={handleInstallUpdate}
+              >
+                <Download size={16} className="flex-shrink-0" />
+                <span>Installa aggiornamento</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="flex items-center gap-2 text-primary text-sm w-full text-left hover:opacity-80"
+                onClick={() => navigate("/settings")}
+              >
+                <Download size={16} className="flex-shrink-0" />
+                <span>Aggiornamento disponibile</span>
+              </button>
+            )}
+          </NavbarMenuItem>
+        )}
         {menuItems.map((item, index) => (
           <NavbarMenuItem key={`${item.label}-${index}`}>
             <Link
