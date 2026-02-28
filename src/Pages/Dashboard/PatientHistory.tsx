@@ -164,25 +164,12 @@ export default function PatientHistory() {
     useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
   const [fetalFormulaPref, setFetalFormulaPref] = useState("hadlock4");
-  const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(
-    null,
-  );
+  const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
   /** URL del PDF generato per l’anteprima (stesso contenuto della stampa). Revocare in cleanup. */
-  const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState<string | null>(
-    null,
-  );
-  const [previewPdfLoading, setPreviewPdfLoading] = useState(false);
-  const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(
-    null,
-  );
-  /** URL del PDF generato per l’anteprima (stesso contenuto della stampa). Revocare in cleanup. */
-  const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState<string | null>(
-    null,
-  );
+  const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState<string | null>(null);
   const [previewPdfLoading, setPreviewPdfLoading] = useState(false);
   const [showDoctorPhoneInPdf, setShowDoctorPhoneInPdf] = useState(true);
   const [showDoctorEmailInPdf, setShowDoctorEmailInPdf] = useState(true);
-  const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
   // Gestione Templates Esami (via Settings/Storage)
   const [examTemplates, setExamTemplates] = useState<MedicalTemplate[]>([]);
   const navigate = useNavigate();
