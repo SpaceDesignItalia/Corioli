@@ -1888,11 +1888,14 @@ const SettingsScreen = () => {
             <Tab key="esame_complementare" title="Esami" />
           </Tabs>
 
+          <p className="text-sm text-default-500 mb-3">
+            I modelli compaiono nei pulsanti &quot;Modello&quot; / &quot;Modelli Esame&quot; durante la compilazione. Il <strong>nome in menu</strong> è ciò che vedi quando cerchi; il <strong>contenuto inserito</strong> è il testo che va nel referto quando lo selezioni.
+          </p>
           <Table aria-label="Tabella Modelli">
             <TableHeader>
-              <TableColumn>NOME MODELLO</TableColumn>
-              <TableColumn>SEZIONE</TableColumn>
-              <TableColumn>TESTO (ANTEPRIMA)</TableColumn>
+              <TableColumn>Nome in menu</TableColumn>
+              <TableColumn>Sezione</TableColumn>
+              <TableColumn>Contenuto inserito</TableColumn>
               <TableColumn>AZIONI</TableColumn>
             </TableHeader>
             <TableBody
@@ -2118,8 +2121,8 @@ const SettingsScreen = () => {
             {currentTemplate.id ? "Modifica Modello" : "Nuovo Modello"}
           </ModalHeader>
           <ModalBody onContextMenu={(e) => e.stopPropagation()}>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {currentTemplate.id ? (
                   <Select
                     label="Categoria"
@@ -2146,7 +2149,7 @@ const SettingsScreen = () => {
                       key="esame_complementare"
                       value="esame_complementare"
                     >
-                      Esami Complementari
+                      Esami
                     </SelectItem>
                   </Select>
                 ) : (
@@ -2156,11 +2159,8 @@ const SettingsScreen = () => {
                     </span>
                     <p className="text-default-700 font-medium capitalize">
                       {currentTemplate.category === "esame_complementare"
-                        ? "Esami Complementari"
+                        ? "Esami"
                         : currentTemplate.category}
-                    </p>
-                    <p className="text-xs text-default-400">
-                      Impostata dalla sezione in cui ti trovi
                     </p>
                   </div>
                 )}
@@ -2193,44 +2193,47 @@ const SettingsScreen = () => {
                   </SelectItem>
                 </Select>
               </div>
+
               <Input
-                label="Nome Modello (Label)"
+                label="Nome in menu"
+                placeholder="Es. Emocromo, Eco addome..."
                 value={currentTemplate.label}
                 onValueChange={(val) =>
                   setCurrentTemplate((prev) => ({ ...prev, label: val }))
                 }
-                description="Il nome che apparirà nel menu a tendina"
+                description="Titolo che vedi quando cerchi o selezioni il modello (nel menu a tendina)"
               />
               <Textarea
-                label={
+                label="Contenuto inserito"
+                placeholder={
                   currentTemplate.category === "esame_complementare"
-                    ? "Nome Esame (Testo)"
-                    : "Testo del Modello"
+                    ? "Es. Emocromo con formula, Ecografia addome completo..."
+                    : "Testo che verrà inserito nel referto..."
                 }
                 value={currentTemplate.text}
                 onValueChange={(val) =>
                   setCurrentTemplate((prev) => ({ ...prev, text: val }))
                 }
                 minRows={
-                  currentTemplate.category === "esame_complementare" ? 2 : 6
+                  currentTemplate.category === "esame_complementare" ? 2 : 5
                 }
                 description={
                   currentTemplate.category === "esame_complementare"
-                    ? "Il nome completo dell'esame"
-                    : "Il testo che verrà inserito nel referto"
+                    ? "Nome dell'esame che compare nella richiesta quando lo selezioni"
+                    : "Testo che viene inserito nel referto quando selezioni questo modello"
                 }
                 spellCheck
               />
               {currentTemplate.category === "esame_complementare" && (
                 <Textarea
-                  label="Note Cliniche (Pre-fill)"
+                  label="Note (opzionale)"
+                  placeholder="Es. preparazione, dettagli clinici..."
                   value={currentTemplate.note || ""}
                   onValueChange={(val) =>
                     setCurrentTemplate((prev) => ({ ...prev, note: val }))
                   }
-                  minRows={3}
-                  description="Note aggiuntive opzionali (es. preparazione, dettagli)"
-                  className="mt-4"
+                  minRows={2}
+                  description="Note aggiuntive per la richiesta esame"
                 />
               )}
             </div>
