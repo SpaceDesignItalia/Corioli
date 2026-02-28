@@ -277,6 +277,16 @@ export default function AddVisit() {
                 abortiSpontanei: visit.ginecologia?.abortiSpontanei ?? 0,
                 ivg: visit.ginecologia?.ivg ?? 0
               }));
+            } else if (visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica") {
+              // Visita importata da CSV o salvata solo con campi piatti: popola il form dai flat
+              setGinecologiaData(prev => ({
+                ...prev,
+                prestazione: visit.anamnesi ?? "",
+                problemaClinico: visit.descrizioneClinica ?? "",
+                esameBimanuale: visit.esamiObiettivo ?? "",
+                conclusione: visit.conclusioniDiagnostiche ?? "",
+                terapiaSpecifica: [visit.conclusioniDiagnostiche, visit.terapie].filter(Boolean).join("\n") || (visit.terapie ?? ""),
+              }));
             }
             if (visit.ostetricia) {
               setOstetriciaData(prev => ({
@@ -287,6 +297,16 @@ export default function AddVisit() {
                 abortiPrecSpontanei: visit.ostetricia?.abortiPrecSpontanei ?? 0,
                 ivgPrec: visit.ostetricia?.ivgPrec ?? 0,
                 biometriaFetale: visit.ostetricia?.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
+              }));
+            } else if (visit.tipo === "ostetrica") {
+              // Visita importata da CSV o salvata solo con campi piatti
+              setOstetriciaData(prev => ({
+                ...prev,
+                prestazione: visit.anamnesi ?? "",
+                problemaClinico: visit.descrizioneClinica ?? "",
+                esameObiettivo: visit.esamiObiettivo ?? "",
+                ecografiaOffice: visit.esamiObiettivo ?? "",
+                noteOstetriche: visit.conclusioniDiagnostiche ?? "",
               }));
             }
             const patientData = await PatientService.getPatientById(visit.patientId);
@@ -523,29 +543,51 @@ export default function AddVisit() {
       terapie: previousVisit.terapie || ""
     }));
 
-    if ((currentType === "ginecologica" || currentType === "ginecologica_pediatrica") && previousVisit.ginecologia) {
-      setGinecologiaData((prev) => ({
-        ...prev,
-        ...previousVisit.ginecologia,
-        partiSpontanei: previousVisit.ginecologia?.partiSpontanei ?? 0,
-        partiCesarei: previousVisit.ginecologia?.partiCesarei ?? 0,
-        abortiSpontanei: previousVisit.ginecologia?.abortiSpontanei ?? 0,
-        ivg: previousVisit.ginecologia?.ivg ?? 0,
-        ecografiaImmagini: previousVisit.ginecologia?.ecografiaImmagini ?? []
-      }));
+    if (currentType === "ginecologica" || currentType === "ginecologica_pediatrica") {
+      if (previousVisit.ginecologia) {
+        setGinecologiaData((prev) => ({
+          ...prev,
+          ...previousVisit.ginecologia,
+          partiSpontanei: previousVisit.ginecologia?.partiSpontanei ?? 0,
+          partiCesarei: previousVisit.ginecologia?.partiCesarei ?? 0,
+          abortiSpontanei: previousVisit.ginecologia?.abortiSpontanei ?? 0,
+          ivg: previousVisit.ginecologia?.ivg ?? 0,
+          ecografiaImmagini: previousVisit.ginecologia?.ecografiaImmagini ?? []
+        }));
+      } else {
+        setGinecologiaData((prev) => ({
+          ...prev,
+          prestazione: previousVisit.anamnesi ?? "",
+          problemaClinico: previousVisit.descrizioneClinica ?? "",
+          esameBimanuale: previousVisit.esamiObiettivo ?? "",
+          conclusione: previousVisit.conclusioniDiagnostiche ?? "",
+          terapiaSpecifica: [previousVisit.conclusioniDiagnostiche, previousVisit.terapie].filter(Boolean).join("\n") || (previousVisit.terapie ?? ""),
+        }));
+      }
     }
 
-    if (currentType === "ostetrica" && previousVisit.ostetricia) {
-      setOstetriciaData((prev) => ({
-        ...prev,
-        ...previousVisit.ostetricia,
-        partiPrecSpontanei: previousVisit.ostetricia?.partiPrecSpontanei ?? 0,
-        partiPrecCesarei: previousVisit.ostetricia?.partiPrecCesarei ?? 0,
-        abortiPrecSpontanei: previousVisit.ostetricia?.abortiPrecSpontanei ?? 0,
-        ivgPrec: previousVisit.ostetricia?.ivgPrec ?? 0,
-        ecografiaImmagini: previousVisit.ostetricia?.ecografiaImmagini ?? [],
-        biometriaFetale: previousVisit.ostetricia?.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
-      }));
+    if (currentType === "ostetrica") {
+      if (previousVisit.ostetricia) {
+        setOstetriciaData((prev) => ({
+          ...prev,
+          ...previousVisit.ostetricia,
+          partiPrecSpontanei: previousVisit.ostetricia?.partiPrecSpontanei ?? 0,
+          partiPrecCesarei: previousVisit.ostetricia?.partiPrecCesarei ?? 0,
+          abortiPrecSpontanei: previousVisit.ostetricia?.abortiPrecSpontanei ?? 0,
+          ivgPrec: previousVisit.ostetricia?.ivgPrec ?? 0,
+          ecografiaImmagini: previousVisit.ostetricia?.ecografiaImmagini ?? [],
+          biometriaFetale: previousVisit.ostetricia?.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
+        }));
+      } else {
+        setOstetriciaData((prev) => ({
+          ...prev,
+          prestazione: previousVisit.anamnesi ?? "",
+          problemaClinico: previousVisit.descrizioneClinica ?? "",
+          esameObiettivo: previousVisit.esamiObiettivo ?? "",
+          ecografiaOffice: previousVisit.esamiObiettivo ?? "",
+          noteOstetriche: previousVisit.conclusioniDiagnostiche ?? "",
+        }));
+      }
     }
 
     setHasUnsavedChanges(true);
