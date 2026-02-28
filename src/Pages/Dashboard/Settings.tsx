@@ -35,6 +35,7 @@ import {
   Download,
   Upload,
   RefreshCw,
+  Database,
   Settings as SettingsIcon,
   FileText,
   Plus,
@@ -49,6 +50,8 @@ import {
   TemplateService,
   PatientService,
   VisitService,
+  DocumentService,
+  BackupService,
   PreferenceService,
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
@@ -89,11 +92,16 @@ const SettingsScreen = () => {
     section: "prestazione",
   });
 
-  const [ambulatori, setAmbulatori] = useState<any[]>([]);
-  const [savingAmbulatori, setSavingAmbulatori] = useState(false);
-
+  // Data stats
   const [patientCount, setPatientCount] = useState(0);
   const [visitCount, setVisitCount] = useState(0);
+  const [docCount, setDocCount] = useState(0);
+  const [dataSize, setDataSize] = useState(0);
+  const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [ambulatori, setAmbulatori] = useState<any[]>([]);
+  const [savingAmbulatori, setSavingAmbulatori] = useState(false);
 
   const [newAmbulatorio, setNewAmbulatorio] = useState({
     nome: "",
@@ -244,12 +252,17 @@ const SettingsScreen = () => {
   useEffect(() => {
     const loadCounts = async () => {
       try {
-        const [patients, visits] = await Promise.all([
+        const [patients, visits, docs] = await Promise.all([
           PatientService.getAllPatients(),
           VisitService.getAllVisits(),
+          DocumentService.getAllDocuments(),
         ]);
         setPatientCount(patients.length);
         setVisitCount(visits.length);
+        setDocCount(docs.length);
+        // Calcolo dimensione approssimativa
+        const dataStr = JSON.stringify({ patients, visits, docs });
+        setDataSize(dataStr.length);
       } catch {
         // ignore
       }
@@ -403,6 +416,9 @@ const SettingsScreen = () => {
         setPreferences((prev) => ({ ...prev, ...prefs }));
         setNotificationsEnabled((prefs.notificationsEnabled as boolean) ?? true);
         setPdfTheme((prefs.pdfTheme as string) ?? "light");
+        if (prefs.lastBackupDate) {
+          setLastBackupDate(prefs.lastBackupDate as string);
+        }
       }
     } catch (error) {
       console.error("Errore nel caricamento preferenze:", error);
@@ -1160,6 +1176,35 @@ const SettingsScreen = () => {
     }
   };
 
+  const formatBytes = (bytes: number, decimals = 2) => {
+    if (!+bytes) return "0 Bytes";
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+  };
+
+  const handleQuickBackup = async () => {
+    setIsExporting(true);
+    try {
+      await BackupService.downloadBackup();
+      const now = new Date().toISOString();
+      setLastBackupDate(now);
+
+      const newPrefs = { ...preferences, lastBackupDate: now };
+      setPreferences(newPrefs);
+      await PreferenceService.savePreferences(newPrefs);
+
+      setSuccess("Backup scaricato con successo.");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e) {
+      setError("Errore durante il download del backup.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
@@ -1246,11 +1291,10 @@ const SettingsScreen = () => {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        {/* Colonna Sinistra: Profilo e Backup */}
-        <div className="space-y-8">
+      <div className="space-y-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Profilo Dottore */}
-          <Card className="shadow-lg">
+          <Card className="shadow-lg h-full">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <User className="w-5 h-5 text-primary" />
@@ -1355,145 +1399,8 @@ const SettingsScreen = () => {
             </CardBody>
           </Card>
 
-          {/* Backup e Dati */}
-          <Card className="shadow-lg">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <Download className="w-5 h-5 text-success" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Backup e Dati
-                </h2>
-              </div>
-            </CardHeader>
-            <CardBody className="space-y-6">
-              <div className="text-center space-y-4">
-                <div className="flex justify-center gap-4">
-                  <Chip color="primary" variant="flat">
-                    Pazienti: {patientCount}
-                  </Chip>
-                  <Chip color="secondary" variant="flat">
-                    Visite: {visitCount}
-                  </Chip>
-                </div>
-
-                <p className="text-sm text-gray-600">
-                  Esporta i tuoi dati per creare backup di sicurezza o importa
-                  dati esistenti
-                </p>
-              </div>
-
-              <BackupManager />
-            </CardBody>
-          </Card>
-
-          <Card className="shadow-lg">
-            <CardHeader className="pb-1">
-              <div className="flex items-center gap-3">
-                <SettingsIcon className="w-5 h-5 text-secondary" />
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    Funzionalita Visite
-                  </h2>
-                  <p className="text-xs text-default-500">
-                    Configura comportamento visite e contenuto PDF
-                  </p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardBody className="space-y-4">
-              <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      Visita ginecologica pediatrica
-                    </p>
-                    <p className="text-xs text-default-500 mt-1">
-                      Mostra il tab dedicato nella pagina Nuova Visita.
-                    </p>
-                  </div>
-                  <Switch
-                    aria-label="Abilita visita ginecologica pediatrica"
-                    isSelected={preferences.visitaGinecologicaPediatricaEnabled}
-                    onValueChange={(value) =>
-                      handlePreferenceChange(
-                        "visitaGinecologicaPediatricaEnabled",
-                        value,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-default-200 p-4">
-                <p className="text-sm font-medium text-gray-800 mb-2">
-                  Formula stima peso fetale
-                </p>
-                <Select
-                  label="Formula"
-                  selectedKeys={[preferences.formulaPesoFetale || "hadlock4"]}
-                  onSelectionChange={(keys) =>
-                    handlePreferenceChange(
-                      "formulaPesoFetale",
-                      Array.from(keys)[0] as string,
-                    )
-                  }
-                  variant="bordered"
-                  description="Usata nel calcolo della biometria fetale."
-                >
-                  <SelectItem key="hadlock4" value="hadlock4">
-                    Hadlock IV (BPD, HC, AC, FL)
-                  </SelectItem>
-                  <SelectItem key="hadlock1" value="hadlock1">
-                    Hadlock I (BPD, AC, FL)
-                  </SelectItem>
-                  <SelectItem key="hadlock2" value="hadlock2">
-                    Hadlock II (HC, AC, FL)
-                  </SelectItem>
-                  <SelectItem key="hadlock3" value="hadlock3">
-                    Hadlock III (AC, FL)
-                  </SelectItem>
-                  <SelectItem key="shepard" value="shepard">
-                    Shepard (BPD, AC)
-                  </SelectItem>
-                  <SelectItem key="campbell" value="campbell">
-                    Campbell (AC)
-                  </SelectItem>
-                </Select>
-              </div>
-
-              <div className="rounded-lg border border-default-200 p-4 space-y-3">
-                <p className="text-sm font-medium text-gray-800">
-                  Dati dottore nel PDF
-                </p>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-default-700">Mostra telefono</p>
-                  <Switch
-                    aria-label="Mostra telefono nel PDF"
-                    isSelected={Boolean(preferences.showDoctorPhoneInPdf)}
-                    onValueChange={(value) =>
-                      handlePreferenceChange("showDoctorPhoneInPdf", value)
-                    }
-                  />
-                </div>
-                <Divider />
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-default-700">Mostra email</p>
-                  <Switch
-                    aria-label="Mostra email nel PDF"
-                    isSelected={Boolean(preferences.showDoctorEmailInPdf)}
-                    onValueChange={(value) =>
-                      handlePreferenceChange("showDoctorEmailInPdf", value)
-                    }
-                  />
-                </div>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-
-        {/* Colonna Destra: Ambulatori */}
-        <div className="space-y-8">
-          <Card className="shadow-lg max-h-[calc(100vh-12rem)] flex flex-col">
+          {/* Ambulatori */}
+          <Card className="shadow-lg h-full flex flex-col">
             <CardHeader className="pb-2 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 bg-emerald-500 rounded"></div>
@@ -1503,8 +1410,8 @@ const SettingsScreen = () => {
               </div>
             </CardHeader>
             <CardBody className="flex flex-col flex-1 min-h-0 gap-0">
-              {/* Lista ambulatori esistenti - altezza fissa ~2 card (mobile) o ~4 (desktop), scroll interno */}
-              <div className="overflow-y-auto overflow-x-hidden space-y-3 pr-2 min-h-[10rem] max-h-[14rem] md:max-h-[28rem] rounded-lg border border-default-200 bg-default-50/50 p-2">
+              {/* Lista ambulatori esistenti */}
+              <div className="overflow-y-auto overflow-x-hidden space-y-3 pr-2 flex-1 min-h-[10rem] rounded-lg border border-default-200 bg-default-50/50 p-2">
                 {ambulatori.length > 0 ? (
                   <>
                     <h3 className="font-medium text-gray-900">
@@ -1652,6 +1559,186 @@ const SettingsScreen = () => {
                 >
                   {savingAmbulatori ? "Salvataggio..." : "Aggiungi Ambulatorio"}
                 </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Backup e Dati */}
+          <Card className="shadow-lg h-full">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <Download className="w-5 h-5 text-success" />
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Backup e Dati
+                </h2>
+              </div>
+            </CardHeader>
+            <CardBody className="flex flex-col justify-between space-y-6">
+              <div className="space-y-5">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="p-3 bg-primary-50 rounded-lg border border-primary-100">
+                    <p className="text-xs text-primary-600 font-semibold uppercase tracking-wider">
+                      Pazienti
+                    </p>
+                    <p className="text-2xl font-bold text-primary-700 mt-1">
+                      {patientCount}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-secondary-50 rounded-lg border border-secondary-100">
+                    <p className="text-xs text-secondary-600 font-semibold uppercase tracking-wider">
+                      Visite
+                    </p>
+                    <p className="text-2xl font-bold text-secondary-700 mt-1">
+                      {visitCount}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-default-50 rounded-lg border border-default-200">
+                    <p className="text-xs text-default-600 font-semibold uppercase tracking-wider">
+                      Doc
+                    </p>
+                    <p className="text-2xl font-bold text-default-700 mt-1">
+                      {docCount}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-default-200 p-4 bg-default-50/30 space-y-3">
+                  <div className="flex justify-between items-center text-sm">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Ultimo backup</span>
+                    </div>
+                    <span
+                      className={`font-semibold ${!lastBackupDate ? "text-warning-600" : "text-success-600"}`}
+                    >
+                      {lastBackupDate
+                        ? new Date(lastBackupDate).toLocaleDateString() +
+                          " " +
+                          new Date(lastBackupDate).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "Mai eseguito"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 mt-auto">
+                <div className="w-full [&>button]:w-full">
+                  <BackupManager />
+                </div>
+                
+                <p className="text-xs text-center text-default-400 px-4">
+                  Gestione avanzata permette importazioni, cancellazioni e reset.
+                </p>
+              </div>
+            </CardBody>
+          </Card>
+
+          {/* Funzionalita Visite */}
+          <Card className="shadow-lg h-full">
+            <CardHeader className="pb-1">
+              <div className="flex items-center gap-3">
+                <SettingsIcon className="w-5 h-5 text-secondary" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Funzionalita Visite
+                  </h2>
+                  <p className="text-xs text-default-500">
+                    Configura comportamento visite e contenuto PDF
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      Visita ginecologica pediatrica
+                    </p>
+                    <p className="text-xs text-default-500 mt-1">
+                      Mostra il tab dedicato nella pagina Nuova Visita.
+                    </p>
+                  </div>
+                  <Switch
+                    aria-label="Abilita visita ginecologica pediatrica"
+                    isSelected={preferences.visitaGinecologicaPediatricaEnabled}
+                    onValueChange={(value) =>
+                      handlePreferenceChange(
+                        "visitaGinecologicaPediatricaEnabled",
+                        value,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-default-200 p-4">
+                <p className="text-sm font-medium text-gray-800 mb-2">
+                  Formula stima peso fetale
+                </p>
+                <Select
+                  label="Formula"
+                  selectedKeys={[preferences.formulaPesoFetale || "hadlock4"]}
+                  onSelectionChange={(keys) =>
+                    handlePreferenceChange(
+                      "formulaPesoFetale",
+                      Array.from(keys)[0] as string,
+                    )
+                  }
+                  variant="bordered"
+                  description="Usata nel calcolo della biometria fetale."
+                >
+                  <SelectItem key="hadlock4" value="hadlock4">
+                    Hadlock IV (BPD, HC, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock1" value="hadlock1">
+                    Hadlock I (BPD, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock2" value="hadlock2">
+                    Hadlock II (HC, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock3" value="hadlock3">
+                    Hadlock III (AC, FL)
+                  </SelectItem>
+                  <SelectItem key="shepard" value="shepard">
+                    Shepard (BPD, AC)
+                  </SelectItem>
+                  <SelectItem key="campbell" value="campbell">
+                    Campbell (AC)
+                  </SelectItem>
+                </Select>
+              </div>
+
+              <div className="rounded-lg border border-default-200 p-4 space-y-3">
+                <p className="text-sm font-medium text-gray-800">
+                  Dati dottore nel PDF
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-default-700">Mostra telefono</p>
+                  <Switch
+                    aria-label="Mostra telefono nel PDF"
+                    isSelected={Boolean(preferences.showDoctorPhoneInPdf)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange("showDoctorPhoneInPdf", value)
+                    }
+                  />
+                </div>
+                <Divider />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-default-700">Mostra email</p>
+                  <Switch
+                    aria-label="Mostra email nel PDF"
+                    isSelected={Boolean(preferences.showDoctorEmailInPdf)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange("showDoctorEmailInPdf", value)
+                    }
+                  />
+                </div>
               </div>
             </CardBody>
           </Card>
