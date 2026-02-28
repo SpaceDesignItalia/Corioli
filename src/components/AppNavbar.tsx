@@ -82,8 +82,6 @@ export default function AppNavbar() {
 
         const result = await getFeatureFlag("blocked_users", { email });
         const isBlocked = result?.value === true;
-        console.log("isBlocked", isBlocked);
-        console.log("result", result);
         const payload = {
           blocked: isBlocked,
           checkedAt: new Date().toISOString(),
