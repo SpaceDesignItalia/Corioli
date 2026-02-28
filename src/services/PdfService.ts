@@ -108,6 +108,84 @@ export class PdfService {
           }
           result += text[i];
           break;
+export class PdfService {
+  // ─── Text Sanitization ──────────────────────────────────────────────────
+  private static sanitizeText(text: string): string {
+    if (!text) return "";
+    let result = "";
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      switch (code) {
+        case 224:
+          result += "a'";
+          break;
+        case 232:
+          result += "e'";
+          break;
+        case 233:
+          result += "e'";
+          break;
+        case 236:
+          result += "i'";
+          break;
+        case 242:
+          result += "o'";
+          break;
+        case 249:
+          result += "u'";
+          break;
+        case 192:
+          result += "A'";
+          break;
+        case 200:
+          result += "E'";
+          break;
+        case 201:
+          result += "E'";
+          break;
+        case 204:
+          result += "I'";
+          break;
+        case 210:
+          result += "O'";
+          break;
+        case 217:
+          result += "U'";
+          break;
+        case 195: {
+          const next = i + 1 < text.length ? text.charCodeAt(i + 1) : 0;
+          if (next === 160) {
+            result += "a'";
+            i++;
+            break;
+          }
+          if (next === 168) {
+            result += "e'";
+            i++;
+            break;
+          }
+          if (next === 169) {
+            result += "e'";
+            i++;
+            break;
+          }
+          if (next === 172) {
+            result += "i'";
+            i++;
+            break;
+          }
+          if (next === 178) {
+            result += "o'";
+            i++;
+            break;
+          }
+          if (next === 185) {
+            result += "u'";
+            i++;
+            break;
+          }
+          result += text[i];
+          break;
 interface FooterVisibilityOptions {
     showDoctorPhoneInPdf?: boolean;
     showDoctorEmailInPdf?: boolean;
@@ -543,6 +621,9 @@ interface FooterVisibilityOptions {
     const footerText = footerTextParts.join("  •  ");
     doc.text(this.s(footerText), 105, footerY + 6, { align: "center" });
   }
+    const footerText = footerTextParts.join("  •  ");
+    doc.text(this.s(footerText), 105, footerY + 6, { align: "center" });
+  }
     // ─── Footer ─────────────────────────────────────────────────────────────
     private static drawFooter(doc: jsPDF, doctor: Doctor | null, visibility?: FooterVisibilityOptions) {
         const pageH = doc.internal.pageSize.height;
@@ -552,6 +633,36 @@ interface FooterVisibilityOptions {
         doc.setLineWidth(0.1);
         doc.line(MARGIN_L + 20, footerY, MARGIN_R - 20, footerY);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // ─── Normalizzazione visite “piatte” (es. da import CSV) ───────────────────
+  /** Costruisce un oggetto ginecologia minimo dai campi piatti della visita (anamnesi, esamiObiettivo, ecc.). */
+  private static buildGinecologiaFromFlat(visit: Visit): NonNullable<Visit["ginecologia"]> {
+    const a = visit.anamnesi ?? "";
+    const e = visit.esamiObiettivo ?? "";
+    const c = visit.conclusioniDiagnostiche ?? "";
+    const t = visit.terapie ?? "";
+    const terapiaSpecifica = [c, t].filter(Boolean).join("\n");
+    return {
+      gravidanze: 0,
+      parti: 0,
+      aborti: 0,
+      ultimaMestruazione: "",
+      prestazione: a,
+      problemaClinico: visit.descrizioneClinica ?? "",
+      chirurgiaPregessa: "",
+      allergie: "",
+      familiarita: "",
+      terapiaInAtto: "",
+      vaccinazioneHPV: true,
+      esameBimanuale: e,
+      speculum: "",
+      ecografiaTV: "",
+      accertamenti: "",
+      conclusione: c,
+      terapiaSpecifica,
+      ecografiaImmagini: [],
+    };
+  }
   // ═══════════════════════════════════════════════════════════════════════
   // ─── Normalizzazione visite “piatte” (es. da import CSV) ───────────────────
   /** Costruisce un oggetto ginecologia minimo dai campi piatti della visita (anamnesi, esamiObiettivo, ecc.). */
@@ -650,6 +761,13 @@ interface FooterVisibilityOptions {
   ) {
     const normalized = this.normalizeVisitForPdf(visit);
     if (!normalized.ginecologia) return;
+  static async generateGynecologicalPDF(
+    patient: Patient,
+    visit: Visit,
+    options?: VisitPdfOptions,
+  ) {
+    const normalized = this.normalizeVisitForPdf(visit);
+    if (!normalized.ginecologia) return;
     static async generateGynecologicalPDF(patient: Patient, visit: Visit, options?: VisitPdfOptions) {
         if (!visit.ginecologia) return;
         const gyn = visit.ginecologia;
@@ -673,6 +791,45 @@ interface FooterVisibilityOptions {
     );
     y = this.drawPatientBox(doc, patient, visit.dataVisita, y);
 
+    // ── Anamnesi Grid ──
+    if (isPediatric) {
+      y = this.drawGridRow(
+        doc,
+        [
+          { label: "MENARCA", value: gyn.menarca ?? "-" },
+          {
+            label: "VACCINAZIONE HPV",
+            value: gyn.vaccinazioneHPV ? "SI" : "NO",
+          },
+          {
+            label: "STADIO DI TANNER (F)",
+            value: gyn.stadioTannerFemmina ?? "-",
+          },
+        ],
+        y,
+      );
+    } else {
+      const partiValue =
+        gyn.partiSpontanei != null || gyn.partiCesarei != null
+          ? `${gyn.parti} (${gyn.partiSpontanei ?? 0} PS, ${gyn.partiCesarei ?? 0} TC)`
+          : String(gyn.parti);
+      const abortiValue =
+        gyn.abortiSpontanei != null || gyn.ivg != null
+          ? `${gyn.aborti} (${gyn.abortiSpontanei ?? 0} AS, ${gyn.ivg ?? 0} IVG)`
+          : String(gyn.aborti);
+      y = this.drawGridRow(
+        doc,
+        [
+          { label: "GRAVIDANZE (G)", value: String(gyn.gravidanze) },
+          { label: "PARTI (P)", value: partiValue },
+          { label: "ABORTI (A)", value: abortiValue },
+          {
+            label: "ULTIMA MESTRUAZIONE",
+            value: this.formatDate(gyn.ultimaMestruazione),
+          },
+        ],
+        y,
+      );
     // ── Anamnesi Grid ──
     if (isPediatric) {
       y = this.drawGridRow(
@@ -867,6 +1024,51 @@ interface FooterVisibilityOptions {
     );
     if (options?.includeEcografiaImages) {
       y = this.drawEcografiaImages(doc, obs.ecografiaImmagini, y);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(
+      SECONDARY_COLOR[0],
+      SECONDARY_COLOR[1],
+      SECONDARY_COLOR[2],
+    );
+    doc.text("PARAMETRI ATTUALI", MARGIN_L, y - 2);
+
+    y = this.drawGridRow(
+      doc,
+      [
+        { label: "SETT. GESTAZIONE", value: obs.settimaneGestazione },
+        { label: "DATA PRESUNTA", value: this.formatDate(obs.dataPresunta) },
+        { label: "PRESSIONE", value: obs.pressioneArteriosa },
+        {
+          label: "PESO ATTUALE",
+          value: obs.pesoAttuale ? `${obs.pesoAttuale} kg` : "-",
+        },
+        {
+          label: "INCREM. PONDERALE",
+          value:
+            obs.pesoAttuale && obs.pesoPreGravidanza
+              ? `${(Number(obs.pesoAttuale) - Number(obs.pesoPreGravidanza)).toFixed(1)} kg`
+              : "-",
+        },
+        { label: "PESO FETALE STIMATO", value: pesoFetaleValue },
+      ],
+      y,
+    );
+
+    // ── Sections ──
+    y = this.drawSection(doc, "ANAMNESI", obs.prestazione, y);
+    y = this.drawSection(doc, "Dati Clinici", obs.problemaClinico, y);
+    const SIEOG_NOTE =
+      "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di ciò si informa la persona assistita.";
+    y = this.drawSection(
+      doc,
+      "ECOGRAFIA OFFICE / ESAME OBIETTIVO",
+      obs.esameObiettivo,
+      y,
+      SIEOG_NOTE,
+    );
+    if (options?.includeEcografiaImages) {
+      y = this.drawEcografiaImages(doc, obs.ecografiaImmagini, y);
         // ── Sections ──
         y = this.drawSection(doc, "ANAMNESI", obs.prestazione, y);
         y = this.drawSection(doc, "Dati Clinici", obs.problemaClinico, y);
@@ -887,6 +1089,40 @@ interface FooterVisibilityOptions {
     return doc.output("blob") as Blob;
   }
 
+  /** PDF dedicato: foglio a parte per una singola richiesta esame complementare */
+  static async generateRichiestaEsamePDF(
+    patient: Patient,
+    richiesta: RichiestaEsameComplementare,
+    doctor: Doctor | null,
+  ): Promise<Blob> {
+    const doc = new jsPDF();
+    let y = this.drawHeader(
+      doc,
+      "RICHIESTA ESAME COMPLEMENTARE",
+      "Prescrizione esame",
+      doctor,
+      false,
+    );
+    y = this.drawPatientBox(doc, patient, richiesta.dataRichiesta, y);
+    y = this.pageBreak(doc, y, 25);
+    doc.setFillColor(ACCENT_COLOR[0], ACCENT_COLOR[1], ACCENT_COLOR[2]);
+    doc.rect(MARGIN_L, y, PAGE_W, 5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+    doc.text(this.s("ESAME RICHIESTO"), MARGIN_L + 4, y + 3.5);
+    y += 10;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    const nomeLines = doc.splitTextToSize(this.s(richiesta.nome), PAGE_W - 8);
+    doc.text(nomeLines, MARGIN_L + 4, y);
+    y += nomeLines.length * LINE_H + 2;
+    if (richiesta.note && richiesta.note.trim()) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      const noteLines = doc.splitTextToSize(this.s(richiesta.note), PAGE_W - 8);
+      doc.text(noteLines, MARGIN_L + 4, y);
+      y += noteLines.length * LINE_H + 4;
   /** PDF dedicato: foglio a parte per una singola richiesta esame complementare */
   static async generateRichiestaEsamePDF(
     patient: Patient,

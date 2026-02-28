@@ -172,6 +172,14 @@ export default function PatientHistory() {
     null,
   );
   const [previewPdfLoading, setPreviewPdfLoading] = useState(false);
+  const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(
+    null,
+  );
+  /** URL del PDF generato per l’anteprima (stesso contenuto della stampa). Revocare in cleanup. */
+  const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState<string | null>(
+    null,
+  );
+  const [previewPdfLoading, setPreviewPdfLoading] = useState(false);
   const [showDoctorPhoneInPdf, setShowDoctorPhoneInPdf] = useState(true);
   const [showDoctorEmailInPdf, setShowDoctorEmailInPdf] = useState(true);
   const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
@@ -245,6 +253,12 @@ export default function PatientHistory() {
   }, [patientIdParam]);
 
   useEffect(() => {
+    PreferenceService.getPreferences()
+      .then((prefs) => {
+        if (prefs?.formulaPesoFetale)
+          setFetalFormulaPref(prefs.formulaPesoFetale as string);
+      })
+      .catch(() => {});
     PreferenceService.getPreferences().then((prefs) => {
       if (prefs?.formulaPesoFetale) setFetalFormulaPref(prefs.formulaPesoFetale as string);
       if (typeof prefs?.showDoctorPhoneInPdf === "boolean") {
@@ -255,6 +269,55 @@ export default function PatientHistory() {
       }
     }).catch(() => {});
   }, []);
+
+  // Genera il PDF di anteprima (stesso della stampa) quando si apre il modale su visita ginecologica/ostetrica
+  useEffect(() => {
+    const isGyn =
+      selectedVisit?.tipo === "ginecologica" ||
+      selectedVisit?.tipo === "ginecologica_pediatrica";
+    const isObs = selectedVisit?.tipo === "ostetrica";
+    if (!isOpen || !selectedVisit || !patient || (!isGyn && !isObs)) {
+      setPreviewPdfBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setPreviewPdfLoading(false);
+      return;
+    }
+    let revoked = false;
+    setPreviewPdfLoading(true);
+    (async () => {
+      try {
+        const blob =
+          isGyn
+            ? await PdfService.generateGynecologicalPDF(patient, selectedVisit, {
+                includeEcografiaImages: true,
+              })
+            : await PdfService.generateObstetricPDF(patient, selectedVisit, {
+                includeEcografiaImages: true,
+              });
+        if (blob && !revoked) {
+          const url = URL.createObjectURL(blob);
+          setPreviewPdfBlobUrl(url);
+        }
+      } catch (e) {
+        console.error("Errore generazione PDF anteprima:", e);
+        if (!revoked) setPreviewPdfBlobUrl(null);
+      } finally {
+        if (!revoked) setPreviewPdfLoading(false);
+      }
+    })();
+    return () => {
+      revoked = true;
+      setPreviewPdfBlobUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+      setPreviewPdfLoading(false);
+    };
+  }, [isOpen, selectedVisit?.id, patient?.id]);
 
   // Genera il PDF di anteprima (stesso della stampa) quando si apre il modale su visita ginecologica/ostetrica
   useEffect(() => {
@@ -1361,6 +1424,9 @@ export default function PatientHistory() {
                               `${amb.indirizzo}, ${amb.citta}`,
                             );
                           }
+                          if (doctor?.telefono)
+                            parts.push(`Tel: ${doctor.telefono}`);
+                          if (doctor?.email) parts.push(doctor.email);
                           if (showDoctorPhoneInPdf && doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
                           if (showDoctorEmailInPdf && doctor?.email) parts.push(doctor.email);
                           return parts.length ? parts.join("  •  ") : "—";
@@ -1709,6 +1775,9 @@ export default function PatientHistory() {
                               `${amb.indirizzo}, ${amb.citta}`,
                             );
                           }
+                          if (doctor?.telefono)
+                            parts.push(`Tel: ${doctor.telefono}`);
+                          if (doctor?.email) parts.push(doctor.email);
                           if (showDoctorPhoneInPdf && doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
                           if (showDoctorEmailInPdf && doctor?.email) parts.push(doctor.email);
                           return parts.length ? parts.join("  •  ") : "—";
