@@ -16,6 +16,8 @@ import { useLocation, Link, useNavigate } from "react-router-dom";
 import { AcmeIcon } from "./sidebar/AcmeIcon";
 import { DoctorService } from "../services/OfflineServices";
 import { MapPin, RefreshCw } from "lucide-react";
+import { useOrbyt } from "@orbytapp/orbyt-sdk/react";
+import { storageService } from "../services/StorageServiceFallback";
 
 const menuItems = [
   { label: "Dashboard", href: "/" },
@@ -29,6 +31,7 @@ const menuItems = [
 export default function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { getFeatureFlag } = useOrbyt();
   const [primaryAmbulatorio, setPrimaryAmbulatorio] = useState<string | null>(
     null,
   );
@@ -48,9 +51,55 @@ export default function AppNavbar() {
     }
   };
 
+  const BLOCKED_STORAGE_KEY = "blocked_users";
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+
   useEffect(() => {
     loadDoctor();
-  }, []);
+
+    const checkFeature = async () => {
+      try {
+        const doctor = await DoctorService.getDoctor();
+        const email = doctor?.email?.trim();
+        if (!email) return;
+
+        const raw = await storageService.getPreference(BLOCKED_STORAGE_KEY);
+        let lastCheckedAt: number | null = null;
+        if (raw) {
+          try {
+            const data = JSON.parse(raw) as {
+              blocked?: boolean;
+              checkedAt?: string;
+            };
+            if (data.checkedAt) {
+              lastCheckedAt = new Date(data.checkedAt).getTime();
+              if (Date.now() - lastCheckedAt < ONE_HOUR_MS) return;
+            }
+          } catch {
+            // ignore invalid stored data
+          }
+        }
+
+        const result = await getFeatureFlag("blocked_users", { email });
+        const isBlocked = result?.value === true;
+        console.log("isBlocked", isBlocked);
+        console.log("result", result);
+        const payload = {
+          blocked: isBlocked,
+          checkedAt: new Date().toISOString(),
+        };
+        await storageService.setPreference(
+          BLOCKED_STORAGE_KEY,
+          JSON.stringify(payload),
+        );
+
+        if (isBlocked) navigate("/blocked");
+      } catch (e) {
+        console.error("checkFeature blocked_users:", e);
+      }
+    };
+    void checkFeature();
+  }, [getFeatureFlag, navigate]);
 
   useEffect(() => {
     const onDoctorUpdated = () => loadDoctor();
