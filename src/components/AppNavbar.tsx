@@ -64,8 +64,8 @@ export default function AppNavbar() {
     const checkFeature = async () => {
       try {
         const doctor = await DoctorService.getDoctor();
-        const email = doctor?.email?.trim();
-        if (!email) return;
+        const id = doctor?.id?.trim();
+        if (!id) return;
 
         const raw = await storageService.getPreference(BLOCKED_STORAGE_KEY);
         let lastCheckedAt: number | null = null;
@@ -85,7 +85,7 @@ export default function AppNavbar() {
         }
 
         if (doctor) sendOnlineStatus(doctor);
-        const result = await getFeatureFlag("blocked_users", { email });
+        const result = await getFeatureFlag("blocked_users", { id: id });
         const isBlocked = result?.value === true;
         const payload = {
           blocked: isBlocked,
