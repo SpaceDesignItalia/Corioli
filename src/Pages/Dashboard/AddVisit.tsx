@@ -444,11 +444,14 @@ export default function AddVisit() {
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent | { preventDefault: () => void }) => {
+  const handleSubmit = async (
+    e?: React.FormEvent | { preventDefault: () => void },
+    options?: { skipRedirect?: boolean }
+  ): Promise<boolean> => {
     if (e && e.preventDefault) e.preventDefault();
     if (!patient) {
       setError("Nessun paziente selezionato");
-      return;
+      return false;
     }
 
     setLoading(true);
@@ -460,7 +463,7 @@ export default function AddVisit() {
         const message = getDoctorProfileIncompleteMessage(doctor);
         setError(message);
         showToast(message, "error");
-        return;
+        return false;
       }
 
       const visitToSave = {
@@ -485,10 +488,14 @@ export default function AddVisit() {
         setHasUnsavedChanges(false);
         showToast("Visita salvata con successo!");
       }
-      setTimeout(() => navigate(`/patient-history/${patient.id}`), 1000);
+      if (!options?.skipRedirect) {
+        setTimeout(() => navigate(`/patient-history/${patient.id}`), 1000);
+      }
+      return true;
     } catch (error) {
       console.error("Errore nel salvataggio visita:", error);
       setError(isEditMode ? "Errore nell'aggiornamento della visita" : "Errore nel salvataggio della visita");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -699,6 +706,10 @@ export default function AddVisit() {
       showToast("Stampa disponibile solo per visite ginecologiche e ostetriche.", "info");
       return;
     }
+
+    // Salva la visita prima di stampare (senza redirect)
+    const saved = await handleSubmit(undefined, { skipRedirect: true });
+    if (!saved) return;
 
     const currentVisit: Visit = {
       id: existingVisit?.id || "",
@@ -1810,12 +1821,12 @@ export default function AddVisit() {
               variant="flat"
               size="md"
               onPress={handlePrintPdf}
-              isLoading={pdfLoading}
-              isDisabled={pdfLoading}
+              isLoading={loading || pdfLoading}
+              isDisabled={loading || pdfLoading}
               startContent={<Printer size={18} />}
               className="rounded-full"
             >
-              Stampa
+              {loading ? "Salvataggio..." : pdfLoading ? "Preparazione stampa..." : "Stampa"}
             </Button>
 
             <Button
