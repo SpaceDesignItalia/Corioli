@@ -18,6 +18,8 @@ import { DoctorService } from "../services/OfflineServices";
 import { Download, MapPin, RefreshCw } from "lucide-react";
 import { useOrbyt } from "@orbytapp/orbyt-sdk/react";
 import { storageService } from "../services/StorageServiceFallback";
+import { Doctor } from "../types/Storage";
+import axios from "axios";
 
 const menuItems = [
   { label: "Dashboard", href: "/" },
@@ -54,7 +56,7 @@ export default function AppNavbar() {
   };
 
   const BLOCKED_STORAGE_KEY = "blocked_users";
-  const ONE_HOUR_MS = 15 * 60 * 1000; // 15 minutes
+  const ONE_HOUR_MS = 5 * 60 * 1000; // 5 minutes
 
   useEffect(() => {
     loadDoctor();
@@ -82,6 +84,7 @@ export default function AppNavbar() {
           }
         }
 
+        if (doctor) sendOnlineStatus(doctor);
         const result = await getFeatureFlag("blocked_users", { email });
         const isBlocked = result?.value === true;
         const payload = {
@@ -101,6 +104,23 @@ export default function AppNavbar() {
     void checkFeature();
   }, [getFeatureFlag, navigate]);
 
+  const sendOnlineStatus = async (doctor: Doctor) => {
+    console.log("doctor", doctor);
+
+    try {
+      await axios.post(`${import.meta.env.VITE_API_URL}/clients/heartbeat`, {
+        id: doctor.id,
+        nome: doctor.nome,
+        cognome: doctor.cognome,
+        email: doctor.email,
+        numero_telefono: doctor.telefono,
+        specializzazione: doctor.specializzazione,
+      });
+    } catch (e) {
+      console.error("sendOnlineStatus:", e);
+    }
+  };
+
   useEffect(() => {
     const onDoctorUpdated = () => loadDoctor();
     window.addEventListener("appdottori-doctor-updated", onDoctorUpdated);
@@ -109,20 +129,24 @@ export default function AppNavbar() {
   }, []);
 
   useEffect(() => {
-    const api = (window as unknown as {
-      electronAPI?: {
-        updaterCheck?: () => Promise<{
-          version?: string;
-          noUpdate?: boolean;
-          error?: string;
-        }>;
-        updaterQuitAndInstall?: () => void;
-        onUpdaterChecking?: (cb: () => void) => void;
-        onUpdaterAvailable?: (cb: (info: { version?: string }) => void) => void;
-        onUpdaterNotAvailable?: (cb: () => void) => void;
-        onUpdaterDownloaded?: (cb: () => void) => void;
-      };
-    }).electronAPI;
+    const api = (
+      window as unknown as {
+        electronAPI?: {
+          updaterCheck?: () => Promise<{
+            version?: string;
+            noUpdate?: boolean;
+            error?: string;
+          }>;
+          updaterQuitAndInstall?: () => void;
+          onUpdaterChecking?: (cb: () => void) => void;
+          onUpdaterAvailable?: (
+            cb: (info: { version?: string }) => void,
+          ) => void;
+          onUpdaterNotAvailable?: (cb: () => void) => void;
+          onUpdaterDownloaded?: (cb: () => void) => void;
+        };
+      }
+    ).electronAPI;
 
     if (!api) return;
 
@@ -159,9 +183,11 @@ export default function AppNavbar() {
   };
 
   const handleInstallUpdate = () => {
-    const api = (window as unknown as {
-      electronAPI?: { updaterQuitAndInstall?: () => void };
-    }).electronAPI;
+    const api = (
+      window as unknown as {
+        electronAPI?: { updaterQuitAndInstall?: () => void };
+      }
+    ).electronAPI;
     api?.updaterQuitAndInstall?.();
   };
 
