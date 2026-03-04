@@ -416,12 +416,45 @@ export class PdfService {
     return y + rowHeight + 6; // Reduced spacing after
   }
 
+  /**
+   * Converte un data URL (qualsiasi formato immagine) in JPEG via canvas.
+   * Necessario per ecografie/PNG con trasparenza che jsPDF non gestisce bene (rettangoli bianchi).
+   */
+  private static dataUrlToJpegDataUrl(dataUrl: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            reject(new Error("No canvas context"));
+            return;
+          }
+          // Sfondo bianco per aree trasparenti (es. ecografie)
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          const jpeg = canvas.toDataURL("image/jpeg", 0.92);
+          resolve(jpeg);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => reject(new Error("Image load failed"));
+      img.src = dataUrl;
+    });
+  }
+
   /** Draw image gallery section for ecografia attachments */
-  private static drawEcografiaImages(
+  private static async drawEcografiaImages(
     doc: jsPDF,
     images: string[] | undefined,
     y: number,
-  ): number {
+  ): Promise<number> {
     if (!images || images.length === 0) return y;
 
     y = this.pageBreak(doc, y, 30);
@@ -441,44 +474,62 @@ export class PdfService {
     for (let i = 0; i < images.length; i += columns) {
       y = this.pageBreak(doc, y, tileHeight + 10);
       const row = images.slice(i, i + columns);
-      row.forEach((image, col) => {
+      const converted = await Promise.all(
+        row.map((img) =>
+          this.dataUrlToJpegDataUrl(img).catch(() => null),
+        ),
+      );
+      converted.forEach((image, col) => {
         const x = MARGIN_L + col * (tileWidth + gap);
         doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
         doc.setLineWidth(0.2);
         doc.rect(x, y, tileWidth, tileHeight);
-        try {
-          const props = (doc as any).getImageProperties(image);
-          const ratio = props.width / props.height;
-          let w = tileWidth - 2;
-          let h = w / ratio;
-          if (h > tileHeight - 2) {
-            h = tileHeight - 2;
-            w = h * ratio;
+        if (image) {
+          try {
+            const props = (doc as any).getImageProperties(image);
+            const ratio = props.width / props.height;
+            let w = tileWidth - 2;
+            let h = w / ratio;
+            if (h > tileHeight - 2) {
+              h = tileHeight - 2;
+              w = h * ratio;
+            }
+            const ox = x + (tileWidth - w) / 2;
+            const oy = y + (tileHeight - h) / 2;
+            doc.addImage(image, "JPEG", ox, oy, w, h);
+          } catch {
+            this.drawPlaceholderText(doc, x, tileWidth, y, tileHeight);
           }
-          const ox = x + (tileWidth - w) / 2;
-          const oy = y + (tileHeight - h) / 2;
-          const format = props.fileType || "JPEG";
-          doc.addImage(image, format, ox, oy, w, h);
-        } catch {
-          doc.setFont("helvetica", "italic");
-          doc.setFontSize(8);
-          doc.setTextColor(
-            SECONDARY_COLOR[0],
-            SECONDARY_COLOR[1],
-            SECONDARY_COLOR[2],
-          );
-          doc.text(
-            "Immagine non disponibile",
-            x + tileWidth / 2,
-            y + tileHeight / 2,
-            { align: "center" },
-          );
+        } else {
+          this.drawPlaceholderText(doc, x, tileWidth, y, tileHeight);
         }
       });
       y += tileHeight + 5;
     }
 
     return y + SECTION_GAP;
+  }
+
+  private static drawPlaceholderText(
+    doc: jsPDF,
+    x: number,
+    tileWidth: number,
+    y: number,
+    tileHeight: number,
+  ): void {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8);
+    doc.setTextColor(
+      SECONDARY_COLOR[0],
+      SECONDARY_COLOR[1],
+      SECONDARY_COLOR[2],
+    );
+    doc.text(
+      "Immagine non disponibile",
+      x + tileWidth / 2,
+      y + tileHeight / 2,
+      { align: "center" },
+    );
   }
 
   // ─── Footer ─────────────────────────────────────────────────────────────
@@ -655,7 +706,7 @@ export class PdfService {
     y = this.drawSection(doc, "Anamnesi e Dati Clinici", gyn.problemaClinico, y);
     y = this.drawSection(doc, "ECOGRAFIA OFFICE / ESAME OBIETTIVO", gyn.esameBimanuale, y, SIEOG_NOTE);
     if (options?.includeEcografiaImages) {
-      y = this.drawEcografiaImages(doc, gyn.ecografiaImmagini, y);
+      y = await this.drawEcografiaImages(doc, gyn.ecografiaImmagini, y);
     }
     y = this.drawSection(doc, "Conclusioni e Terapia", gyn.terapiaSpecifica, y);
     this.drawFooter(doc, doctor, {
@@ -776,7 +827,7 @@ export class PdfService {
       SIEOG_NOTE,
     );
     if (options?.includeEcografiaImages) {
-      y = this.drawEcografiaImages(doc, obs.ecografiaImmagini, y);
+      y = await this.drawEcografiaImages(doc, obs.ecografiaImmagini, y);
     }
     y = this.drawSection(doc, "Conclusioni e Terapia", obs.noteOstetriche, y);
     this.drawFooter(doc, doctor, {
