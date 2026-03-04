@@ -87,6 +87,63 @@ const BackupManager: React.FC = () => {
     }
   }, [isOpen, selectedTab]);
 
+  // Forza sblocco scroll e click quando i modal si chiudono (NextUI lascia overlay che blocca i click)
+  const forceUnlock = React.useCallback(() => {
+    document.body.style.pointerEvents = '';
+    document.body.style.overflow = '';
+    document.body.style.marginTop = '';
+    const html = document.documentElement;
+    html.style.overflow = '';
+    html.style.paddingRight = '';
+    // Ogni figlio di body che non è la root app è un portale (es. modal). Disabilitiamo l'intero portale
+    // così i click passano attraverso anche sul pulsante "Gestione Dati Completa" che apre questo modal.
+    const appRoot = document.getElementById('root') ?? document.getElementById('__next');
+    document.body.querySelectorAll(':scope > *').forEach((child) => {
+      if (appRoot && child === appRoot) return;
+      if (!(child instanceof HTMLElement)) return;
+      child.style.pointerEvents = 'none';
+      child.style.visibility = 'hidden';
+      child.querySelectorAll('*').forEach((node) => {
+        if (node instanceof HTMLElement) {
+          node.style.pointerEvents = 'none';
+          node.style.visibility = 'hidden';
+        }
+      });
+    });
+  }, []);
+
+  // Quando i modal sono chiusi: sblocca scroll/click e disabilita overlay lasciati dal portale
+  useEffect(() => {
+    if (!isOpen && !isImportModeModalOpen) {
+      forceUnlock();
+      const delays = [0, 100, 250, 500, 1000, 2000];
+      const timers = delays.map((ms) =>
+        setTimeout(forceUnlock, ms)
+      );
+      return () => timers.forEach((t) => clearTimeout(t));
+    }
+  }, [isOpen, isImportModeModalOpen, forceUnlock]);
+
+  // Quando il modal si riapre: ripristina il portale così il modal è di nuovo cliccabile
+  useEffect(() => {
+    if (isOpen) {
+      const appRoot = document.getElementById('root') ?? document.getElementById('__next');
+      document.body.querySelectorAll(':scope > *').forEach((child) => {
+        if (appRoot && child === appRoot) return;
+        if (child instanceof HTMLElement) {
+          child.style.pointerEvents = '';
+          child.style.visibility = '';
+          child.querySelectorAll('*').forEach((node) => {
+            if (node instanceof HTMLElement) {
+              node.style.pointerEvents = '';
+              node.style.visibility = '';
+            }
+          });
+        }
+      });
+    }
+  }, [isOpen]);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
@@ -492,6 +549,7 @@ const BackupManager: React.FC = () => {
         size="5xl"
         scrollBehavior="inside"
         backdrop="blur"
+        shouldBlockScroll={false}
       >
         <ModalContent>
           {(onClose) => (
@@ -828,7 +886,14 @@ const BackupManager: React.FC = () => {
                 )}
               </ModalBody>
               <ModalFooter>
-                <Button color="danger" variant="light" onPress={onClose}>
+                <Button
+                  color="danger"
+                  variant="light"
+                  onPress={() => {
+                    onOpenChange(false);
+                    onClose?.();
+                  }}
+                >
                   Chiudi
                 </Button>
               </ModalFooter>
@@ -836,7 +901,7 @@ const BackupManager: React.FC = () => {
           )}
         </ModalContent>
       </Modal>
-      <Modal isOpen={isImportModeModalOpen} onOpenChange={setIsImportModeModalOpen}>
+      <Modal isOpen={isImportModeModalOpen} onOpenChange={setIsImportModeModalOpen} shouldBlockScroll={false}>
         <ModalContent>
           <ModalHeader>Scegli modalità import backup</ModalHeader>
           <ModalBody>

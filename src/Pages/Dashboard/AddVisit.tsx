@@ -21,19 +21,49 @@ import {
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
-  Chip
+  Chip,
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { addDays, differenceInDays, parseISO, isValid } from "date-fns";
-import { PatientService, VisitService, TemplateService, PreferenceService } from "../../services/OfflineServices";
+import {
+  PatientService,
+  VisitService,
+  TemplateService,
+  PreferenceService,
+  DoctorService,
+} from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, MedicalTemplate } from "../../types/Storage";
 import { calculateAge } from "../../utils/dateUtils";
-import { calcolaStimePesoFetale, FORMULA_BIOMETRIA_FIELDS, BIOMETRIA_FIELD_LABELS } from "../../utils/fetalWeightUtils";
-import { ArrowLeft, Printer, ClipboardList, AlertCircle, Save, User, ImagePlus, Trash2, Copy, X } from "lucide-react";
+import {
+  calcolaStimePesoFetale,
+  FORMULA_BIOMETRIA_FIELDS,
+  BIOMETRIA_FIELD_LABELS,
+} from "../../utils/fetalWeightUtils";
+import {
+  parseGestationalWeeks,
+  getCentileForWeight,
+  getCentileLabel,
+} from "../../utils/fetalGrowthCentiles";
+import {
+  ArrowLeft,
+  Printer,
+  ClipboardList,
+  AlertCircle,
+  Save,
+  User,
+  ImagePlus,
+  Trash2,
+  Copy,
+  X,
+} from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
+import {
+  getDoctorProfileIncompleteMessage,
+  isDoctorProfileComplete,
+} from "../../utils/doctorProfile";
 
 /** Controlli anamnesi ginecologica */
 function ginecologiaAnamnesiErrors(g: {
@@ -56,9 +86,11 @@ function ginecologiaAnamnesiErrors(g: {
   if (parti > gravidanze) errors.push("Parti > Gravidanze");
   if (parti + aborti > gravidanze) errors.push("P + A > G");
   if (ps + tc > parti && (ps > 0 || tc > 0)) errors.push("PS + TC > P");
-  if (as + ivg > aborti && (as > 0 || ivg > 0)) errors.push("AS + IVG > Aborti");
+  if (as + ivg > aborti && (as > 0 || ivg > 0))
+    errors.push("AS + IVG > Aborti");
   if (aborti < 0) errors.push("Aborti < 0");
-  if (gravidanze < 0 || parti < 0 || as < 0 || ivg < 0) errors.push("Valori negativi");
+  if (gravidanze < 0 || parti < 0 || as < 0 || ivg < 0)
+    errors.push("Valori negativi");
   return errors;
 }
 
@@ -83,30 +115,32 @@ function ostetriciaAnamnesiErrors(o: {
   if (parti > gravidanze) errors.push("Parti Prec > Gravidanze Prec");
   if (parti + aborti > gravidanze) errors.push("P + A > G");
   if (ps + tc > parti && (ps > 0 || tc > 0)) errors.push("PS + TC > P");
-  if (as + ivg > aborti && (as > 0 || ivg > 0)) errors.push("AS + IVG > Aborti");
+  if (as + ivg > aborti && (as > 0 || ivg > 0))
+    errors.push("AS + IVG > Aborti");
   if (aborti < 0) errors.push("Aborti < 0");
-  if (gravidanze < 0 || parti < 0 || as < 0 || ivg < 0) errors.push("Valori negativi");
+  if (gravidanze < 0 || parti < 0 || as < 0 || ivg < 0)
+    errors.push("Valori negativi");
   return errors;
 }
 
 // Helper Component for Templates
-const TemplateSelector = ({ 
-  templates, 
+const TemplateSelector = ({
+  templates,
   onSelect,
-  label = "Modello"
-}: { 
-  templates: MedicalTemplate[], 
-  onSelect: (text: string) => void,
-  label?: string
+  label = "Modello",
+}: {
+  templates: MedicalTemplate[];
+  onSelect: (text: string) => void;
+  label?: string;
 }) => {
   if (templates.length === 0) return null;
-  
+
   return (
     <Dropdown>
       <DropdownTrigger>
-        <Button 
-          size="sm" 
-          variant="flat" 
+        <Button
+          size="sm"
+          variant="flat"
           color="primary"
           startContent={<ClipboardList size={14} />}
           className="h-7 text-xs font-medium"
@@ -114,15 +148,18 @@ const TemplateSelector = ({
           {label}
         </Button>
       </DropdownTrigger>
-      <DropdownMenu 
+      <DropdownMenu
         aria-label="Medical Templates"
         onAction={(key) => {
-          const selected = templates.find(t => t.id === key);
+          const selected = templates.find((t) => t.id === key);
           if (selected) onSelect(selected.text);
         }}
       >
         {templates.map((t) => (
-          <DropdownItem key={t.id} description={t.text.substring(0, 50) + "..."}>
+          <DropdownItem
+            key={t.id}
+            description={t.text.substring(0, 50) + "..."}
+          >
             {t.label}
           </DropdownItem>
         ))}
@@ -138,7 +175,7 @@ const createDefaultVisitData = () => ({
   anamnesi: "",
   esamiObiettivo: "",
   conclusioniDiagnostiche: "",
-  terapie: ""
+  terapie: "",
 });
 
 const createDefaultGinecologiaData = () => ({
@@ -165,7 +202,7 @@ const createDefaultGinecologiaData = () => ({
   accertamenti: "",
   conclusione: "",
   terapiaSpecifica: "",
-  ecografiaImmagini: [] as string[]
+  ecografiaImmagini: [] as string[],
 });
 
 const createDefaultOstetriciaData = () => ({
@@ -192,7 +229,7 @@ const createDefaultOstetriciaData = () => ({
   prestazione: "",
   esameObiettivo: "",
   ecografiaImmagini: [] as string[],
-  biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
+  biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 },
 });
 
 export default function AddVisit() {
@@ -211,12 +248,17 @@ export default function AddVisit() {
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [isPediatricVisitEnabled, setIsPediatricVisitEnabled] = useState(false);
   const [fetalFormula, setFetalFormula] = useState("hadlock4");
-  const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] = useState(false);
+  const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] =
+    useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
-  const [copiedPreviousType, setCopiedPreviousType] = useState<"ginecologica" | "ginecologica_pediatrica" | "ostetrica" | null>(null);
-  const includeImagesResolverRef = useRef<((value: boolean) => void) | null>(null);
+  const [copiedPreviousType, setCopiedPreviousType] = useState<
+    "ginecologica" | "ginecologica_pediatrica" | "ostetrica" | null
+  >(null);
+  const includeImagesResolverRef = useRef<((value: boolean) => void) | null>(
+    null,
+  );
   const initialLoadDone = useRef(false);
-  
+
   // Templates state
   const [allTemplates, setAllTemplates] = useState<MedicalTemplate[]>([]);
 
@@ -224,10 +266,14 @@ export default function AddVisit() {
   const [visitData, setVisitData] = useState(createDefaultVisitData);
 
   // Dati specifici ginecologia
-  const [ginecologiaData, setGinecologiaData] = useState(createDefaultGinecologiaData);
+  const [ginecologiaData, setGinecologiaData] = useState(
+    createDefaultGinecologiaData,
+  );
 
   // Dati specifici ostetricia
-  const [ostetriciaData, setOstetriciaData] = useState(createDefaultOstetriciaData);
+  const [ostetriciaData, setOstetriciaData] = useState(
+    createDefaultOstetriciaData,
+  );
 
   useEffect(() => {
     const loadData = async () => {
@@ -246,6 +292,7 @@ export default function AddVisit() {
       try {
         const templates = await TemplateService.getAllTemplates();
         setAllTemplates(templates);
+        console.log(templates);
       } catch (e) {
         console.error("Errore caricamento template", e);
       }
@@ -263,38 +310,79 @@ export default function AddVisit() {
               anamnesi: visit.anamnesi,
               esamiObiettivo: visit.esamiObiettivo,
               conclusioniDiagnostiche: visit.conclusioniDiagnostiche,
-              terapie: visit.terapie
+              terapie: visit.terapie,
             });
 
             if (visit.ginecologia) {
-              setGinecologiaData(prev => ({
+              setGinecologiaData((prev) => ({
                 ...prev,
                 ...visit.ginecologia,
                 partiSpontanei: visit.ginecologia?.partiSpontanei ?? 0,
                 partiCesarei: visit.ginecologia?.partiCesarei ?? 0,
                 abortiSpontanei: visit.ginecologia?.abortiSpontanei ?? 0,
-                ivg: visit.ginecologia?.ivg ?? 0
+                ivg: visit.ginecologia?.ivg ?? 0,
+              }));
+            } else if (
+              visit.tipo === "ginecologica" ||
+              visit.tipo === "ginecologica_pediatrica"
+            ) {
+              // Visita importata da CSV o salvata solo con campi piatti: popola il form dai flat
+              setGinecologiaData((prev) => ({
+                ...prev,
+                prestazione: visit.anamnesi ?? "",
+                problemaClinico: visit.descrizioneClinica ?? "",
+                esameBimanuale: visit.esamiObiettivo ?? "",
+                conclusione: visit.conclusioniDiagnostiche ?? "",
+                terapiaSpecifica:
+                  [visit.conclusioniDiagnostiche, visit.terapie]
+                    .filter(Boolean)
+                    .join("\n") ||
+                  (visit.terapie ?? ""),
               }));
             }
             if (visit.ostetricia) {
-              setOstetriciaData(prev => ({
+              setOstetriciaData((prev) => ({
                 ...prev,
                 ...visit.ostetricia,
                 partiPrecSpontanei: visit.ostetricia?.partiPrecSpontanei ?? 0,
                 partiPrecCesarei: visit.ostetricia?.partiPrecCesarei ?? 0,
                 abortiPrecSpontanei: visit.ostetricia?.abortiPrecSpontanei ?? 0,
                 ivgPrec: visit.ostetricia?.ivgPrec ?? 0,
-                biometriaFetale: visit.ostetricia?.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
+                biometriaFetale: visit.ostetricia?.biometriaFetale ?? {
+                  bpdMm: 0,
+                  hcMm: 0,
+                  acMm: 0,
+                  flMm: 0,
+                },
+              }));
+            } else if (visit.tipo === "ostetrica") {
+              // Visita importata da CSV o salvata solo con campi piatti
+              setOstetriciaData((prev) => ({
+                ...prev,
+                prestazione: visit.anamnesi ?? "",
+                problemaClinico: visit.descrizioneClinica ?? "",
+                esameObiettivo: visit.esamiObiettivo ?? "",
+                ecografiaOffice: visit.esamiObiettivo ?? "",
+                noteOstetriche: visit.conclusioniDiagnostiche ?? "",
               }));
             }
-            const patientData = await PatientService.getPatientById(visit.patientId);
+            const patientData = await PatientService.getPatientById(
+              visit.patientId,
+            );
             setPatient(patientData);
             if (patientData) {
-              const visitsData = await VisitService.getVisitsByPatientId(patientData.id);
+              const visitsData = await VisitService.getVisitsByPatientId(
+                patientData.id,
+              );
               const sortedVisits = visitsData.sort((a, b) => {
-                const dateDiff = new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime();
+                const dateDiff =
+                  new Date(b.dataVisita).getTime() -
+                  new Date(a.dataVisita).getTime();
                 if (dateDiff !== 0) return dateDiff;
-                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                return (
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime()
+                );
               });
               setPatientVisits(sortedVisits);
             }
@@ -313,11 +401,18 @@ export default function AddVisit() {
             const patientData = await PatientService.getPatientById(patientId);
             setPatient(patientData);
             if (patientData) {
-              const visitsData = await VisitService.getVisitsByPatientId(patientData.id);
+              const visitsData = await VisitService.getVisitsByPatientId(
+                patientData.id,
+              );
               const sortedVisits = visitsData.sort((a, b) => {
-                const dateDiff = new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime();
+                const dateDiff =
+                  new Date(b.dataVisita).getTime() -
+                  new Date(a.dataVisita).getTime();
                 if (dateDiff !== 0) return dateDiff;
-                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                return (
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime()
+                );
               });
               setPatientVisits(sortedVisits);
             }
@@ -329,11 +424,18 @@ export default function AddVisit() {
             const patientData = await PatientService.getPatientByCF(patientCf);
             setPatient(patientData);
             if (patientData) {
-              const visitsData = await VisitService.getVisitsByPatientId(patientData.id);
+              const visitsData = await VisitService.getVisitsByPatientId(
+                patientData.id,
+              );
               const sortedVisits = visitsData.sort((a, b) => {
-                const dateDiff = new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime();
+                const dateDiff =
+                  new Date(b.dataVisita).getTime() -
+                  new Date(a.dataVisita).getTime();
                 if (dateDiff !== 0) return dateDiff;
-                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                return (
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime()
+                );
               });
               setPatientVisits(sortedVisits);
             }
@@ -342,7 +444,9 @@ export default function AddVisit() {
           }
         }
       }
-      setTimeout(() => { initialLoadDone.current = true; }, 300);
+      setTimeout(() => {
+        initialLoadDone.current = true;
+      }, 300);
     };
     loadData();
   }, [searchParams, visitId]);
@@ -364,7 +468,9 @@ export default function AddVisit() {
           setFetalFormula("hadlock4");
           return;
         }
-        setIsPediatricVisitEnabled(Boolean(prefs?.visitaGinecologicaPediatricaEnabled));
+        setIsPediatricVisitEnabled(
+          Boolean(prefs?.visitaGinecologicaPediatricaEnabled),
+        );
         setFetalFormula((prefs?.formulaPesoFetale as string) || "hadlock4");
       } catch {
         setIsPediatricVisitEnabled(false);
@@ -390,7 +496,7 @@ export default function AddVisit() {
 
   // Calcolo automatico gravidanza
   useEffect(() => {
-    if (ostetriciaData.ultimaMestruazione && visitData.tipo === 'ostetrica') {
+    if (ostetriciaData.ultimaMestruazione && visitData.tipo === "ostetrica") {
       const lmp = parseISO(ostetriciaData.ultimaMestruazione);
       if (isValid(lmp)) {
         const dpp = addDays(lmp, 280);
@@ -398,41 +504,60 @@ export default function AddVisit() {
         const diffDays = differenceInDays(today, lmp);
         const weeks = Math.floor(diffDays / 7);
         const days = diffDays % 7;
-        
-        setOstetriciaData(prev => ({
+
+        setOstetriciaData((prev) => ({
           ...prev,
           dataPresunta: dpp.toISOString().slice(0, 10),
-          settimaneGestazione: `${weeks}+${days}`
+          settimaneGestazione: `${weeks}+${days}`,
         }));
       }
     }
   }, [ostetriciaData.ultimaMestruazione, visitData.tipo]);
 
-  const handleTemplateSelect = (category: 'ginecologia' | 'ostetrica', field: string, text: string) => {
-    if (category === 'ginecologia') {
-      setGinecologiaData(prev => ({
+  const handleTemplateSelect = (
+    category: "ginecologia" | "ostetrica",
+    field: string,
+    text: string,
+  ) => {
+    if (category === "ginecologia") {
+      setGinecologiaData((prev) => ({
         ...prev,
-        [field]: prev[field as keyof typeof prev] ? `${prev[field as keyof typeof prev]}\n${text}` : text
+        [field]: prev[field as keyof typeof prev]
+          ? `${prev[field as keyof typeof prev]}\n${text}`
+          : text,
       }));
     } else {
-      setOstetriciaData(prev => ({
+      setOstetriciaData((prev) => ({
         ...prev,
-        [field]: prev[field as keyof typeof prev] ? `${prev[field as keyof typeof prev]}\n${text}` : text
+        [field]: prev[field as keyof typeof prev]
+          ? `${prev[field as keyof typeof prev]}\n${text}`
+          : text,
       }));
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent | { preventDefault: () => void }) => {
+  const handleSubmit = async (
+    e?: React.FormEvent | { preventDefault: () => void },
+    options?: { skipRedirect?: boolean },
+  ): Promise<boolean> => {
     if (e && e.preventDefault) e.preventDefault();
     if (!patient) {
       setError("Nessun paziente selezionato");
-      return;
+      return false;
     }
 
     setLoading(true);
     setError(null);
 
     try {
+      const doctor = await DoctorService.getDoctor();
+      if (!isDoctorProfileComplete(doctor)) {
+        const message = getDoctorProfileIncompleteMessage(doctor);
+        setError(message);
+        showToast(message, "error");
+        return false;
+      }
+
       const visitToSave = {
         patientId: patient.id,
         dataVisita: visitData.dataVisita,
@@ -442,8 +567,12 @@ export default function AddVisit() {
         conclusioniDiagnostiche: visitData.conclusioniDiagnostiche,
         terapie: visitData.terapie,
         tipo: visitData.tipo as any,
-        ginecologia: (visitData.tipo === 'ginecologica' || visitData.tipo === 'ginecologica_pediatrica') ? ginecologiaData : undefined,
-        ostetricia: visitData.tipo === 'ostetrica' ? ostetriciaData : undefined
+        ginecologia:
+          visitData.tipo === "ginecologica" ||
+          visitData.tipo === "ginecologica_pediatrica"
+            ? ginecologiaData
+            : undefined,
+        ostetricia: visitData.tipo === "ostetrica" ? ostetriciaData : undefined,
       };
 
       if (isEditMode && existingVisit) {
@@ -455,23 +584,45 @@ export default function AddVisit() {
         setHasUnsavedChanges(false);
         showToast("Visita salvata con successo!");
       }
-      setTimeout(() => navigate(`/patient-history/${patient.id}`), 1000);
+      if (!options?.skipRedirect) {
+        setTimeout(() => navigate(`/patient-history/${patient.id}`), 1000);
+      }
+      return true;
     } catch (error) {
       console.error("Errore nel salvataggio visita:", error);
-      setError(isEditMode ? "Errore nell'aggiornamento della visita" : "Errore nel salvataggio della visita");
+      setError(
+        isEditMode
+          ? "Errore nell'aggiornamento della visita"
+          : "Errore nel salvataggio della visita",
+      );
+      return false;
     } finally {
       setLoading(false);
     }
   };
 
-  const getPreviousVisitByType = (tipo: "ginecologica" | "ginecologica_pediatrica" | "ostetrica") => {
-    return patientVisits.find((v) => v.tipo === tipo && (!existingVisit || v.id !== existingVisit.id));
+  const getPreviousVisitByType = (
+    tipo: "ginecologica" | "ginecologica_pediatrica" | "ostetrica",
+  ) => {
+    return patientVisits.find(
+      (v) => v.tipo === tipo && (!existingVisit || v.id !== existingVisit.id),
+    );
   };
 
   const handleCopyPreviousVisit = () => {
-    const currentType = visitData.tipo as "ginecologica" | "ginecologica_pediatrica" | "ostetrica";
-    if (currentType !== "ginecologica" && currentType !== "ginecologica_pediatrica" && currentType !== "ostetrica") {
-      showToast("Copia disponibile solo per visite ginecologiche e ostetriche.", "info");
+    const currentType = visitData.tipo as
+      | "ginecologica"
+      | "ginecologica_pediatrica"
+      | "ostetrica";
+    if (
+      currentType !== "ginecologica" &&
+      currentType !== "ginecologica_pediatrica" &&
+      currentType !== "ostetrica"
+    ) {
+      showToast(
+        "Copia disponibile solo per visite ginecologiche e ostetriche.",
+        "info",
+      );
       return;
     }
 
@@ -483,7 +634,7 @@ export default function AddVisit() {
         anamnesi: "",
         esamiObiettivo: "",
         conclusioniDiagnostiche: "",
-        terapie: ""
+        terapie: "",
       }));
 
       if (currentType === "ostetrica") {
@@ -500,7 +651,10 @@ export default function AddVisit() {
 
     const previousVisit = getPreviousVisitByType(currentType);
     if (!previousVisit) {
-      showToast(`Nessuna visita ${currentType} precedente trovata per questo paziente.`, "info");
+      showToast(
+        `Nessuna visita ${currentType} precedente trovata per questo paziente.`,
+        "info",
+      );
       return;
     }
 
@@ -510,39 +664,73 @@ export default function AddVisit() {
       anamnesi: previousVisit.anamnesi || "",
       esamiObiettivo: previousVisit.esamiObiettivo || "",
       conclusioniDiagnostiche: previousVisit.conclusioniDiagnostiche || "",
-      terapie: previousVisit.terapie || ""
+      terapie: previousVisit.terapie || "",
     }));
 
-    if ((currentType === "ginecologica" || currentType === "ginecologica_pediatrica") && previousVisit.ginecologia) {
-      setGinecologiaData((prev) => ({
-        ...prev,
-        ...previousVisit.ginecologia,
-        partiSpontanei: previousVisit.ginecologia?.partiSpontanei ?? 0,
-        partiCesarei: previousVisit.ginecologia?.partiCesarei ?? 0,
-        abortiSpontanei: previousVisit.ginecologia?.abortiSpontanei ?? 0,
-        ivg: previousVisit.ginecologia?.ivg ?? 0,
-        ecografiaImmagini: previousVisit.ginecologia?.ecografiaImmagini ?? []
-      }));
+    if (
+      currentType === "ginecologica" ||
+      currentType === "ginecologica_pediatrica"
+    ) {
+      if (previousVisit.ginecologia) {
+        setGinecologiaData((prev) => ({
+          ...prev,
+          ...previousVisit.ginecologia,
+          partiSpontanei: previousVisit.ginecologia?.partiSpontanei ?? 0,
+          partiCesarei: previousVisit.ginecologia?.partiCesarei ?? 0,
+          abortiSpontanei: previousVisit.ginecologia?.abortiSpontanei ?? 0,
+          ivg: previousVisit.ginecologia?.ivg ?? 0,
+          ecografiaImmagini: previousVisit.ginecologia?.ecografiaImmagini ?? [],
+        }));
+      } else {
+        setGinecologiaData((prev) => ({
+          ...prev,
+          prestazione: previousVisit.anamnesi ?? "",
+          problemaClinico: previousVisit.descrizioneClinica ?? "",
+          esameBimanuale: previousVisit.esamiObiettivo ?? "",
+          conclusione: previousVisit.conclusioniDiagnostiche ?? "",
+          terapiaSpecifica:
+            [previousVisit.conclusioniDiagnostiche, previousVisit.terapie]
+              .filter(Boolean)
+              .join("\n") ||
+            (previousVisit.terapie ?? ""),
+        }));
+      }
     }
 
-    if (currentType === "ostetrica" && previousVisit.ostetricia) {
-      setOstetriciaData((prev) => ({
-        ...prev,
-        ...previousVisit.ostetricia,
-        partiPrecSpontanei: previousVisit.ostetricia?.partiPrecSpontanei ?? 0,
-        partiPrecCesarei: previousVisit.ostetricia?.partiPrecCesarei ?? 0,
-        abortiPrecSpontanei: previousVisit.ostetricia?.abortiPrecSpontanei ?? 0,
-        ivgPrec: previousVisit.ostetricia?.ivgPrec ?? 0,
-        ecografiaImmagini: previousVisit.ostetricia?.ecografiaImmagini ?? [],
-        biometriaFetale: previousVisit.ostetricia?.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
-      }));
+    if (currentType === "ostetrica") {
+      if (previousVisit.ostetricia) {
+        setOstetriciaData((prev) => ({
+          ...prev,
+          ...previousVisit.ostetricia,
+          partiPrecSpontanei: previousVisit.ostetricia?.partiPrecSpontanei ?? 0,
+          partiPrecCesarei: previousVisit.ostetricia?.partiPrecCesarei ?? 0,
+          abortiPrecSpontanei:
+            previousVisit.ostetricia?.abortiPrecSpontanei ?? 0,
+          ivgPrec: previousVisit.ostetricia?.ivgPrec ?? 0,
+          ecografiaImmagini: previousVisit.ostetricia?.ecografiaImmagini ?? [],
+          biometriaFetale: previousVisit.ostetricia?.biometriaFetale ?? {
+            bpdMm: 0,
+            hcMm: 0,
+            acMm: 0,
+            flMm: 0,
+          },
+        }));
+      } else {
+        setOstetriciaData((prev) => ({
+          ...prev,
+          prestazione: previousVisit.anamnesi ?? "",
+          problemaClinico: previousVisit.descrizioneClinica ?? "",
+          esameObiettivo: previousVisit.esamiObiettivo ?? "",
+          ecografiaOffice: previousVisit.esamiObiettivo ?? "",
+          noteOstetriche: previousVisit.conclusioniDiagnostiche ?? "",
+        }));
+      }
     }
 
     setHasUnsavedChanges(true);
     setCopiedPreviousType(currentType);
     showToast(`Campi copiati dall'ultima visita ${currentType}.`);
   };
-
 
   const blobToBase64 = (blob: Blob): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -563,7 +751,10 @@ export default function AddVisit() {
       reader.readAsDataURL(file);
     });
 
-  const handleEcografiaImagesUpload = async (tipo: "ginecologia" | "ostetricia", files: FileList | null) => {
+  const handleEcografiaImagesUpload = async (
+    tipo: "ginecologia" | "ostetricia",
+    files: FileList | null,
+  ) => {
     if (!files || files.length === 0) return;
     const maxImages = 8;
     const maxFileSize = 7 * 1024 * 1024; // 7MB per immagine
@@ -574,7 +765,10 @@ export default function AddVisit() {
         : (ostetriciaData.ecografiaImmagini ?? []);
 
     if (currentImages.length >= maxImages) {
-      showToast(`Hai già raggiunto il massimo di ${maxImages} immagini.`, "info");
+      showToast(
+        `Hai già raggiunto il massimo di ${maxImages} immagini.`,
+        "info",
+      );
       return;
     }
 
@@ -593,35 +787,43 @@ export default function AddVisit() {
       const encoded = await Promise.all(filesToLoad.map(fileToDataUrl));
 
       if (tipo === "ginecologia") {
-        setGinecologiaData(prev => ({
+        setGinecologiaData((prev) => ({
           ...prev,
-          ecografiaImmagini: [...(prev.ecografiaImmagini ?? []), ...encoded]
+          ecografiaImmagini: [...(prev.ecografiaImmagini ?? []), ...encoded],
         }));
       } else {
-        setOstetriciaData(prev => ({
+        setOstetriciaData((prev) => ({
           ...prev,
-          ecografiaImmagini: [...(prev.ecografiaImmagini ?? []), ...encoded]
+          ecografiaImmagini: [...(prev.ecografiaImmagini ?? []), ...encoded],
         }));
       }
 
       if (initialLoadDone.current) setHasUnsavedChanges(true);
-      if (encoded.length > 0) showToast(`${encoded.length} immagine/i caricata/e.`);
+      if (encoded.length > 0)
+        showToast(`${encoded.length} immagine/i caricata/e.`);
     } catch (err) {
       console.error("Errore caricamento immagini ecografia:", err);
       showToast("Errore durante il caricamento delle immagini.", "error");
     }
   };
 
-  const handleRemoveEcografiaImage = (tipo: "ginecologia" | "ostetricia", imageIndex: number) => {
+  const handleRemoveEcografiaImage = (
+    tipo: "ginecologia" | "ostetricia",
+    imageIndex: number,
+  ) => {
     if (tipo === "ginecologia") {
-      setGinecologiaData(prev => ({
+      setGinecologiaData((prev) => ({
         ...prev,
-        ecografiaImmagini: (prev.ecografiaImmagini ?? []).filter((_, idx) => idx !== imageIndex)
+        ecografiaImmagini: (prev.ecografiaImmagini ?? []).filter(
+          (_, idx) => idx !== imageIndex,
+        ),
       }));
     } else {
-      setOstetriciaData(prev => ({
+      setOstetriciaData((prev) => ({
         ...prev,
-        ecografiaImmagini: (prev.ecografiaImmagini ?? []).filter((_, idx) => idx !== imageIndex)
+        ecografiaImmagini: (prev.ecografiaImmagini ?? []).filter(
+          (_, idx) => idx !== imageIndex,
+        ),
       }));
     }
     if (initialLoadDone.current) setHasUnsavedChanges(true);
@@ -643,10 +845,21 @@ export default function AddVisit() {
 
   const handlePrintPdf = async () => {
     if (!patient) return;
-    if (visitData.tipo !== "ginecologica" && visitData.tipo !== "ginecologica_pediatrica" && visitData.tipo !== "ostetrica") {
-      showToast("Stampa disponibile solo per visite ginecologiche e ostetriche.", "info");
+    if (
+      visitData.tipo !== "ginecologica" &&
+      visitData.tipo !== "ginecologica_pediatrica" &&
+      visitData.tipo !== "ostetrica"
+    ) {
+      showToast(
+        "Stampa disponibile solo per visite ginecologiche e ostetriche.",
+        "info",
+      );
       return;
     }
+
+    // Salva la visita prima di stampare (senza redirect)
+    const saved = await handleSubmit(undefined, { skipRedirect: true });
+    if (!saved) return;
 
     const currentVisit: Visit = {
       id: existingVisit?.id || "",
@@ -658,14 +871,19 @@ export default function AddVisit() {
       conclusioniDiagnostiche: visitData.conclusioniDiagnostiche,
       terapie: visitData.terapie,
       tipo: visitData.tipo as any,
-      ginecologia: (visitData.tipo === "ginecologica" || visitData.tipo === "ginecologica_pediatrica") ? ginecologiaData : undefined,
+      ginecologia:
+        visitData.tipo === "ginecologica" ||
+        visitData.tipo === "ginecologica_pediatrica"
+          ? ginecologiaData
+          : undefined,
       ostetricia: visitData.tipo === "ostetrica" ? ostetriciaData : undefined,
       createdAt: existingVisit?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     const imageCount =
-      (visitData.tipo === "ginecologica" || visitData.tipo === "ginecologica_pediatrica")
+      visitData.tipo === "ginecologica" ||
+      visitData.tipo === "ginecologica_pediatrica"
         ? (currentVisit.ginecologia?.ecografiaImmagini?.length ?? 0)
         : (currentVisit.ostetricia?.ecografiaImmagini?.length ?? 0);
 
@@ -677,14 +895,23 @@ export default function AddVisit() {
     setPdfLoading(true);
     try {
       const blob =
-        (visitData.tipo === "ginecologica" || visitData.tipo === "ginecologica_pediatrica")
-          ? await PdfService.generateGynecologicalPDF(patient, currentVisit, { includeEcografiaImages })
-          : await PdfService.generateObstetricPDF(patient, currentVisit, { includeEcografiaImages });
+        visitData.tipo === "ginecologica" ||
+        visitData.tipo === "ginecologica_pediatrica"
+          ? await PdfService.generateGynecologicalPDF(patient, currentVisit, {
+              includeEcografiaImages,
+            })
+          : await PdfService.generateObstetricPDF(patient, currentVisit, {
+              includeEcografiaImages,
+            });
       if (!blob) {
         showToast("Impossibile generare il PDF per la stampa.", "error");
         return;
       }
-      const electronAPI = (window as unknown as { electronAPI?: { openPdfForPrint: (b64: string) => Promise<unknown> } }).electronAPI;
+      const electronAPI = (
+        window as unknown as {
+          electronAPI?: { openPdfForPrint: (b64: string) => Promise<unknown> };
+        }
+      ).electronAPI;
       if (electronAPI?.openPdfForPrint) {
         const base64 = await blobToBase64(blob);
         await electronAPI.openPdfForPrint(base64);
@@ -696,7 +923,8 @@ export default function AddVisit() {
           setTimeout(() => URL.revokeObjectURL(pdfUrl), 5000);
         } else {
           const filename =
-            (visitData.tipo === "ginecologica" || visitData.tipo === "ginecologica_pediatrica")
+            visitData.tipo === "ginecologica" ||
+            visitData.tipo === "ginecologica_pediatrica"
               ? `Ginecologia_${patient.cognome}_${currentVisit.dataVisita}.pdf`
               : `Ostetricia_${patient.cognome}_${currentVisit.dataVisita}.pdf`;
           const a = document.createElement("a");
@@ -704,7 +932,9 @@ export default function AddVisit() {
           a.download = filename;
           a.click();
           URL.revokeObjectURL(pdfUrl);
-          showToast("PDF scaricato. Apri il file per visualizzarlo e stampare.");
+          showToast(
+            "PDF scaricato. Apri il file per visualizzarlo e stampare.",
+          );
         }
       }
     } catch (err) {
@@ -720,37 +950,54 @@ export default function AddVisit() {
     if (field === "tipo") {
       setCopiedPreviousType(null);
     }
-    setVisitData(prev => ({ ...prev, [field]: value }));
+    setVisitData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleGinecologiaChange = (field: string, value: any) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
-    setGinecologiaData(prev => ({ ...prev, [field]: value }));
+    setGinecologiaData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleOstetriciaChange = (field: string, value: any) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
-    setOstetriciaData(prev => ({ ...prev, [field]: value }));
+    setOstetriciaData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleBiometriaFetaleChange = (field: "bpdMm" | "hcMm" | "acMm" | "flMm", value: number) => {
+  const handleBiometriaFetaleChange = (
+    field: "bpdMm" | "hcMm" | "acMm" | "flMm",
+    value: number,
+  ) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
-    setOstetriciaData(prev => ({
+    setOstetriciaData((prev) => ({
       ...prev,
       biometriaFetale: {
         ...(prev.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }),
-        [field]: value
-      }
+        [field]: value,
+      },
     }));
   };
 
   const scalePesoFetale = useMemo(() => {
-    const b = ostetriciaData.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
+    const b = ostetriciaData.biometriaFetale ?? {
+      bpdMm: 0,
+      hcMm: 0,
+      acMm: 0,
+      flMm: 0,
+    };
     return calcolaStimePesoFetale(b);
-  }, [ostetriciaData.biometriaFetale?.bpdMm, ostetriciaData.biometriaFetale?.hcMm, ostetriciaData.biometriaFetale?.acMm, ostetriciaData.biometriaFetale?.flMm]);
+  }, [
+    ostetriciaData.biometriaFetale?.bpdMm,
+    ostetriciaData.biometriaFetale?.hcMm,
+    ostetriciaData.biometriaFetale?.acMm,
+    ostetriciaData.biometriaFetale?.flMm,
+  ]);
 
   const handleNavigateCronologia = () => {
-    if (hasUnsavedChanges && !window.confirm("Modifiche non salvate. Uscire comunque?")) return;
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Modifiche non salvate. Uscire comunque?")
+    )
+      return;
     navigate(`/patient-history/${patient?.id}`);
   };
 
@@ -782,19 +1029,31 @@ export default function AddVisit() {
   const breadcrumbItems = [
     { label: "Dashboard", path: "/" },
     { label: "Pazienti", path: "/pazienti" },
-    { label: `${patient.nome} ${patient.cognome}`, path: `/patient-history/${patient.id}` },
-    { label: isEditMode ? "Modifica" : "Nuova visita" }
+    {
+      label: `${patient.nome} ${patient.cognome}`,
+      path: `/patient-history/${patient.id}`,
+    },
+    { label: isEditMode ? "Modifica" : "Nuova visita" },
   ];
 
   const hasPreviousVisitForCurrentType =
-    (visitData.tipo === "ginecologica" || visitData.tipo === "ginecologica_pediatrica" || visitData.tipo === "ostetrica")
-      ? Boolean(getPreviousVisitByType(visitData.tipo as "ginecologica" | "ginecologica_pediatrica" | "ostetrica"))
+    visitData.tipo === "ginecologica" ||
+    visitData.tipo === "ginecologica_pediatrica" ||
+    visitData.tipo === "ostetrica"
+      ? Boolean(
+          getPreviousVisitByType(
+            visitData.tipo as
+              | "ginecologica"
+              | "ginecologica_pediatrica"
+              | "ostetrica",
+          ),
+        )
       : false;
   const canCopyOrClear =
-    hasPreviousVisitForCurrentType ||
-    copiedPreviousType === visitData.tipo;
+    hasPreviousVisitForCurrentType || copiedPreviousType === visitData.tipo;
 
-  const showPediatricTab = isPediatricVisitEnabled || visitData.tipo === "ginecologica_pediatrica";
+  const showPediatricTab =
+    isPediatricVisitEnabled || visitData.tipo === "ginecologica_pediatrica";
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-6 pb-32">
@@ -806,25 +1065,37 @@ export default function AddVisit() {
         <CardBody className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl shrink-0">
-              {patient.nome[0]}{patient.cognome[0]}
+              {patient.nome[0]}
+              {patient.cognome[0]}
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 {patient.nome} {patient.cognome}
-                {hasUnsavedChanges && <Chip size="sm" color="warning" variant="flat">Non salvato</Chip>}
+                {hasUnsavedChanges && (
+                  <Chip size="sm" color="warning" variant="flat">
+                    Non salvato
+                  </Chip>
+                )}
               </h1>
               <p className="text-sm text-gray-500 flex items-center gap-2 flex-wrap">
-                <span className="text-gray-500"><CodiceFiscaleValue value={patient.codiceFiscale} generatedFromImport={Boolean(patient.codiceFiscaleGenerato)} /></span>
+                <span className="text-gray-500">
+                  <CodiceFiscaleValue
+                    value={patient.codiceFiscale}
+                    generatedFromImport={Boolean(patient.codiceFiscaleGenerato)}
+                  />
+                </span>
                 {calculateAge(patient.dataNascita) && (
                   <>
                     <span className="hidden md:inline text-gray-300">|</span>
-                    <span className="text-gray-500">{calculateAge(patient.dataNascita)} anni</span>
+                    <span className="text-gray-500">
+                      {calculateAge(patient.dataNascita)} anni
+                    </span>
                   </>
                 )}
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3 w-full md:w-auto">
             <Input
               type="date"
@@ -838,7 +1109,8 @@ export default function AddVisit() {
               classNames={{
                 label: "text-gray-500 font-medium whitespace-nowrap pt-2",
                 input: "bg-transparent",
-                inputWrapper: "border-default-300 hover:border-primary focus-within:border-primary min-w-[140px]"
+                inputWrapper:
+                  "border-default-300 hover:border-primary focus-within:border-primary min-w-[140px]",
               }}
             />
           </div>
@@ -868,7 +1140,9 @@ export default function AddVisit() {
               isDisabled={!canCopyOrClear}
               startContent={<Copy size={16} />}
             >
-              {copiedPreviousType === visitData.tipo ? "Svuota campi" : "Copia visita precedente"}
+              {copiedPreviousType === visitData.tipo
+                ? "Svuota campi"
+                : "Copia visita precedente"}
             </Button>
           </div>
         )}
@@ -884,13 +1158,13 @@ export default function AddVisit() {
             tabList: "gap-8 w-full relative rounded-none p-0",
             cursor: "w-full bg-primary h-[3px]",
             tab: "max-w-fit px-2 h-12 text-lg",
-            tabContent: "group-data-[selected=true]:text-primary group-data-[selected=true]:font-bold text-gray-500 font-medium"
+            tabContent:
+              "group-data-[selected=true]:text-primary group-data-[selected=true]:font-bold text-gray-500 font-medium",
           }}
         >
           {/* TAB GINECOLOGIA */}
           <Tab key="ginecologica" title="Visita Ginecologica">
             <div className="flex flex-col lg:flex-row gap-6 mt-6">
-              
               {/* LEFT COLUMN: Anamnesi & Dati Numerici */}
               <div className="w-full lg:w-[29%] min-w-[300px] space-y-6">
                 <Card className="shadow-sm border border-default-200 bg-white">
@@ -903,7 +1177,11 @@ export default function AddVisit() {
                       const errs = ginecologiaAnamnesiErrors(ginecologiaData);
                       return errs.length > 0 ? (
                         <div className="p-3 rounded-lg bg-danger-50 border border-danger-100 text-danger-700 text-xs mb-2">
-                          <ul className="list-disc list-inside space-y-1">{errs.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                          <ul className="list-disc list-inside space-y-1">
+                            {errs.map((e, i) => (
+                              <li key={i}>{e}</li>
+                            ))}
+                          </ul>
                         </div>
                       ) : null;
                     })()}
@@ -913,7 +1191,9 @@ export default function AddVisit() {
                       type="date"
                       label="Ultima Mestruazione"
                       value={ginecologiaData.ultimaMestruazione}
-                      onValueChange={(value) => handleGinecologiaChange("ultimaMestruazione", value)}
+                      onValueChange={(value) =>
+                        handleGinecologiaChange("ultimaMestruazione", value)
+                      }
                       variant="bordered"
                       labelPlacement="outside"
                       placeholder="Seleziona data"
@@ -927,7 +1207,12 @@ export default function AddVisit() {
                         type="number"
                         label="Gravidanze"
                         value={ginecologiaData.gravidanze.toString()}
-                        onValueChange={(v) => handleGinecologiaChange("gravidanze", parseInt(v) || 0)}
+                        onValueChange={(v) =>
+                          handleGinecologiaChange(
+                            "gravidanze",
+                            parseInt(v) || 0,
+                          )
+                        }
                         variant="bordered"
                         size="sm"
                         min={0}
@@ -938,7 +1223,9 @@ export default function AddVisit() {
                         type="number"
                         label="Parti"
                         value={ginecologiaData.parti.toString()}
-                        onValueChange={(v) => handleGinecologiaChange("parti", parseInt(v) || 0)}
+                        onValueChange={(v) =>
+                          handleGinecologiaChange("parti", parseInt(v) || 0)
+                        }
                         variant="bordered"
                         size="sm"
                         min={0}
@@ -949,7 +1236,9 @@ export default function AddVisit() {
                         type="number"
                         label="Aborti"
                         value={ginecologiaData.aborti.toString()}
-                        onValueChange={(v) => handleGinecologiaChange("aborti", parseInt(v) || 0)}
+                        onValueChange={(v) =>
+                          handleGinecologiaChange("aborti", parseInt(v) || 0)
+                        }
                         variant="bordered"
                         size="sm"
                         min={0}
@@ -957,29 +1246,41 @@ export default function AddVisit() {
                         classNames={{ input: "text-center font-semibold" }}
                       />
                     </div>
-                    
+
                     {/* Dettagli */}
                     <div className="bg-gray-50/80 p-4 rounded-xl border border-dashed border-gray-300">
-                      <p className="text-xs text-gray-500 mb-3 font-semibold uppercase tracking-wider">Dettagli</p>
+                      <p className="text-xs text-gray-500 mb-3 font-semibold uppercase tracking-wider">
+                        Dettagli
+                      </p>
                       <div className="grid grid-cols-2 gap-4">
-                         <Input
+                        <Input
                           label="PS"
                           type="number"
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
                           value={String(ginecologiaData.partiSpontanei ?? 0)}
-                          onValueChange={(v) => handleGinecologiaChange("partiSpontanei", parseInt(v) || 0)}
+                          onValueChange={(v) =>
+                            handleGinecologiaChange(
+                              "partiSpontanei",
+                              parseInt(v) || 0,
+                            )
+                          }
                           classNames={{ input: "text-center" }}
                         />
-                         <Input
+                        <Input
                           label="TC"
                           type="number"
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
                           value={String(ginecologiaData.partiCesarei ?? 0)}
-                          onValueChange={(v) => handleGinecologiaChange("partiCesarei", parseInt(v) || 0)}
+                          onValueChange={(v) =>
+                            handleGinecologiaChange(
+                              "partiCesarei",
+                              parseInt(v) || 0,
+                            )
+                          }
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -989,7 +1290,12 @@ export default function AddVisit() {
                           variant="bordered"
                           labelPlacement="outside"
                           value={String(ginecologiaData.abortiSpontanei ?? 0)}
-                          onValueChange={(v) => handleGinecologiaChange("abortiSpontanei", parseInt(v) || 0)}
+                          onValueChange={(v) =>
+                            handleGinecologiaChange(
+                              "abortiSpontanei",
+                              parseInt(v) || 0,
+                            )
+                          }
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -999,7 +1305,9 @@ export default function AddVisit() {
                           variant="bordered"
                           labelPlacement="outside"
                           value={String(ginecologiaData.ivg ?? 0)}
-                          onValueChange={(v) => handleGinecologiaChange("ivg", parseInt(v) || 0)}
+                          onValueChange={(v) =>
+                            handleGinecologiaChange("ivg", parseInt(v) || 0)
+                          }
                           classNames={{ input: "text-center" }}
                         />
                       </div>
@@ -1014,7 +1322,8 @@ export default function AddVisit() {
                   <CardBody className="px-4 py-6 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">
-                        {(ginecologiaData.ecografiaImmagini ?? []).length}/8 immagini
+                        {(ginecologiaData.ecografiaImmagini ?? []).length}/8
+                        immagini
                       </span>
                     </div>
 
@@ -1027,7 +1336,10 @@ export default function AddVisit() {
                         multiple
                         className="hidden"
                         onChange={(e) => {
-                          handleEcografiaImagesUpload("ginecologia", e.target.files);
+                          handleEcografiaImagesUpload(
+                            "ginecologia",
+                            e.target.files,
+                          );
                           e.currentTarget.value = "";
                         }}
                       />
@@ -1035,28 +1347,35 @@ export default function AddVisit() {
 
                     {(ginecologiaData.ecografiaImmagini ?? []).length > 0 && (
                       <div className="grid grid-cols-2 gap-3">
-                        {(ginecologiaData.ecografiaImmagini ?? []).map((image, idx) => (
-                          <div key={`gyn-eco-${idx}`} className="relative group border rounded-lg overflow-hidden bg-gray-50">
-                            <img
-                              src={image}
-                              alt={`Ecografia ginecologica ${idx + 1}`}
-                              className="w-full h-28 object-cover cursor-zoom-in"
-                              onClick={() => setFullscreenImage(image)}
-                              title="Clicca per ingrandire"
-                            />
-                            <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">
-                              Clicca per ingrandire
-                            </span>
-                            <button
-                              type="button"
-                              className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => handleRemoveEcografiaImage("ginecologia", idx)}
-                              aria-label="Rimuovi immagine ecografia"
+                        {(ginecologiaData.ecografiaImmagini ?? []).map(
+                          (image, idx) => (
+                            <div
+                              key={`gyn-eco-${idx}`}
+                              className="relative group border rounded-lg overflow-hidden bg-gray-50"
                             >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
+                              <img
+                                src={image}
+                                alt={`Ecografia ginecologica ${idx + 1}`}
+                                className="w-full h-28 object-cover cursor-zoom-in"
+                                onClick={() => setFullscreenImage(image)}
+                                title="Clicca per ingrandire"
+                              />
+                              <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">
+                                Clicca per ingrandire
+                              </span>
+                              <button
+                                type="button"
+                                className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() =>
+                                  handleRemoveEcografiaImage("ginecologia", idx)
+                                }
+                                aria-label="Rimuovi immagine ecografia"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ),
+                        )}
                       </div>
                     )}
                   </CardBody>
@@ -1073,37 +1392,57 @@ export default function AddVisit() {
                     {/* Sezione 1: Anamnesi */}
                     <div className="space-y-2 relative group">
                       <div className="flex justify-between items-end mb-1">
-                        <label className="text-sm font-bold text-gray-700">1. Anamnesi</label>
-                        <TemplateSelector 
-                          templates={allTemplates.filter(t => t.category === 'ginecologia' && t.section === 'prestazione')} 
-                          onSelect={(t) => handleTemplateSelect('ginecologia', 'prestazione', t)} 
+                        <label className="text-sm font-bold text-gray-700">
+                          1. Anamnesi
+                        </label>
+                        <TemplateSelector
+                          templates={allTemplates.filter(
+                            (t) =>
+                              t.category === "ginecologia" &&
+                              t.section === "prestazione",
+                          )}
+                          onSelect={(t) =>
+                            handleTemplateSelect(
+                              "ginecologia",
+                              "prestazione",
+                              t,
+                            )
+                          }
                         />
                       </div>
                       <Textarea
                         value={ginecologiaData.prestazione}
-                        onValueChange={(value) => handleGinecologiaChange("prestazione", value)}
+                        onValueChange={(value) =>
+                          handleGinecologiaChange("prestazione", value)
+                        }
                         variant="bordered"
                         minRows={3}
                         placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                        classNames={{ 
+                        classNames={{
                           input: "text-base leading-relaxed",
-                          inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                          inputWrapper:
+                            "group-hover:border-primary transition-colors bg-white",
                         }}
                       />
                     </div>
 
                     {/* Sezione 2: Descrizione */}
                     <div className="space-y-2 group">
-                      <label className="text-sm font-bold text-gray-700 block mb-1">2. Descrizione Problema / Dati Clinici</label>
+                      <label className="text-sm font-bold text-gray-700 block mb-1">
+                        2. Descrizione Problema / Dati Clinici
+                      </label>
                       <Textarea
                         value={ginecologiaData.problemaClinico}
-                        onValueChange={(value) => handleGinecologiaChange("problemaClinico", value)}
+                        onValueChange={(value) =>
+                          handleGinecologiaChange("problemaClinico", value)
+                        }
                         variant="bordered"
                         minRows={3}
                         placeholder="La paziente riferisce..."
-                        classNames={{ 
+                        classNames={{
                           input: "text-base leading-relaxed",
-                          inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                          inputWrapper:
+                            "group-hover:border-primary transition-colors bg-white",
                         }}
                       />
                     </div>
@@ -1111,55 +1450,87 @@ export default function AddVisit() {
                     {/* Sezione 3: Esame Obiettivo */}
                     <div className="space-y-2 relative group">
                       <div className="flex justify-between items-end mb-1">
-                        <label className="text-sm font-bold text-gray-700">3. Visita / Ecografia Office</label>
-                        <TemplateSelector 
-                          templates={allTemplates.filter(t => t.category === 'ginecologia' && t.section === 'esameObiettivo')} 
-                          onSelect={(t) => handleTemplateSelect('ginecologia', 'esameBimanuale', t)} 
+                        <label className="text-sm font-bold text-gray-700">
+                          3. Visita / Ecografia Office
+                        </label>
+                        <TemplateSelector
+                          templates={allTemplates.filter(
+                            (t) =>
+                              t.category === "ginecologia" &&
+                              t.section === "esameObiettivo",
+                          )}
+                          onSelect={(t) =>
+                            handleTemplateSelect(
+                              "ginecologia",
+                              "esameBimanuale",
+                              t,
+                            )
+                          }
                         />
                       </div>
                       <Textarea
                         value={ginecologiaData.esameBimanuale}
-                        onValueChange={(value) => handleGinecologiaChange("esameBimanuale", value)}
+                        onValueChange={(value) =>
+                          handleGinecologiaChange("esameBimanuale", value)
+                        }
                         variant="bordered"
                         minRows={5}
-                        classNames={{ 
+                        classNames={{
                           input: "text-base leading-relaxed",
-                          inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                          inputWrapper:
+                            "group-hover:border-primary transition-colors bg-white",
                         }}
                       />
                     </div>
 
                     <div className="space-y-2 relative group">
-                       <div className="flex justify-between items-end mb-1">
-                        <label className="text-sm font-bold text-gray-700">4. Conclusioni e Terapie</label>
-                        <TemplateSelector 
-                          templates={allTemplates.filter(t => (t.category === 'ginecologia' && t.section === 'conclusioni') || t.category === 'terapie')} 
-                          onSelect={(t) => handleTemplateSelect('ginecologia', 'terapiaSpecifica', t)} 
+                      <div className="flex justify-between items-end mb-1">
+                        <label className="text-sm font-bold text-gray-700">
+                          4. Conclusioni e Terapie
+                        </label>
+                        <TemplateSelector
+                          templates={allTemplates.filter(
+                            (t) =>
+                              (t.category === "ginecologia" &&
+                                t.section === "conclusioni") ||
+                              t.category === "terapie",
+                          )}
+                          onSelect={(t) =>
+                            handleTemplateSelect(
+                              "ginecologia",
+                              "terapiaSpecifica",
+                              t,
+                            )
+                          }
                         />
                       </div>
                       <Textarea
                         value={ginecologiaData.terapiaSpecifica}
-                        onValueChange={(value) => handleGinecologiaChange("terapiaSpecifica", value)}
+                        onValueChange={(value) =>
+                          handleGinecologiaChange("terapiaSpecifica", value)
+                        }
                         variant="bordered"
                         minRows={3}
                         placeholder="Si consiglia..."
-                        classNames={{ 
+                        classNames={{
                           input: "text-base leading-relaxed",
-                          inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                          inputWrapper:
+                            "group-hover:border-primary transition-colors bg-white",
                         }}
                       />
                     </div>
                   </CardBody>
                 </Card>
               </div>
-
             </div>
           </Tab>
 
           {showPediatricTab && (
-            <Tab key="ginecologica_pediatrica" title="Visita Ginecologica Pediatrica">
+            <Tab
+              key="ginecologica_pediatrica"
+              title="Visita Ginecologica Pediatrica"
+            >
               <div className="flex flex-col lg:flex-row gap-6 mt-6">
-                
                 {/* LEFT COLUMN: Anamnesi & Dati Numerici */}
                 <div className="w-full lg:w-[29%] min-w-[300px] space-y-6">
                   <Card className="shadow-sm border border-default-200 bg-white">
@@ -1171,7 +1542,9 @@ export default function AddVisit() {
                         type="text"
                         label="Menarca"
                         value={ginecologiaData.menarca || ""}
-                        onValueChange={(value) => handleGinecologiaChange("menarca", value)}
+                        onValueChange={(value) =>
+                          handleGinecologiaChange("menarca", value)
+                        }
                         variant="bordered"
                         labelPlacement="outside"
                         placeholder="Eta o note (es. 12 anni)"
@@ -1179,16 +1552,25 @@ export default function AddVisit() {
 
                       <Switch
                         isSelected={Boolean(ginecologiaData.vaccinazioneHPV)}
-                        onValueChange={(checked) => handleGinecologiaChange("vaccinazioneHPV", checked)}
+                        onValueChange={(checked) =>
+                          handleGinecologiaChange("vaccinazioneHPV", checked)
+                        }
                       >
                         Vaccinazione HPV
                       </Switch>
 
                       <Select
                         label="Stadio di Tanner (femmina)"
-                        selectedKeys={ginecologiaData.stadioTannerFemmina ? [ginecologiaData.stadioTannerFemmina] : []}
+                        selectedKeys={
+                          ginecologiaData.stadioTannerFemmina
+                            ? [ginecologiaData.stadioTannerFemmina]
+                            : []
+                        }
                         onSelectionChange={(keys) =>
-                          handleGinecologiaChange("stadioTannerFemmina", String(Array.from(keys)[0] || ""))
+                          handleGinecologiaChange(
+                            "stadioTannerFemmina",
+                            String(Array.from(keys)[0] || ""),
+                          )
                         }
                         variant="bordered"
                       >
@@ -1208,7 +1590,8 @@ export default function AddVisit() {
                     <CardBody className="px-4 py-6 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">
-                          {(ginecologiaData.ecografiaImmagini ?? []).length}/8 immagini
+                          {(ginecologiaData.ecografiaImmagini ?? []).length}/8
+                          immagini
                         </span>
                       </div>
 
@@ -1221,7 +1604,10 @@ export default function AddVisit() {
                           multiple
                           className="hidden"
                           onChange={(e) => {
-                            handleEcografiaImagesUpload("ginecologia", e.target.files);
+                            handleEcografiaImagesUpload(
+                              "ginecologia",
+                              e.target.files,
+                            );
                             e.currentTarget.value = "";
                           }}
                         />
@@ -1229,28 +1615,38 @@ export default function AddVisit() {
 
                       {(ginecologiaData.ecografiaImmagini ?? []).length > 0 && (
                         <div className="grid grid-cols-2 gap-3">
-                          {(ginecologiaData.ecografiaImmagini ?? []).map((image, idx) => (
-                            <div key={`gyn-ped-eco-${idx}`} className="relative group border rounded-lg overflow-hidden bg-gray-50">
-                              <img
-                                src={image}
-                                alt={`Ecografia ginecologica pediatrica ${idx + 1}`}
-                                className="w-full h-28 object-cover cursor-zoom-in"
-                                onClick={() => setFullscreenImage(image)}
-                                title="Clicca per ingrandire"
-                              />
-                              <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">
-                                Clicca per ingrandire
-                              </span>
-                              <button
-                                type="button"
-                                className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => handleRemoveEcografiaImage("ginecologia", idx)}
-                                aria-label="Rimuovi immagine ecografia"
+                          {(ginecologiaData.ecografiaImmagini ?? []).map(
+                            (image, idx) => (
+                              <div
+                                key={`gyn-ped-eco-${idx}`}
+                                className="relative group border rounded-lg overflow-hidden bg-gray-50"
                               >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          ))}
+                                <img
+                                  src={image}
+                                  alt={`Ecografia ginecologica pediatrica ${idx + 1}`}
+                                  className="w-full h-28 object-cover cursor-zoom-in"
+                                  onClick={() => setFullscreenImage(image)}
+                                  title="Clicca per ingrandire"
+                                />
+                                <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">
+                                  Clicca per ingrandire
+                                </span>
+                                <button
+                                  type="button"
+                                  className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() =>
+                                    handleRemoveEcografiaImage(
+                                      "ginecologia",
+                                      idx,
+                                    )
+                                  }
+                                  aria-label="Rimuovi immagine ecografia"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ),
+                          )}
                         </div>
                       )}
                     </CardBody>
@@ -1267,37 +1663,57 @@ export default function AddVisit() {
                       {/* Sezione 1: Anamnesi */}
                       <div className="space-y-2 relative group">
                         <div className="flex justify-between items-end mb-1">
-                          <label className="text-sm font-bold text-gray-700">1. Anamnesi</label>
-                          <TemplateSelector 
-                            templates={allTemplates.filter(t => t.category === 'ginecologia' && t.section === 'prestazione')} 
-                            onSelect={(t) => handleTemplateSelect('ginecologia', 'prestazione', t)} 
+                          <label className="text-sm font-bold text-gray-700">
+                            1. Anamnesi
+                          </label>
+                          <TemplateSelector
+                            templates={allTemplates.filter(
+                              (t) =>
+                                t.category === "ginecologia" &&
+                                t.section === "prestazione",
+                            )}
+                            onSelect={(t) =>
+                              handleTemplateSelect(
+                                "ginecologia",
+                                "prestazione",
+                                t,
+                              )
+                            }
                           />
                         </div>
                         <Textarea
                           value={ginecologiaData.prestazione}
-                          onValueChange={(value) => handleGinecologiaChange("prestazione", value)}
+                          onValueChange={(value) =>
+                            handleGinecologiaChange("prestazione", value)
+                          }
                           variant="bordered"
                           minRows={3}
                           placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                          classNames={{ 
+                          classNames={{
                             input: "text-base leading-relaxed",
-                            inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                            inputWrapper:
+                              "group-hover:border-primary transition-colors bg-white",
                           }}
                         />
                       </div>
 
                       {/* Sezione 2: Descrizione */}
                       <div className="space-y-2 group">
-                        <label className="text-sm font-bold text-gray-700 block mb-1">2. Descrizione Problema / Dati Clinici</label>
+                        <label className="text-sm font-bold text-gray-700 block mb-1">
+                          2. Descrizione Problema / Dati Clinici
+                        </label>
                         <Textarea
                           value={ginecologiaData.problemaClinico}
-                          onValueChange={(value) => handleGinecologiaChange("problemaClinico", value)}
+                          onValueChange={(value) =>
+                            handleGinecologiaChange("problemaClinico", value)
+                          }
                           variant="bordered"
                           minRows={3}
                           placeholder="La paziente riferisce..."
-                          classNames={{ 
+                          classNames={{
                             input: "text-base leading-relaxed",
-                            inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                            inputWrapper:
+                              "group-hover:border-primary transition-colors bg-white",
                           }}
                         />
                       </div>
@@ -1305,48 +1721,78 @@ export default function AddVisit() {
                       {/* Sezione 3: Esame Obiettivo */}
                       <div className="space-y-2 relative group">
                         <div className="flex justify-between items-end mb-1">
-                          <label className="text-sm font-bold text-gray-700">3. Visita / Ecografia Office</label>
-                          <TemplateSelector 
-                            templates={allTemplates.filter(t => t.category === 'ginecologia' && t.section === 'esameObiettivo')} 
-                            onSelect={(t) => handleTemplateSelect('ginecologia', 'esameBimanuale', t)} 
+                          <label className="text-sm font-bold text-gray-700">
+                            3. Visita / Ecografia Office
+                          </label>
+                          <TemplateSelector
+                            templates={allTemplates.filter(
+                              (t) =>
+                                t.category === "ginecologia" &&
+                                t.section === "esameObiettivo",
+                            )}
+                            onSelect={(t) =>
+                              handleTemplateSelect(
+                                "ginecologia",
+                                "esameBimanuale",
+                                t,
+                              )
+                            }
                           />
                         </div>
                         <Textarea
                           value={ginecologiaData.esameBimanuale}
-                          onValueChange={(value) => handleGinecologiaChange("esameBimanuale", value)}
+                          onValueChange={(value) =>
+                            handleGinecologiaChange("esameBimanuale", value)
+                          }
                           variant="bordered"
                           minRows={5}
-                          classNames={{ 
+                          classNames={{
                             input: "text-base leading-relaxed",
-                            inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                            inputWrapper:
+                              "group-hover:border-primary transition-colors bg-white",
                           }}
                         />
                       </div>
 
                       <div className="space-y-2 relative group">
-                         <div className="flex justify-between items-end mb-1">
-                          <label className="text-sm font-bold text-gray-700">4. Conclusioni e Terapie</label>
-                          <TemplateSelector 
-                            templates={allTemplates.filter(t => (t.category === 'ginecologia' && t.section === 'conclusioni') || t.category === 'terapie')} 
-                            onSelect={(t) => handleTemplateSelect('ginecologia', 'terapiaSpecifica', t)} 
+                        <div className="flex justify-between items-end mb-1">
+                          <label className="text-sm font-bold text-gray-700">
+                            4. Conclusioni e Terapie
+                          </label>
+                          <TemplateSelector
+                            templates={allTemplates.filter(
+                              (t) =>
+                                (t.category === "ginecologia" &&
+                                  t.section === "conclusioni") ||
+                                t.category === "terapie",
+                            )}
+                            onSelect={(t) =>
+                              handleTemplateSelect(
+                                "ginecologia",
+                                "terapiaSpecifica",
+                                t,
+                              )
+                            }
                           />
                         </div>
                         <Textarea
                           value={ginecologiaData.terapiaSpecifica}
-                          onValueChange={(value) => handleGinecologiaChange("terapiaSpecifica", value)}
+                          onValueChange={(value) =>
+                            handleGinecologiaChange("terapiaSpecifica", value)
+                          }
                           variant="bordered"
                           minRows={3}
                           placeholder="Si consiglia..."
-                          classNames={{ 
+                          classNames={{
                             input: "text-base leading-relaxed",
-                            inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                            inputWrapper:
+                              "group-hover:border-primary transition-colors bg-white",
                           }}
                         />
                       </div>
                     </CardBody>
                   </Card>
                 </div>
-
               </div>
             </Tab>
           )}
@@ -1354,7 +1800,6 @@ export default function AddVisit() {
           {/* TAB OSTETRICIA */}
           <Tab key="ostetrica" title="Visita Ostetrica">
             <div className="flex flex-col lg:flex-row gap-6 mt-6">
-              
               {/* LEFT COLUMN: Dati Gravidanza & Anamnesi */}
               <div className="w-full lg:w-[29%] min-w-[300px] space-y-6">
                 <Card className="shadow-sm border border-default-200 bg-white">
@@ -1362,115 +1807,146 @@ export default function AddVisit() {
                     Dati Gravidanza Attuale
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-10">
-                     <Input
-                        type="text"
-                        label="Settimane di Gestazione"
-                        value={ostetriciaData.settimaneGestazione}
-                        onValueChange={(value) => handleOstetriciaChange("settimaneGestazione", value)}
-                        variant="bordered"
-                        labelPlacement="outside"
-                        placeholder="es. 22+3"
-                        classNames={{ input: "text-base", label: "pb-1" }}
-                      />
+                    <Input
+                      type="text"
+                      label="Settimane di Gestazione"
+                      value={ostetriciaData.settimaneGestazione}
+                      onValueChange={(value) =>
+                        handleOstetriciaChange("settimaneGestazione", value)
+                      }
+                      variant="bordered"
+                      labelPlacement="outside"
+                      placeholder="es. 22+3"
+                      classNames={{ input: "text-base", label: "pb-1" }}
+                    />
+                    <Input
+                      type="date"
+                      label="Ultima Mestruazione"
+                      value={ostetriciaData.ultimaMestruazione}
+                      onValueChange={(value) =>
+                        handleOstetriciaChange("ultimaMestruazione", value)
+                      }
+                      variant="bordered"
+                      labelPlacement="outside"
+                      classNames={{ input: "text-base", label: "pb-1" }}
+                    />
+                    <Input
+                      type="date"
+                      label="Data Presunta Parto"
+                      value={ostetriciaData.dataPresunta}
+                      onValueChange={(value) =>
+                        handleOstetriciaChange("dataPresunta", value)
+                      }
+                      variant="bordered"
+                      labelPlacement="outside"
+                      classNames={{ input: "text-base", label: "pb-1" }}
+                    />
+
+                    <Divider className="my-2" />
+
+                    <div className="grid grid-cols-2 gap-3">
                       <Input
-                        type="date"
-                        label="Ultima Mestruazione"
-                        value={ostetriciaData.ultimaMestruazione}
-                        onValueChange={(value) => handleOstetriciaChange("ultimaMestruazione", value)}
-                        variant="bordered"
-                        labelPlacement="outside"
-                        classNames={{ input: "text-base", label: "pb-1" }}
-                      />
-                      <Input
-                        type="date"
-                        label="Data Presunta Parto"
-                        value={ostetriciaData.dataPresunta}
-                        onValueChange={(value) => handleOstetriciaChange("dataPresunta", value)}
-                        variant="bordered"
-                        labelPlacement="outside"
-                        classNames={{ input: "text-base", label: "pb-1" }}
-                      />
-                      
-                      <Divider className="my-2"/>
-                      
-                      <div className="grid grid-cols-2 gap-3">
-                         <Input
-                          label="Peso Pre (kg)"
-                          type="number"
-                          size="sm"
-                          variant="bordered"
-                          labelPlacement="outside"
-                          value={ostetriciaData.pesoPreGravidanza.toString()}
-                          onValueChange={(v) => handleOstetriciaChange("pesoPreGravidanza", parseFloat(v) || 0)}
-                          classNames={{ label: "pb-1" }}
-                        />
-                         <Input
-                          label="Peso Attuale (kg)"
-                          type="number"
-                          size="sm"
-                          variant="bordered"
-                          labelPlacement="outside"
-                          value={ostetriciaData.pesoAttuale.toString()}
-                          onValueChange={(v) => handleOstetriciaChange("pesoAttuale", parseFloat(v) || 0)}
-                          classNames={{ label: "pb-1" }}
-                        />
-                      </div>
-                      <Input
-                        label="Pressione Arteriosa"
-                        placeholder="120/80"
+                        label="Peso Pre (kg)"
+                        type="number"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        value={ostetriciaData.pressioneArteriosa}
-                        onValueChange={(v) => handleOstetriciaChange("pressioneArteriosa", v)}
+                        value={ostetriciaData.pesoPreGravidanza.toString()}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange(
+                            "pesoPreGravidanza",
+                            parseFloat(v) || 0,
+                          )
+                        }
                         classNames={{ label: "pb-1" }}
                       />
+                      <Input
+                        label="Peso Attuale (kg)"
+                        type="number"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        value={ostetriciaData.pesoAttuale.toString()}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange(
+                            "pesoAttuale",
+                            parseFloat(v) || 0,
+                          )
+                        }
+                        classNames={{ label: "pb-1" }}
+                      />
+                    </div>
+                    <Input
+                      label="Pressione Arteriosa"
+                      placeholder="120/80"
+                      size="sm"
+                      variant="bordered"
+                      labelPlacement="outside"
+                      value={ostetriciaData.pressioneArteriosa}
+                      onValueChange={(v) =>
+                        handleOstetriciaChange("pressioneArteriosa", v)
+                      }
+                      classNames={{ label: "pb-1" }}
+                    />
                   </CardBody>
                 </Card>
 
                 <Card className="shadow-sm border border-default-200 bg-white">
-                   <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
+                  <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
                     Storia Ostetrica
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-5">
-                     {/* Errori validazione */}
+                    {/* Errori validazione */}
                     {(() => {
                       const errs = ostetriciaAnamnesiErrors(ostetriciaData);
                       return errs.length > 0 ? (
                         <div className="p-3 rounded-lg bg-danger-50 border border-danger-100 text-danger-700 text-xs mb-2">
-                          <ul className="list-disc list-inside space-y-1">{errs.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                          <ul className="list-disc list-inside space-y-1">
+                            {errs.map((e, i) => (
+                              <li key={i}>{e}</li>
+                            ))}
+                          </ul>
                         </div>
                       ) : null;
                     })()}
 
                     <div className="grid grid-cols-3 gap-3">
-                       <Input
+                      <Input
                         type="number"
                         label="Gravid."
                         value={ostetriciaData.gravidanzePrec.toString()}
-                        onValueChange={(v) => handleOstetriciaChange("gravidanzePrec", parseInt(v) || 0)}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange(
+                            "gravidanzePrec",
+                            parseInt(v) || 0,
+                          )
+                        }
                         variant="bordered"
                         size="sm"
                         labelPlacement="outside"
                         min={0}
                         classNames={{ input: "text-center" }}
                       />
-                       <Input
+                      <Input
                         type="number"
                         label="Parti"
                         value={ostetriciaData.partiPrec.toString()}
-                        onValueChange={(v) => handleOstetriciaChange("partiPrec", parseInt(v) || 0)}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange("partiPrec", parseInt(v) || 0)
+                        }
                         variant="bordered"
                         size="sm"
                         labelPlacement="outside"
                         min={0}
                         classNames={{ input: "text-center" }}
                       />
-                       <Input
+                      <Input
                         type="number"
                         label="Aborti"
                         value={ostetriciaData.abortiPrec.toString()}
-                        onValueChange={(v) => handleOstetriciaChange("abortiPrec", parseInt(v) || 0)}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange("abortiPrec", parseInt(v) || 0)
+                        }
                         variant="bordered"
                         size="sm"
                         labelPlacement="outside"
@@ -1478,28 +1954,40 @@ export default function AddVisit() {
                         classNames={{ input: "text-center" }}
                       />
                     </div>
-                     {/* Dettagli */}
+                    {/* Dettagli */}
                     <div className="bg-gray-50/80 p-4 rounded-xl border border-dashed border-gray-300">
-                      <p className="text-xs text-gray-500 mb-3 font-semibold uppercase tracking-wider">Dettagli</p>
+                      <p className="text-xs text-gray-500 mb-3 font-semibold uppercase tracking-wider">
+                        Dettagli
+                      </p>
                       <div className="grid grid-cols-2 gap-4">
-                         <Input
+                        <Input
                           label="PS"
                           type="number"
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
                           value={String(ostetriciaData.partiPrecSpontanei ?? 0)}
-                          onValueChange={(v) => handleOstetriciaChange("partiPrecSpontanei", parseInt(v) || 0)}
+                          onValueChange={(v) =>
+                            handleOstetriciaChange(
+                              "partiPrecSpontanei",
+                              parseInt(v) || 0,
+                            )
+                          }
                           classNames={{ input: "text-center" }}
                         />
-                         <Input
+                        <Input
                           label="TC"
                           type="number"
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
                           value={String(ostetriciaData.partiPrecCesarei ?? 0)}
-                          onValueChange={(v) => handleOstetriciaChange("partiPrecCesarei", parseInt(v) || 0)}
+                          onValueChange={(v) =>
+                            handleOstetriciaChange(
+                              "partiPrecCesarei",
+                              parseInt(v) || 0,
+                            )
+                          }
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -1508,8 +1996,15 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ostetriciaData.abortiPrecSpontanei ?? 0)}
-                          onValueChange={(v) => handleOstetriciaChange("abortiPrecSpontanei", parseInt(v) || 0)}
+                          value={String(
+                            ostetriciaData.abortiPrecSpontanei ?? 0,
+                          )}
+                          onValueChange={(v) =>
+                            handleOstetriciaChange(
+                              "abortiPrecSpontanei",
+                              parseInt(v) || 0,
+                            )
+                          }
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -1519,7 +2014,9 @@ export default function AddVisit() {
                           variant="bordered"
                           labelPlacement="outside"
                           value={String(ostetriciaData.ivgPrec ?? 0)}
-                          onValueChange={(v) => handleOstetriciaChange("ivgPrec", parseInt(v) || 0)}
+                          onValueChange={(v) =>
+                            handleOstetriciaChange("ivgPrec", parseInt(v) || 0)
+                          }
                           classNames={{ input: "text-center" }}
                         />
                       </div>
@@ -1534,7 +2031,8 @@ export default function AddVisit() {
                   <CardBody className="px-4 py-6 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">
-                        {(ostetriciaData.ecografiaImmagini ?? []).length}/8 immagini
+                        {(ostetriciaData.ecografiaImmagini ?? []).length}/8
+                        immagini
                       </span>
                     </div>
 
@@ -1547,7 +2045,10 @@ export default function AddVisit() {
                         multiple
                         className="hidden"
                         onChange={(e) => {
-                          handleEcografiaImagesUpload("ostetricia", e.target.files);
+                          handleEcografiaImagesUpload(
+                            "ostetricia",
+                            e.target.files,
+                          );
                           e.currentTarget.value = "";
                         }}
                       />
@@ -1555,28 +2056,35 @@ export default function AddVisit() {
 
                     {(ostetriciaData.ecografiaImmagini ?? []).length > 0 && (
                       <div className="grid grid-cols-2 gap-3">
-                        {(ostetriciaData.ecografiaImmagini ?? []).map((image, idx) => (
-                          <div key={`obs-eco-${idx}`} className="relative group border rounded-lg overflow-hidden bg-gray-50">
-                            <img
-                              src={image}
-                              alt={`Ecografia ostetrica ${idx + 1}`}
-                              className="w-full h-28 object-cover cursor-zoom-in"
-                              onClick={() => setFullscreenImage(image)}
-                              title="Clicca per ingrandire"
-                            />
-                            <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">
-                              Clicca per ingrandire
-                            </span>
-                            <button
-                              type="button"
-                              className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => handleRemoveEcografiaImage("ostetricia", idx)}
-                              aria-label="Rimuovi immagine ecografia"
+                        {(ostetriciaData.ecografiaImmagini ?? []).map(
+                          (image, idx) => (
+                            <div
+                              key={`obs-eco-${idx}`}
+                              className="relative group border rounded-lg overflow-hidden bg-gray-50"
                             >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
+                              <img
+                                src={image}
+                                alt={`Ecografia ostetrica ${idx + 1}`}
+                                className="w-full h-28 object-cover cursor-zoom-in"
+                                onClick={() => setFullscreenImage(image)}
+                                title="Clicca per ingrandire"
+                              />
+                              <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">
+                                Clicca per ingrandire
+                              </span>
+                              <button
+                                type="button"
+                                className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() =>
+                                  handleRemoveEcografiaImage("ostetricia", idx)
+                                }
+                                aria-label="Rimuovi immagine ecografia"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ),
+                        )}
                       </div>
                     )}
                   </CardBody>
@@ -1592,7 +2100,10 @@ export default function AddVisit() {
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-6">
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {(FORMULA_BIOMETRIA_FIELDS[fetalFormula] ?? FORMULA_BIOMETRIA_FIELDS.hadlock4).map((field) => (
+                      {(
+                        FORMULA_BIOMETRIA_FIELDS[fetalFormula] ??
+                        FORMULA_BIOMETRIA_FIELDS.hadlock4
+                      ).map((field) => (
                         <Input
                           key={field}
                           type="number"
@@ -1600,8 +2111,14 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={ostetriciaData.biometriaFetale?.[field] ? String(ostetriciaData.biometriaFetale[field]) : ""}
-                          onValueChange={(v) => handleBiometriaFetaleChange(field, parseInt(v) || 0)}
+                          value={
+                            ostetriciaData.biometriaFetale?.[field]
+                              ? String(ostetriciaData.biometriaFetale[field])
+                              : ""
+                          }
+                          onValueChange={(v) =>
+                            handleBiometriaFetaleChange(field, parseInt(v) || 0)
+                          }
                           min={0}
                           classNames={{ label: "pb-1" }}
                         />
@@ -1611,18 +2128,59 @@ export default function AddVisit() {
                       <p className="font-semibold text-gray-900">
                         Peso fetale stimato{" "}
                         <span className="font-normal text-default-500">
-                          ({scalePesoFetale[fetalFormula as keyof typeof scalePesoFetale]?.nome ?? fetalFormula})
+                          (
+                          {scalePesoFetale[
+                            fetalFormula as keyof typeof scalePesoFetale
+                          ]?.nome ?? fetalFormula}
+                          )
                         </span>
                       </p>
                       <div className="text-right">
                         {(() => {
-                          const result = scalePesoFetale[fetalFormula as keyof typeof scalePesoFetale];
-                          if (result?.calcolabile && result.pesoGrammi != null) {
+                          const result =
+                            scalePesoFetale[
+                              fetalFormula as keyof typeof scalePesoFetale
+                            ];
+                          if (
+                            result?.calcolabile &&
+                            result.pesoGrammi != null
+                          ) {
+                            const ga = parseGestationalWeeks(
+                              ostetriciaData.settimaneGestazione ?? "",
+                            );
+                            const centile =
+                              ga != null
+                                ? getCentileForWeight(result.pesoGrammi, ga)
+                                : null;
+                            const centileStr = getCentileLabel(centile);
                             return (
-                              <p className="text-xl font-bold text-primary">{result.pesoGrammi} g</p>
+                              <div>
+                                <p className="text-xl font-bold text-primary">
+                                  {result.pesoGrammi} g
+                                </p>
+                                {centileStr && (
+                                  <p className="text-sm text-default-500 mt-0.5">
+                                    {centileStr} centile
+                                    {ga != null && (
+                                      <span className="text-default-400">
+                                        {" "}
+                                        (per{" "}
+                                        {
+                                          ostetriciaData.settimaneGestazione
+                                        }{" "}
+                                        sett.)
+                                      </span>
+                                    )}
+                                  </p>
+                                )}
+                              </div>
                             );
                           }
-                          return <p className="text-gray-400 font-medium text-sm">Dati insufficienti</p>;
+                          return (
+                            <p className="text-gray-400 font-medium text-sm">
+                              Dati insufficienti
+                            </p>
+                          );
                         })()}
                       </div>
                     </div>
@@ -1634,89 +2192,135 @@ export default function AddVisit() {
                     Referto Medico
                   </CardHeader>
                   <CardBody className="p-6 space-y-8">
-                     {/* Sezione 1: Anamnesi */}
+                    {/* Sezione 1: Anamnesi */}
                     <div className="space-y-2 relative group">
                       <div className="flex justify-between items-end mb-1">
-                        <label className="text-sm font-bold text-gray-700">1. Anamnesi</label>
-                        <TemplateSelector 
-                          templates={allTemplates.filter(t => t.category === 'ostetricia' && t.section === 'prestazione')} 
-                          onSelect={(t) => handleTemplateSelect('ostetrica', 'prestazione', t)} 
+                        <label className="text-sm font-bold text-gray-700">
+                          1. Anamnesi
+                        </label>
+                        <TemplateSelector
+                          templates={allTemplates.filter(
+                            (t) =>
+                              t.category === "ostetricia" &&
+                              t.section === "prestazione",
+                          )}
+                          onSelect={(t) =>
+                            handleTemplateSelect("ostetrica", "prestazione", t)
+                          }
                         />
                       </div>
                       <Textarea
                         value={ostetriciaData.prestazione}
-                        onValueChange={(value) => handleOstetriciaChange("prestazione", value)}
+                        onValueChange={(value) =>
+                          handleOstetriciaChange("prestazione", value)
+                        }
                         variant="bordered"
                         minRows={3}
-                        classNames={{ 
+                        classNames={{
                           input: "text-base leading-relaxed",
-                          inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                          inputWrapper:
+                            "group-hover:border-primary transition-colors bg-white",
                         }}
                       />
                     </div>
 
                     {/* Sezione 2: Descrizione */}
                     <div className="space-y-2 group">
-                      <label className="text-sm font-bold text-gray-700 block mb-1">2. Descrizione Problema</label>
+                      <label className="text-sm font-bold text-gray-700 block mb-1">
+                        2. Descrizione Problema
+                      </label>
                       <Textarea
                         value={ostetriciaData.problemaClinico}
-                        onValueChange={(value) => handleOstetriciaChange("problemaClinico", value)}
+                        onValueChange={(value) =>
+                          handleOstetriciaChange("problemaClinico", value)
+                        }
                         variant="bordered"
                         minRows={3}
                         placeholder="Motivo della visita, sintomi riferiti..."
-                        classNames={{ 
+                        classNames={{
                           input: "text-base leading-relaxed",
-                          inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                          inputWrapper:
+                            "group-hover:border-primary transition-colors bg-white",
                         }}
                       />
                     </div>
 
                     {/* Sezione 3: Esame Obiettivo */}
                     <div className="space-y-2 relative group">
-                       <div className="flex justify-between items-end mb-1">
-                        <label className="text-sm font-bold text-gray-700">3. Visita / Ecografia Office</label>
-                        <TemplateSelector 
-                          templates={allTemplates.filter(t => t.category === 'ostetricia' && t.section === 'esameObiettivo')} 
-                          onSelect={(t) => handleTemplateSelect('ostetrica', 'esameObiettivo', t)} 
+                      <div className="flex justify-between items-end mb-1">
+                        <label className="text-sm font-bold text-gray-700">
+                          3. Visita / Ecografia Office
+                        </label>
+                        <TemplateSelector
+                          templates={allTemplates.filter(
+                            (t) =>
+                              t.category === "ostetricia" &&
+                              t.section === "esameObiettivo",
+                          )}
+                          onSelect={(t) =>
+                            handleTemplateSelect(
+                              "ostetrica",
+                              "esameObiettivo",
+                              t,
+                            )
+                          }
                         />
                       </div>
                       <Textarea
                         value={ostetriciaData.esameObiettivo}
-                        onValueChange={(value) => handleOstetriciaChange("esameObiettivo", value)}
+                        onValueChange={(value) =>
+                          handleOstetriciaChange("esameObiettivo", value)
+                        }
                         variant="bordered"
                         minRows={5}
                         placeholder="Biometria fetale, liquido amniotico..."
-                        classNames={{ 
+                        classNames={{
                           input: "text-base leading-relaxed",
-                          inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                          inputWrapper:
+                            "group-hover:border-primary transition-colors bg-white",
                         }}
                       />
                     </div>
 
                     <div className="space-y-2 relative group">
-                       <div className="flex justify-between items-end mb-1">
-                        <label className="text-sm font-bold text-gray-700">4. Conclusioni e Terapie</label>
-                        <TemplateSelector 
-                          templates={allTemplates.filter(t => (t.category === 'ostetricia' && t.section === 'conclusioni') || t.category === 'terapie')} 
-                          onSelect={(t) => handleTemplateSelect('ostetrica', 'noteOstetriche', t)} 
+                      <div className="flex justify-between items-end mb-1">
+                        <label className="text-sm font-bold text-gray-700">
+                          4. Conclusioni e Terapie
+                        </label>
+                        <TemplateSelector
+                          templates={allTemplates.filter(
+                            (t) =>
+                              (t.category === "ostetricia" &&
+                                t.section === "conclusioni") ||
+                              t.category === "terapie",
+                          )}
+                          onSelect={(t) =>
+                            handleTemplateSelect(
+                              "ostetrica",
+                              "noteOstetriche",
+                              t,
+                            )
+                          }
                         />
                       </div>
                       <Textarea
                         value={ostetriciaData.noteOstetriche}
-                        onValueChange={(value) => handleOstetriciaChange("noteOstetriche", value)}
+                        onValueChange={(value) =>
+                          handleOstetriciaChange("noteOstetriche", value)
+                        }
                         variant="bordered"
                         minRows={3}
                         placeholder="Raccomandazioni e follow-up..."
-                        classNames={{ 
+                        classNames={{
                           input: "text-base leading-relaxed",
-                          inputWrapper: "group-hover:border-primary transition-colors bg-white" 
+                          inputWrapper:
+                            "group-hover:border-primary transition-colors bg-white",
                         }}
                       />
                     </div>
                   </CardBody>
                 </Card>
               </div>
-
             </div>
           </Tab>
         </Tabs>
@@ -1725,7 +2329,6 @@ export default function AddVisit() {
       {/* 4. Floating Action Bar (Pill) */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex justify-center w-full pointer-events-none">
         <div className="bg-white/90 backdrop-blur-md border border-gray-200 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6 pointer-events-auto transition-all hover:shadow-xl hover:scale-[1.01]">
-          
           <Button
             variant="light"
             color="danger"
@@ -1740,17 +2343,21 @@ export default function AddVisit() {
           <div className="h-6 w-px bg-gray-300" />
 
           <div className="flex gap-3">
-             <Button
+            <Button
               color="secondary"
               variant="flat"
               size="md"
               onPress={handlePrintPdf}
-              isLoading={pdfLoading}
-              isDisabled={pdfLoading}
+              isLoading={loading || pdfLoading}
+              isDisabled={loading || pdfLoading}
               startContent={<Printer size={18} />}
               className="rounded-full"
             >
-              Stampa
+              {loading
+                ? "Salvataggio..."
+                : pdfLoading
+                  ? "Preparazione stampa..."
+                  : "Stampa"}
             </Button>
 
             <Button
@@ -1773,10 +2380,7 @@ export default function AddVisit() {
           className="fixed inset-0 z-[200] flex items-center justify-center p-6"
           onClick={() => setFullscreenImage(null)}
         >
-          <div
-            className="relative"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="absolute top-3 right-3 z-10 rounded-full bg-white/95 border border-gray-200 text-gray-700 p-2 shadow-md hover:bg-white"
@@ -1803,15 +2407,22 @@ export default function AddVisit() {
           <ModalHeader>Includere immagini ecografia?</ModalHeader>
           <ModalBody>
             <p className="text-sm text-gray-600">
-              Sono presenti <span className="font-semibold">{includeImagesCount}</span> immagini nella visita.
-              Vuoi inserirle nel PDF di stampa?
+              Sono presenti{" "}
+              <span className="font-semibold">{includeImagesCount}</span>{" "}
+              immagini nella visita. Vuoi inserirle nel PDF di stampa?
             </p>
           </ModalBody>
           <ModalFooter>
-            <Button variant="light" onPress={() => resolveIncludeEcografiaImages(false)}>
+            <Button
+              variant="light"
+              onPress={() => resolveIncludeEcografiaImages(false)}
+            >
               No, genera senza immagini
             </Button>
-            <Button color="primary" onPress={() => resolveIncludeEcografiaImages(true)}>
+            <Button
+              color="primary"
+              onPress={() => resolveIncludeEcografiaImages(true)}
+            >
               Si, includi immagini
             </Button>
           </ModalFooter>

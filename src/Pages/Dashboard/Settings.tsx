@@ -35,6 +35,7 @@ import {
   Download,
   Upload,
   RefreshCw,
+  Database,
   Settings as SettingsIcon,
   FileText,
   Plus,
@@ -49,9 +50,12 @@ import {
   TemplateService,
   PatientService,
   VisitService,
+  DocumentService,
+  BackupService,
   PreferenceService,
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
+import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
 
 const SettingsScreen = () => {
   // ... state declarations ...
@@ -88,11 +92,16 @@ const SettingsScreen = () => {
     section: "prestazione",
   });
 
-  const [ambulatori, setAmbulatori] = useState<any[]>([]);
-  const [savingAmbulatori, setSavingAmbulatori] = useState(false);
-
+  // Data stats
   const [patientCount, setPatientCount] = useState(0);
   const [visitCount, setVisitCount] = useState(0);
+  const [docCount, setDocCount] = useState(0);
+  const [dataSize, setDataSize] = useState(0);
+  const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [ambulatori, setAmbulatori] = useState<any[]>([]);
+  const [savingAmbulatori, setSavingAmbulatori] = useState(false);
 
   const [newAmbulatorio, setNewAmbulatorio] = useState({
     nome: "",
@@ -111,7 +120,9 @@ const SettingsScreen = () => {
     modalitaCompatta: false,
     animazioniRidotte: false,
     visitaGinecologicaPediatricaEnabled: false,
-    formulaPesoFetale: 'hadlock4' // hadlock4, shepard, hadlock3
+    formulaPesoFetale: 'hadlock4', // hadlock4, shepard, hadlock3
+    showDoctorPhoneInPdf: true,
+    showDoctorEmailInPdf: true,
   });
   const [duplicateGroups, setDuplicateGroups] = useState<
     Array<{ key: string; patients: any[] }>
@@ -241,12 +252,17 @@ const SettingsScreen = () => {
   useEffect(() => {
     const loadCounts = async () => {
       try {
-        const [patients, visits] = await Promise.all([
+        const [patients, visits, docs] = await Promise.all([
           PatientService.getAllPatients(),
           VisitService.getAllVisits(),
+          DocumentService.getAllDocuments(),
         ]);
         setPatientCount(patients.length);
         setVisitCount(visits.length);
+        setDocCount(docs.length);
+        // Calcolo dimensione approssimativa
+        const dataStr = JSON.stringify({ patients, visits, docs });
+        setDataSize(dataStr.length);
       } catch {
         // ignore
       }
@@ -400,6 +416,9 @@ const SettingsScreen = () => {
         setPreferences((prev) => ({ ...prev, ...prefs }));
         setNotificationsEnabled((prefs.notificationsEnabled as boolean) ?? true);
         setPdfTheme((prefs.pdfTheme as string) ?? "light");
+        if (prefs.lastBackupDate) {
+          setLastBackupDate(prefs.lastBackupDate as string);
+        }
       }
     } catch (error) {
       console.error("Errore nel caricamento preferenze:", error);
@@ -1109,6 +1128,28 @@ const SettingsScreen = () => {
     setIsLoading(true);
     setError(null);
     setSuccess(null);
+    const profileToValidate: {
+      nome: string;
+      cognome: string;
+      email: string;
+      telefono: string;
+      specializzazione: string;
+    } = {
+      ...doctorInfo,
+      nome: doctorInfo.nome.trim(),
+      cognome: doctorInfo.cognome.trim(),
+      email: doctorInfo.email.trim(),
+      telefono: doctorInfo.telefono.trim(),
+      specializzazione: doctorInfo.specializzazione.trim(),
+    };
+    const missingFields = getMissingDoctorProfileFields(profileToValidate);
+    if (missingFields.length > 0) {
+      setError(
+        `Compila tutti i campi obbligatori del profilo: ${missingFields.join(", ")}.`,
+      );
+      setIsLoading(false);
+      return;
+    }
 
     try {
       await DoctorService.updateDoctor({
@@ -1132,6 +1173,35 @@ const SettingsScreen = () => {
       setTimeout(() => setError(null), 5000);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const formatBytes = (bytes: number, decimals = 2) => {
+    if (!+bytes) return "0 Bytes";
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+  };
+
+  const handleQuickBackup = async () => {
+    setIsExporting(true);
+    try {
+      await BackupService.downloadBackup();
+      const now = new Date().toISOString();
+      setLastBackupDate(now);
+
+      const newPrefs = { ...preferences, lastBackupDate: now };
+      setPreferences(newPrefs);
+      await PreferenceService.savePreferences(newPrefs);
+
+      setSuccess("Backup scaricato con successo.");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e) {
+      setError("Errore durante il download del backup.");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -1163,75 +1233,68 @@ const SettingsScreen = () => {
       )}
 
       {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
-        <Card className="shadow-lg border border-default-200">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between w-full flex-wrap gap-2">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Aggiornamenti
-              </h2>
-              {appVersion && (
-                <Chip variant="flat" size="sm">
-                  Corioli {appVersion}
-                </Chip>
-              )}
-            </div>
-          </CardHeader>
-          <CardBody className="space-y-3">
-            <p className="text-sm text-default-600">
-              Controlla se è disponibile una nuova versione su{" "}
-              <a
-                href="https://github.com/SpaceDesignItalia/Corioli/releases"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                GitHub Releases
-              </a>
-              .
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="flat"
-                color="primary"
-                onPress={handleCheckForUpdates}
-                isLoading={updateChecking}
-                startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
-              >
-                Controlla aggiornamenti
-              </Button>
-              {updateAvailable && !updateDownloaded && (
-                <Chip color="primary" variant="flat">
-                  Disponibile: {updateAvailable}
-                </Chip>
-              )}
-              {updateDownloaded && (
-                <>
-                  <Chip color="success">Download completato</Chip>
-                  <Button
-                    size="sm"
-                    color="success"
-                    onPress={handleQuitAndInstall}
-                  >
-                    Riavvia per installare
-                  </Button>
-                </>
-              )}
-              {updateError && (
-                <Chip color="danger" variant="flat">
-                  {updateError}
-                </Chip>
-              )}
+        <Card className="shadow-sm border border-default-200">
+          <CardBody className="py-2 px-4">
+            <div className="flex items-center justify-between w-full gap-3">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <h2 className="text-base font-semibold text-gray-900">Aggiornamenti</h2>
+              </div>
+              <div className="flex items-center gap-2 ml-auto overflow-x-auto whitespace-nowrap">
+                {appVersion && (
+                  <Chip variant="flat" size="sm">
+                    v{appVersion}
+                  </Chip>
+                )}
+                <Button
+                  size="sm"
+                  variant="flat"
+                  color="primary"
+                  onPress={handleCheckForUpdates}
+                  isLoading={updateChecking}
+                  startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
+                >
+                  Controlla
+                </Button>
+                {updateAvailable && !updateDownloaded && (
+                  <Chip color="primary" variant="flat">
+                    Disponibile: {updateAvailable}
+                  </Chip>
+                )}
+                {updateDownloaded && (
+                  <>
+                    <Chip color="success">Pronto da installare</Chip>
+                    <Button
+                      size="sm"
+                      color="success"
+                      onPress={handleQuitAndInstall}
+                    >
+                      Installa ora
+                    </Button>
+                  </>
+                )}
+                {updateError && (
+                  <Chip color="danger" variant="flat">
+                    {updateError}
+                  </Chip>
+                )}
+                <a
+                  href="https://github.com/SpaceDesignItalia/Corioli/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary underline"
+                >
+                  Release notes
+                </a>
+              </div>
             </div>
           </CardBody>
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        {/* Colonna Sinistra: Profilo e Backup */}
-        <div className="space-y-8">
+      <div className="space-y-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Profilo Dottore */}
-          <Card className="shadow-lg">
+          <Card className="shadow-lg h-full">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <User className="w-5 h-5 text-primary" />
@@ -1277,6 +1340,7 @@ const SettingsScreen = () => {
                 <Input
                   label="Nome"
                   value={doctorInfo.nome}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("nome", value)
                   }
@@ -1285,6 +1349,7 @@ const SettingsScreen = () => {
                 <Input
                   label="Cognome"
                   value={doctorInfo.cognome}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("cognome", value)
                   }
@@ -1294,6 +1359,7 @@ const SettingsScreen = () => {
                   label="Email"
                   type="email"
                   value={doctorInfo.email}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("email", value)
                   }
@@ -1302,6 +1368,7 @@ const SettingsScreen = () => {
                 <Input
                   label="Telefono"
                   value={doctorInfo.telefono}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("telefono", value)
                   }
@@ -1312,6 +1379,7 @@ const SettingsScreen = () => {
                 <Input
                   label="Specializzazione"
                   value={doctorInfo.specializzazione}
+                  isRequired
                   onValueChange={(value) =>
                     handleDoctorInfoChange("specializzazione", value)
                   }
@@ -1331,85 +1399,8 @@ const SettingsScreen = () => {
             </CardBody>
           </Card>
 
-          {/* Backup e Dati */}
-          <Card className="shadow-lg">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <Download className="w-5 h-5 text-success" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Backup e Dati
-                </h2>
-              </div>
-            </CardHeader>
-            <CardBody className="space-y-6">
-              <div className="text-center space-y-4">
-                <div className="flex justify-center gap-4">
-                  <Chip color="primary" variant="flat">
-                    Pazienti: {patientCount}
-                  </Chip>
-                  <Chip color="secondary" variant="flat">
-                    Visite: {visitCount}
-                  </Chip>
-                </div>
-
-                <p className="text-sm text-gray-600">
-                  Esporta i tuoi dati per creare backup di sicurezza o importa
-                  dati esistenti
-                </p>
-              </div>
-
-              <BackupManager />
-            </CardBody>
-          </Card>
-
-          <Card className="shadow-lg">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-3">
-                <SettingsIcon className="w-5 h-5 text-secondary" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Funzionalita Visite
-                </h2>
-              </div>
-            </CardHeader>
-            <CardBody>
-              <Switch
-                isSelected={preferences.visitaGinecologicaPediatricaEnabled}
-                onValueChange={(value) =>
-                  handlePreferenceChange(
-                    "visitaGinecologicaPediatricaEnabled",
-                    value,
-                  )
-                }
-              >
-                Abilita visita ginecologica pediatrica
-              </Switch>
-              <p className="text-xs text-default-500 mt-2 mb-4">
-                Se attiva, nella pagina Nuova Visita comparira anche il tab dedicato alla visita ginecologica pediatrica.
-              </p>
-
-              <Divider className="my-4" />
-              
-              <Select
-                label="Formula Stima Peso Fetale"
-                selectedKeys={[preferences.formulaPesoFetale || 'hadlock4']}
-                onSelectionChange={(keys) => handlePreferenceChange("formulaPesoFetale", Array.from(keys)[0] as string)}
-                variant="bordered"
-                description="Seleziona la formula da utilizzare per il calcolo del peso stimato nella biometria fetale."
-              >
-                <SelectItem key="hadlock4" value="hadlock4">Hadlock IV (BPD, HC, AC, FL)</SelectItem>
-                <SelectItem key="hadlock1" value="hadlock1">Hadlock I (BPD, AC, FL)</SelectItem>
-                <SelectItem key="hadlock2" value="hadlock2">Hadlock II (HC, AC, FL)</SelectItem>
-                <SelectItem key="hadlock3" value="hadlock3">Hadlock III (AC, FL)</SelectItem>
-                <SelectItem key="shepard" value="shepard">Shepard (BPD, AC)</SelectItem>
-                <SelectItem key="campbell" value="campbell">Campbell (AC)</SelectItem>
-              </Select>
-            </CardBody>
-          </Card>
-        </div>
-
-        {/* Colonna Destra: Ambulatori */}
-        <div className="space-y-8">
-          <Card className="shadow-lg max-h-[calc(100vh-12rem)] flex flex-col">
+          {/* Ambulatori */}
+          <Card className="shadow-lg h-full flex flex-col">
             <CardHeader className="pb-2 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 bg-emerald-500 rounded"></div>
@@ -1419,8 +1410,8 @@ const SettingsScreen = () => {
               </div>
             </CardHeader>
             <CardBody className="flex flex-col flex-1 min-h-0 gap-0">
-              {/* Lista ambulatori esistenti - altezza fissa ~2 card (mobile) o ~4 (desktop), scroll interno */}
-              <div className="overflow-y-auto overflow-x-hidden space-y-3 pr-2 min-h-[10rem] max-h-[14rem] md:max-h-[28rem] rounded-lg border border-default-200 bg-default-50/50 p-2">
+              {/* Lista ambulatori esistenti */}
+              <div className="overflow-y-auto overflow-x-hidden space-y-3 pr-2 flex-1 min-h-[10rem] rounded-lg border border-default-200 bg-default-50/50 p-2">
                 {ambulatori.length > 0 ? (
                   <>
                     <h3 className="font-medium text-gray-900">
@@ -1568,6 +1559,186 @@ const SettingsScreen = () => {
                 >
                   {savingAmbulatori ? "Salvataggio..." : "Aggiungi Ambulatorio"}
                 </Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Backup e Dati */}
+          <Card className="shadow-lg h-full">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <Download className="w-5 h-5 text-success" />
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Backup e Dati
+                </h2>
+              </div>
+            </CardHeader>
+            <CardBody className="flex flex-col justify-between space-y-6">
+              <div className="space-y-5">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="p-3 bg-primary-50 rounded-lg border border-primary-100">
+                    <p className="text-xs text-primary-600 font-semibold uppercase tracking-wider">
+                      Pazienti
+                    </p>
+                    <p className="text-2xl font-bold text-primary-700 mt-1">
+                      {patientCount}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-secondary-50 rounded-lg border border-secondary-100">
+                    <p className="text-xs text-secondary-600 font-semibold uppercase tracking-wider">
+                      Visite
+                    </p>
+                    <p className="text-2xl font-bold text-secondary-700 mt-1">
+                      {visitCount}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-default-50 rounded-lg border border-default-200">
+                    <p className="text-xs text-default-600 font-semibold uppercase tracking-wider">
+                      Doc
+                    </p>
+                    <p className="text-2xl font-bold text-default-700 mt-1">
+                      {docCount}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-default-200 p-4 bg-default-50/30 space-y-3">
+                  <div className="flex justify-between items-center text-sm">
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Ultimo backup</span>
+                    </div>
+                    <span
+                      className={`font-semibold ${!lastBackupDate ? "text-warning-600" : "text-success-600"}`}
+                    >
+                      {lastBackupDate
+                        ? new Date(lastBackupDate).toLocaleDateString() +
+                          " " +
+                          new Date(lastBackupDate).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "Mai eseguito"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 mt-auto">
+                <div className="w-full [&>button]:w-full">
+                  <BackupManager />
+                </div>
+                
+                <p className="text-xs text-center text-default-400 px-4">
+                  Gestione avanzata permette importazioni, cancellazioni e reset.
+                </p>
+              </div>
+            </CardBody>
+          </Card>
+
+          {/* Funzionalita Visite */}
+          <Card className="shadow-lg h-full">
+            <CardHeader className="pb-1">
+              <div className="flex items-center gap-3">
+                <SettingsIcon className="w-5 h-5 text-secondary" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Funzionalita Visite
+                  </h2>
+                  <p className="text-xs text-default-500">
+                    Configura comportamento visite e contenuto PDF
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      Visita ginecologica pediatrica
+                    </p>
+                    <p className="text-xs text-default-500 mt-1">
+                      Mostra il tab dedicato nella pagina Nuova Visita.
+                    </p>
+                  </div>
+                  <Switch
+                    aria-label="Abilita visita ginecologica pediatrica"
+                    isSelected={preferences.visitaGinecologicaPediatricaEnabled}
+                    onValueChange={(value) =>
+                      handlePreferenceChange(
+                        "visitaGinecologicaPediatricaEnabled",
+                        value,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-default-200 p-4">
+                <p className="text-sm font-medium text-gray-800 mb-2">
+                  Formula stima peso fetale
+                </p>
+                <Select
+                  label="Formula"
+                  selectedKeys={[preferences.formulaPesoFetale || "hadlock4"]}
+                  onSelectionChange={(keys) =>
+                    handlePreferenceChange(
+                      "formulaPesoFetale",
+                      Array.from(keys)[0] as string,
+                    )
+                  }
+                  variant="bordered"
+                  description="Usata nel calcolo della biometria fetale."
+                >
+                  <SelectItem key="hadlock4" value="hadlock4">
+                    Hadlock IV (BPD, HC, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock1" value="hadlock1">
+                    Hadlock I (BPD, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock2" value="hadlock2">
+                    Hadlock II (HC, AC, FL)
+                  </SelectItem>
+                  <SelectItem key="hadlock3" value="hadlock3">
+                    Hadlock III (AC, FL)
+                  </SelectItem>
+                  <SelectItem key="shepard" value="shepard">
+                    Shepard (BPD, AC)
+                  </SelectItem>
+                  <SelectItem key="campbell" value="campbell">
+                    Campbell (AC)
+                  </SelectItem>
+                </Select>
+              </div>
+
+              <div className="rounded-lg border border-default-200 p-4 space-y-3">
+                <p className="text-sm font-medium text-gray-800">
+                  Dati dottore nel PDF
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-default-700">Mostra telefono</p>
+                  <Switch
+                    aria-label="Mostra telefono nel PDF"
+                    isSelected={Boolean(preferences.showDoctorPhoneInPdf)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange("showDoctorPhoneInPdf", value)
+                    }
+                  />
+                </div>
+                <Divider />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-default-700">Mostra email</p>
+                  <Switch
+                    aria-label="Mostra email nel PDF"
+                    isSelected={Boolean(preferences.showDoctorEmailInPdf)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange("showDoctorEmailInPdf", value)
+                    }
+                  />
+                </div>
               </div>
             </CardBody>
           </Card>
@@ -1804,11 +1975,14 @@ const SettingsScreen = () => {
             <Tab key="esame_complementare" title="Esami" />
           </Tabs>
 
+          <p className="text-sm text-default-500 mb-3">
+            I modelli compaiono nei pulsanti &quot;Modello&quot; / &quot;Modelli Esame&quot; durante la compilazione. Il <strong>nome in menu</strong> è ciò che vedi quando cerchi; il <strong>contenuto inserito</strong> è il testo che va nel referto quando lo selezioni.
+          </p>
           <Table aria-label="Tabella Modelli">
             <TableHeader>
-              <TableColumn>NOME MODELLO</TableColumn>
-              <TableColumn>SEZIONE</TableColumn>
-              <TableColumn>TESTO (ANTEPRIMA)</TableColumn>
+              <TableColumn>Nome in menu</TableColumn>
+              <TableColumn>Sezione</TableColumn>
+              <TableColumn>Contenuto inserito</TableColumn>
               <TableColumn>AZIONI</TableColumn>
             </TableHeader>
             <TableBody
@@ -2034,8 +2208,8 @@ const SettingsScreen = () => {
             {currentTemplate.id ? "Modifica Modello" : "Nuovo Modello"}
           </ModalHeader>
           <ModalBody onContextMenu={(e) => e.stopPropagation()}>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {currentTemplate.id ? (
                   <Select
                     label="Categoria"
@@ -2062,7 +2236,7 @@ const SettingsScreen = () => {
                       key="esame_complementare"
                       value="esame_complementare"
                     >
-                      Esami Complementari
+                      Esami
                     </SelectItem>
                   </Select>
                 ) : (
@@ -2072,11 +2246,8 @@ const SettingsScreen = () => {
                     </span>
                     <p className="text-default-700 font-medium capitalize">
                       {currentTemplate.category === "esame_complementare"
-                        ? "Esami Complementari"
+                        ? "Esami"
                         : currentTemplate.category}
-                    </p>
-                    <p className="text-xs text-default-400">
-                      Impostata dalla sezione in cui ti trovi
                     </p>
                   </div>
                 )}
@@ -2109,44 +2280,47 @@ const SettingsScreen = () => {
                   </SelectItem>
                 </Select>
               </div>
+
               <Input
-                label="Nome Modello (Label)"
+                label="Nome in menu"
+                placeholder="Es. Emocromo, Eco addome..."
                 value={currentTemplate.label}
                 onValueChange={(val) =>
                   setCurrentTemplate((prev) => ({ ...prev, label: val }))
                 }
-                description="Il nome che apparirà nel menu a tendina"
+                description="Titolo che vedi quando cerchi o selezioni il modello (nel menu a tendina)"
               />
               <Textarea
-                label={
+                label="Contenuto inserito"
+                placeholder={
                   currentTemplate.category === "esame_complementare"
-                    ? "Nome Esame (Testo)"
-                    : "Testo del Modello"
+                    ? "Es. Emocromo con formula, Ecografia addome completo..."
+                    : "Testo che verrà inserito nel referto..."
                 }
                 value={currentTemplate.text}
                 onValueChange={(val) =>
                   setCurrentTemplate((prev) => ({ ...prev, text: val }))
                 }
                 minRows={
-                  currentTemplate.category === "esame_complementare" ? 2 : 6
+                  currentTemplate.category === "esame_complementare" ? 2 : 5
                 }
                 description={
                   currentTemplate.category === "esame_complementare"
-                    ? "Il nome completo dell'esame"
-                    : "Il testo che verrà inserito nel referto"
+                    ? "Nome dell'esame che compare nella richiesta quando lo selezioni"
+                    : "Testo che viene inserito nel referto quando selezioni questo modello"
                 }
                 spellCheck
               />
               {currentTemplate.category === "esame_complementare" && (
                 <Textarea
-                  label="Note Cliniche (Pre-fill)"
+                  label="Note (opzionale)"
+                  placeholder="Es. preparazione, dettagli clinici..."
                   value={currentTemplate.note || ""}
                   onValueChange={(val) =>
                     setCurrentTemplate((prev) => ({ ...prev, note: val }))
                   }
-                  minRows={3}
-                  description="Note aggiuntive opzionali (es. preparazione, dettagli)"
-                  className="mt-4"
+                  minRows={2}
+                  description="Note aggiuntive per la richiesta esame"
                 />
               )}
             </div>

@@ -1,4 +1,3 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
 import { NextUIProvider } from "@nextui-org/react";
 import { HashRouter as Router } from "react-router-dom";
@@ -14,6 +13,8 @@ seedDemoDataIfNeeded();
 // App key per Orbyt (può essere configurata tramite variabile d'ambiente)
 const ORBYT_APP_KEY =
   import.meta.env.VITE_ORBYT_APP_KEY || "1735af1f-68b6-4514-b010-e931592aedcb";
+
+console.log(OrbytProvider);
 
 const root = ReactDOM.createRoot(document.getElementById("root")!);
 root.render(

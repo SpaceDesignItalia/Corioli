@@ -1,4 +1,10 @@
-import { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useDeferredValue,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -10,12 +16,16 @@ import {
   Avatar,
   Spinner,
   Select,
-  SelectItem
+  SelectItem,
 } from "@nextui-org/react";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import { SearchIcon } from "../../components/navbar/SearchIcon";
-import { PatientService, DoctorService, PreferenceService } from "../../services/OfflineServices";
+import {
+  PatientService,
+  DoctorService,
+  PreferenceService,
+} from "../../services/OfflineServices";
 import { Patient } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -57,8 +67,13 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [doctorName, setDoctorName] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: "" });
-  const [recentPatientSearches, setRecentPatientSearches] = useState<RecentPatientSearchEntry[]>([]);
+  const [toast, setToast] = useState<{ open: boolean; message: string }>({
+    open: false,
+    message: "",
+  });
+  const [recentPatientSearches, setRecentPatientSearches] = useState<
+    RecentPatientSearchEntry[]
+  >([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_PAGE_SIZE);
 
@@ -66,8 +81,12 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const patients = await PatientService.getAllPatients();
-      const sorted = [...patients].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
-      const convertedPatients: PatientData[] = sorted.map(patient => ({
+      const sorted = [...patients].sort(
+        (a, b) =>
+          new Date(b.updatedAt || 0).getTime() -
+          new Date(a.updatedAt || 0).getTime(),
+      );
+      const convertedPatients: PatientData[] = sorted.map((patient) => ({
         id: patient.id,
         name: patient.nome,
         surname: patient.cognome,
@@ -77,7 +96,7 @@ export default function Dashboard() {
         phone: patient.telefono,
         cf: patient.codiceFiscale,
         cfGenerated: Boolean(patient.codiceFiscaleGenerato),
-        birthplace: patient.luogoNascita
+        birthplace: patient.luogoNascita,
       }));
       setPatients(convertedPatients);
     } catch (error) {
@@ -110,7 +129,7 @@ export default function Dashboard() {
           setRecentPatientSearches(
             parsed
               .filter((p) => p && typeof p.id === "string")
-              .slice(0, MAX_RECENT_PATIENT_SEARCHES)
+              .slice(0, MAX_RECENT_PATIENT_SEARCHES),
           );
         }
       } catch {
@@ -161,7 +180,7 @@ export default function Dashboard() {
       const nome = (patient.name || "").toLowerCase();
       const cognome = (patient.surname || "").toLowerCase();
       return tokens.every(
-        (token) => nome.includes(token) || cognome.includes(token)
+        (token) => nome.includes(token) || cognome.includes(token),
       );
     });
   }, [patients, deferredSearch]);
@@ -197,16 +216,22 @@ export default function Dashboard() {
 
     if (normalized.length !== recentPatientSearches.length) {
       setRecentPatientSearches(normalized);
-      PreferenceService.setRecentPatientSearches(JSON.stringify(normalized)).catch(() => {});
+      PreferenceService.setRecentPatientSearches(
+        JSON.stringify(normalized),
+      ).catch(() => {});
     }
   }, [patients, recentPatientSearches]);
 
   const getPatientInitials = (patient: PatientData) => {
-    return `${patient.name?.[0] || ''}${patient.surname?.[0] || ''}`.toUpperCase();
+    return `${patient.name?.[0] || ""}${patient.surname?.[0] || ""}`.toUpperCase();
   };
 
   const getGenderColor = (gender?: string) => {
-    return gender === 'M' ? 'primary' : gender === 'F' ? 'secondary' : 'default';
+    return gender === "M"
+      ? "primary"
+      : gender === "F"
+        ? "secondary"
+        : "default";
   };
 
   const saveRecentPatientSearch = useCallback((patient: PatientData) => {
@@ -218,22 +243,30 @@ export default function Dashboard() {
       cfGenerated: patient.cfGenerated,
     };
     setRecentPatientSearches((prev) => {
-      const next = [entry, ...prev.filter((p) => p.id !== patient.id)].slice(0, MAX_RECENT_PATIENT_SEARCHES);
-      PreferenceService.setRecentPatientSearches(JSON.stringify(next)).catch(() => {});
+      const next = [entry, ...prev.filter((p) => p.id !== patient.id)].slice(
+        0,
+        MAX_RECENT_PATIENT_SEARCHES,
+      );
+      PreferenceService.setRecentPatientSearches(JSON.stringify(next)).catch(
+        () => {},
+      );
       return next;
     });
   }, []);
 
-  const handleOpenPatientHistory = useCallback((patient: PatientData) => {
-    saveRecentPatientSearch(patient);
-    navigate(`/patient-history/${patient.id}`);
-  }, [navigate, saveRecentPatientSearch]);
+  const handleOpenPatientHistory = useCallback(
+    (patient: PatientData) => {
+      saveRecentPatientSearch(patient);
+      navigate(`/patient-history/${patient.id}`);
+    },
+    [navigate, saveRecentPatientSearch],
+  );
 
   const HeaderActions = (
     <div className="flex gap-3">
       <Button
         color="success"
-        // variant="shadow" 
+        // variant="shadow"
         className="shadow-md shadow-success/20 text-white"
         onPress={() => navigate("/add-patient")}
         startContent={<span className="text-lg">+</span>}
@@ -258,13 +291,15 @@ export default function Dashboard() {
             <Input
               placeholder="Cerca per nome, cognome o codice fiscale (ricerca automatica)"
               size="lg"
-              startContent={<SearchIcon size={20} className="text-default-400" />}
+              startContent={
+                <SearchIcon size={20} className="text-default-400" />
+              }
               value={searchTerm}
               onValueChange={setSearchTerm}
               variant="bordered"
               classNames={{
                 input: "text-base",
-                inputWrapper: "h-12 border-default-200"
+                inputWrapper: "h-12 border-default-200",
               }}
               isClearable
               onClear={() => setSearchTerm("")}
@@ -272,14 +307,18 @@ export default function Dashboard() {
             {recentPatientSearches.length > 0 && (
               <div className="mt-3">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-gray-500">Ultimi pazienti cercati</p>
+                  <p className="text-xs text-gray-500">
+                    Ultimi pazienti cercati
+                  </p>
                   <Button
                     size="sm"
                     variant="light"
                     className="h-6 min-w-0 px-2 text-xs"
                     onPress={() => {
                       setRecentPatientSearches([]);
-                      PreferenceService.setRecentPatientSearches("[]").catch(() => {});
+                      PreferenceService.setRecentPatientSearches("[]").catch(
+                        () => {},
+                      );
                     }}
                   >
                     Pulisci
@@ -294,8 +333,13 @@ export default function Dashboard() {
                       className="justify-start shrink-0"
                       onPress={() => handleOpenPatientHistory(p as PatientData)}
                     >
-                      <span className="mr-2">{p.name} {p.surname}</span>
-                      <CodiceFiscaleValue value={p.cf} generatedFromImport={Boolean(p.cfGenerated)} />
+                      <span className="mr-2">
+                        {p.name} {p.surname}
+                      </span>
+                      <CodiceFiscaleValue
+                        value={p.cf}
+                        generatedFromImport={Boolean(p.cfGenerated)}
+                      />
                     </Button>
                   ))}
                 </div>
@@ -324,108 +368,123 @@ export default function Dashboard() {
       {/* Patients Grid (paginated) */}
       {!loading && (
         <>
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-          <p className="text-sm text-default-500">
-            {totalFiltered === 0
-              ? "Nessun paziente"
-              : `${totalFiltered} paziente${totalFiltered === 1 ? "" : "i"} — pagina ${currentPage} di ${totalPages}`}
-          </p>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-default-500">Righe per pagina:</span>
-            <Select
-              size="sm"
-              className="w-20"
-              selectedKeys={[String(rowsPerPage)]}
-              onSelectionChange={(keys) => {
-                const v = Array.from(keys)[0];
-                if (v) setRowsPerPage(Number(v));
-              }}
-            >
-              {PAGE_SIZE_OPTIONS.map((n) => (
-                <SelectItem key={String(n)} value={String(n)}>{n}</SelectItem>
-              ))}
-            </Select>
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <p className="text-sm text-default-500">
+              {totalFiltered === 0
+                ? "Nessun paziente"
+                : `${totalFiltered} paziente${totalFiltered === 1 ? "" : "i"} — pagina ${currentPage} di ${totalPages}`}
+            </p>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-default-500">
+                Righe per pagina:
+              </span>
+              <Select
+                size="sm"
+                className="w-20"
+                selectedKeys={[String(rowsPerPage)]}
+                onSelectionChange={(keys) => {
+                  const v = Array.from(keys)[0];
+                  if (v) setRowsPerPage(Number(v));
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <SelectItem key={String(n)} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {paginatedPatients.map((patient) => (
-            <Card
-              key={patient.id}
-              isPressable
-              onPress={() => handleOpenPatientHistory(patient)}
-              className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02] cursor-pointer"
-            >
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-3 w-full">
-                  <Avatar
-                    name={getPatientInitials(patient)}
-                    className="flex-shrink-0"
-                    color={getGenderColor(patient.gender)}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-lg truncate">
-                      {patient.name} {patient.surname}
-                    </h4>
-                    <p className="text-sm text-gray-500 truncate">
-                      <CodiceFiscaleValue value={patient.cf} generatedFromImport={Boolean(patient.cfGenerated)} />
-                    </p>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardBody className="pt-0">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Data di nascita:</span>
-                    <span>
-                      {patient.birthday
-                        ? `${new Date(patient.birthday).toLocaleDateString("it-IT")}${calculateAge(patient.birthday) != null ? ` (${calculateAge(patient.birthday)} anni)` : ""}`
-                        : "N/A"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Luogo:</span>
-                    <span className="truncate max-w-[120px]">{patient.birthplace || 'N/A'}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Genere:</span>
-                    <Chip
-                      size="sm"
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {paginatedPatients.map((patient) => (
+              <Card
+                key={patient.id}
+                isPressable
+                onPress={() => handleOpenPatientHistory(patient)}
+                className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02] cursor-pointer"
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-3 w-full">
+                    <Avatar
+                      name={getPatientInitials(patient)}
+                      className="flex-shrink-0"
                       color={getGenderColor(patient.gender)}
-                      variant="flat"
-                    >
-                      {patient.gender === 'M' ? 'Maschio' : patient.gender === 'F' ? 'Femmina' : 'N/A'}
-                    </Chip>
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-lg truncate">
+                        {patient.name} {patient.surname}
+                      </h4>
+                      <p className="text-sm text-gray-500 truncate">
+                        <CodiceFiscaleValue
+                          value={patient.cf}
+                          generatedFromImport={Boolean(patient.cfGenerated)}
+                        />
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-4 mt-8">
-            <Button
-              size="md"
-              variant="flat"
-              isDisabled={currentPage <= 1}
-              onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              startContent={<ChevronLeft size={18} />}
-            >
-              Precedente
-            </Button>
-            <span className="text-sm text-default-600">
-              Pagina {currentPage} di {totalPages}
-            </span>
-            <Button
-              size="md"
-              variant="flat"
-              isDisabled={currentPage >= totalPages}
-              onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              endContent={<ChevronRight size={18} />}
-            >
-              Successiva
-            </Button>
+                </CardHeader>
+                <CardBody className="pt-0">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Data di nascita:</span>
+                      <span>
+                        {patient.birthday
+                          ? `${new Date(patient.birthday).toLocaleDateString("it-IT")}${calculateAge(patient.birthday) != null ? ` (${calculateAge(patient.birthday)} anni)` : ""}`
+                          : "N/A"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Luogo:</span>
+                      <span className="truncate max-w-[120px]">
+                        {patient.birthplace || "N/A"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Genere:</span>
+                      <Chip
+                        size="sm"
+                        color={getGenderColor(patient.gender)}
+                        variant="flat"
+                      >
+                        {patient.gender === "M"
+                          ? "Maschio"
+                          : patient.gender === "F"
+                            ? "Femmina"
+                            : "N/A"}
+                      </Chip>
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
+            ))}
           </div>
-        )}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 mt-8">
+              <Button
+                size="md"
+                variant="flat"
+                isDisabled={currentPage <= 1}
+                onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                startContent={<ChevronLeft size={18} />}
+              >
+                Precedente
+              </Button>
+              <span className="text-sm text-default-600">
+                Pagina {currentPage} di {totalPages}
+              </span>
+              <Button
+                size="md"
+                variant="flat"
+                isDisabled={currentPage >= totalPages}
+                onPress={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                endContent={<ChevronRight size={18} />}
+              >
+                Successiva
+              </Button>
+            </div>
+          )}
         </>
       )}
 
@@ -436,13 +495,14 @@ export default function Dashboard() {
             <Users size={48} className="text-gray-400" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            {searchTerm ? "Nessun paziente trovato" : "Nessun paziente registrato"}
+            {searchTerm
+              ? "Nessun paziente trovato"
+              : "Nessun paziente registrato"}
           </h3>
           <p className="text-gray-500 max-w-md mx-auto mb-8">
             {searchTerm
               ? "Prova a modificare i termini di ricerca o aggiungi un nuovo paziente."
-              : "Inizia aggiungendo il tuo primo paziente per gestire le visite mediche."
-            }
+              : "Inizia aggiungendo il tuo primo paziente per gestire le visite mediche."}
           </p>
           <Button
             color="primary"

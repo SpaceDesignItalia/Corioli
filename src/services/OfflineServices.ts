@@ -148,14 +148,33 @@ export class DoctorService {
   static async initializeDefaultDoctor(): Promise<Doctor> {
     const existingDoctor = await this.getDoctor();
     if (existingDoctor) {
+      const isLegacyStockProfile =
+        (existingDoctor.nome || "").trim() === "Dottore" &&
+        (existingDoctor.cognome || "").trim() === "Default" &&
+        (existingDoctor.email || "").trim() === "dottore@example.com" &&
+        !(existingDoctor.telefono || "").trim() &&
+        (((existingDoctor.specializzazione || "").trim() === "Medicina Generale") ||
+          !(existingDoctor.specializzazione || "").trim());
+
+      if (isLegacyStockProfile) {
+        return await this.updateDoctor({
+          nome: "",
+          cognome: "",
+          email: "",
+          telefono: "",
+          specializzazione: "",
+        });
+      }
+
       return existingDoctor;
     }
 
     return await this.updateDoctor({
-      nome: 'Dottore',
-      cognome: 'Default',
-      email: 'dottore@example.com',
-      specializzazione: 'Medicina Generale'
+      nome: "",
+      cognome: "",
+      email: "",
+      telefono: "",
+      specializzazione: "",
     });
   }
 }

@@ -15,7 +15,10 @@ import {
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { AcmeIcon } from "./sidebar/AcmeIcon";
 import { DoctorService } from "../services/OfflineServices";
-import { MapPin, RefreshCw } from "lucide-react";
+import { Download, MapPin, RefreshCw } from "lucide-react";
+import { storageService } from "../services/StorageServiceFallback";
+import { Doctor } from "../types/Storage";
+import axios from "axios";
 
 const menuItems = [
   { label: "Dashboard", href: "/" },
@@ -33,6 +36,8 @@ export default function AppNavbar() {
     null,
   );
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
 
   const loadDoctor = async () => {
     try {
@@ -48,9 +53,83 @@ export default function AppNavbar() {
     }
   };
 
+  const BLOCKED_STORAGE_KEY = "blocked_users";
+  const ONE_HOUR_MS = 5 * 60 * 1000; // 5 minutes
+
   useEffect(() => {
     loadDoctor();
-  }, []);
+
+    const checkFeature = async () => {
+      try {
+        const doctor = await DoctorService.getDoctor();
+        const id = doctor?.id?.trim();
+        if (!id) return;
+
+        const raw = await storageService.getPreference(BLOCKED_STORAGE_KEY);
+        let lastCheckedAt: number | null = null;
+        if (raw) {
+          try {
+            const data = JSON.parse(raw) as {
+              blocked?: boolean;
+              checkedAt?: string;
+            };
+            if (data.checkedAt) {
+              lastCheckedAt = new Date(data.checkedAt).getTime();
+              if (Date.now() - lastCheckedAt < ONE_HOUR_MS) return;
+            }
+          } catch {
+            // ignore invalid stored data
+          }
+        }
+
+        if (doctor) {
+          const { blocked, reason } = await sendOnlineStatus(doctor);
+          if (blocked === null) return;
+          const payload = {
+            blocked: blocked,
+            reason: reason,
+            checkedAt: new Date().toISOString(),
+          };
+          await storageService.setPreference(
+            BLOCKED_STORAGE_KEY,
+            JSON.stringify(payload),
+          );
+
+          if (blocked === true) navigate("/blocked");
+        }
+      } catch (e) {
+        console.error("checkFeature blocked_users:", e);
+      }
+    };
+    void checkFeature();
+  }, [navigate]);
+
+  const sendOnlineStatus = async (
+    doctor: Doctor,
+  ): Promise<{ blocked: boolean | null; reason: string | null }> => {
+    try {
+      const result = await axios.post(
+        `${import.meta.env.VITE_API_URL}/clients/heartbeat`,
+        {
+          id: doctor.id,
+          nome: doctor.nome,
+          cognome: doctor.cognome,
+          email: doctor.email,
+          numero_telefono: doctor.telefono,
+          specializzazione: doctor.specializzazione,
+          tipo: "ginecologia",
+        },
+      );
+      return {
+        blocked: Boolean(result.data.blocked),
+        reason:
+          typeof result.data.reason === "string" ? result.data.reason : null,
+      };
+    } catch (e) {
+      console.error("sendOnlineStatus:", e);
+      return { blocked: null, reason: null };
+    }
+  };
 
   useEffect(() => {
     const onDoctorUpdated = () => loadDoctor();
@@ -59,8 +138,67 @@ export default function AppNavbar() {
       window.removeEventListener("appdottori-doctor-updated", onDoctorUpdated);
   }, []);
 
+  useEffect(() => {
+    const api = (
+      window as unknown as {
+        electronAPI?: {
+          updaterCheck?: () => Promise<{
+            version?: string;
+            noUpdate?: boolean;
+            error?: string;
+          }>;
+          updaterQuitAndInstall?: () => void;
+          onUpdaterChecking?: (cb: () => void) => void;
+          onUpdaterAvailable?: (
+            cb: (info: { version?: string }) => void,
+          ) => void;
+          onUpdaterNotAvailable?: (cb: () => void) => void;
+          onUpdaterDownloaded?: (cb: () => void) => void;
+        };
+      }
+    ).electronAPI;
+
+    if (!api) return;
+
+    api.onUpdaterChecking?.(() => {
+      setUpdateAvailable(null);
+      setUpdateDownloaded(false);
+    });
+    api.onUpdaterAvailable?.((info) => {
+      setUpdateAvailable(info?.version || "Nuova versione");
+      setUpdateDownloaded(false);
+    });
+    api.onUpdaterNotAvailable?.(() => {
+      setUpdateAvailable(null);
+      setUpdateDownloaded(false);
+    });
+    api.onUpdaterDownloaded?.(() => {
+      setUpdateDownloaded(true);
+      setUpdateAvailable(null);
+    });
+
+    // Controllo automatico all'apertura dell'app.
+    api
+      .updaterCheck?.()
+      .then((result) => {
+        if (result?.version) setUpdateAvailable(result.version);
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, []);
+
   const handleReloadApp = () => {
     window.location.reload();
+  };
+
+  const handleInstallUpdate = () => {
+    const api = (
+      window as unknown as {
+        electronAPI?: { updaterQuitAndInstall?: () => void };
+      }
+    ).electronAPI;
+    api?.updaterQuitAndInstall?.();
   };
 
   return (
@@ -127,6 +265,36 @@ export default function AppNavbar() {
           </Tooltip>
         </NavbarItem>
 
+        {(updateAvailable || updateDownloaded) && (
+          <NavbarItem className="hidden md:flex">
+            {updateDownloaded ? (
+              <Tooltip content="Installa l'aggiornamento e riavvia">
+                <Button
+                  size="sm"
+                  color="success"
+                  onPress={handleInstallUpdate}
+                  startContent={<Download size={14} />}
+                >
+                  Installa update
+                </Button>
+              </Tooltip>
+            ) : (
+              <Tooltip content="Aggiornamento disponibile: apri Impostazioni">
+                <Chip
+                  size="sm"
+                  color="primary"
+                  variant="flat"
+                  className="cursor-pointer font-medium hover:opacity-90 transition-opacity"
+                  onClick={() => navigate("/settings")}
+                  role="button"
+                >
+                  Aggiornamento disponibile
+                </Chip>
+              </Tooltip>
+            )}
+          </NavbarItem>
+        )}
+
         <NavbarItem className="hidden md:flex">
           <Tooltip content="Ricarica l'app (utile dopo import/backup)">
             <Button
@@ -181,6 +349,29 @@ export default function AppNavbar() {
             <span>Ricarica app</span>
           </button>
         </NavbarMenuItem>
+        {(updateAvailable || updateDownloaded) && (
+          <NavbarMenuItem className="pb-3 border-b border-default-100">
+            {updateDownloaded ? (
+              <button
+                type="button"
+                className="flex items-center gap-2 text-success text-sm w-full text-left hover:opacity-80"
+                onClick={handleInstallUpdate}
+              >
+                <Download size={16} className="flex-shrink-0" />
+                <span>Installa aggiornamento</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="flex items-center gap-2 text-primary text-sm w-full text-left hover:opacity-80"
+                onClick={() => navigate("/settings")}
+              >
+                <Download size={16} className="flex-shrink-0" />
+                <span>Aggiornamento disponibile</span>
+              </button>
+            )}
+          </NavbarMenuItem>
+        )}
         {menuItems.map((item, index) => (
           <NavbarMenuItem key={`${item.label}-${index}`}>
             <Link

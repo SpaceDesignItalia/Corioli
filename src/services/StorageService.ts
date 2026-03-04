@@ -425,9 +425,11 @@ class LocalStorageService implements StorageService {
       visits,
       doctor: doctor || {
         id: this.generateId(),
-        nome: 'Dottore',
-        cognome: 'Default',
-        email: 'dottore@example.com',
+        nome: '',
+        cognome: '',
+        email: '',
+        telefono: '',
+        specializzazione: '',
         createdAt: this.getCurrentTimestamp(),
         updatedAt: this.getCurrentTimestamp()
       },

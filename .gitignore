@@ -29,3 +29,5 @@ db
 *.njsproj
 *.sln
 *.sw?
+
+.env
