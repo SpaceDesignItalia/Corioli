@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardBody, CardHeader, Button } from "@nextui-org/react";
 import { ShieldAlert, Mail, Phone, RefreshCw } from "lucide-react";
-import { useOrbyt } from "@orbytapp/orbyt-sdk/react";
 import { DoctorService } from "../services/OfflineServices";
 import { storageService } from "../services/StorageServiceFallback";
+import { Doctor } from "../types/Storage";
+import axios from "axios";
 
 const SUPPORT_EMAIL = "support@corioli.app";
 const SUPPORT_PHONE = "+39 02 1234567";
@@ -12,32 +13,83 @@ const BLOCKED_STORAGE_KEY = "blocked_users";
 
 export default function Blocked() {
   const navigate = useNavigate();
-  const { getFeatureFlag } = useOrbyt();
   const [updating, setUpdating] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
 
   const handleAggiorna = async () => {
     try {
       setUpdating(true);
       const doctor = await DoctorService.getDoctor();
-      const email = doctor?.email?.trim();
-      if (!email) return;
+      const id = doctor?.id?.trim();
+      if (!id) return;
 
-      const result = await getFeatureFlag("blocked_users", { email });
-      if (result?.value === false) {
-        const payload = {
-          blocked: false,
-          checkedAt: new Date().toISOString(),
-        };
-        await storageService.setPreference(
-          BLOCKED_STORAGE_KEY,
-          JSON.stringify(payload),
-        );
-        navigate("/", { replace: true });
+      if (doctor) {
+        const { blocked, reason } = await sendOnlineStatus(doctor);
+        if (!blocked) {
+          const payload = {
+            blocked: false,
+            checkedAt: new Date().toISOString(),
+          };
+          await storageService.setPreference(
+            BLOCKED_STORAGE_KEY,
+            JSON.stringify(payload),
+          );
+          navigate("/", { replace: true });
+        } else {
+          setReason(reason ?? null);
+        }
       }
     } catch (e) {
       console.error("Blocked handleAggiorna:", e);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const sendOnlineStatus = async (
+    doctor: Doctor,
+  ): Promise<{ blocked: boolean; reason: string | null }> => {
+    try {
+      const result = await axios.post(
+        `${import.meta.env.VITE_API_URL}/clients/heartbeat`,
+        {
+          id: doctor.id,
+          nome: doctor.nome,
+          cognome: doctor.cognome,
+          email: doctor.email,
+          numero_telefono: doctor.telefono,
+          specializzazione: doctor.specializzazione,
+          tipo: "ginecologia",
+        },
+      );
+
+      return {
+        blocked: Boolean(result.data.blocked),
+        reason:
+          typeof result.data.reason === "string" ? result.data.reason : null,
+      };
+    } catch (e) {
+      console.error("sendOnlineStatus:", e);
+      // In caso di errore (offline, server non raggiungibile, ecc.)
+      // provo a recuperare l'ultimo stato salvato localmente
+      try {
+        const raw = await storageService.getPreference(BLOCKED_STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw) as {
+            blocked?: boolean;
+            reason?: string | null;
+          };
+          return {
+            blocked: data.blocked ?? true,
+            reason: data.reason ?? null,
+          };
+        }
+      } catch (parseError) {
+        console.error("Errore lettura stato bloccato da storage:", parseError);
+      }
+
+      // Se non ho nessun dato salvato, considero l'utente ancora bloccato
+      return { blocked: true, reason: null };
     }
   };
 
@@ -55,8 +107,10 @@ export default function Blocked() {
             Account temporaneamente sospeso
           </h1>
           <p className="text-center text-slate-300 text-sm">
-            L&apos;accesso a Corioli è stato disattivato. Per capire il motivo e
-            richiedere lo sblocco, contatta l&apos;assistenza.
+            L&apos;accesso a Corioli è stato disattivato.
+            {reason && (
+              <p className="text-slate-300 text-sm">Motivo: {reason}</p>
+            )}
           </p>
         </CardHeader>
         <CardBody className="gap-6 pt-4">

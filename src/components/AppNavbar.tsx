@@ -16,7 +16,6 @@ import { useLocation, Link, useNavigate } from "react-router-dom";
 import { AcmeIcon } from "./sidebar/AcmeIcon";
 import { DoctorService } from "../services/OfflineServices";
 import { Download, MapPin, RefreshCw } from "lucide-react";
-import { useOrbyt } from "@orbytapp/orbyt-sdk/react";
 import { storageService } from "../services/StorageServiceFallback";
 import { Doctor } from "../types/Storage";
 import axios from "axios";
@@ -33,7 +32,6 @@ const menuItems = [
 export default function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { getFeatureFlag } = useOrbyt();
   const [primaryAmbulatorio, setPrimaryAmbulatorio] = useState<string | null>(
     null,
   );
@@ -84,40 +82,51 @@ export default function AppNavbar() {
           }
         }
 
-        if (doctor) sendOnlineStatus(doctor);
-        const result = await getFeatureFlag("blocked_users", { id: id });
-        const isBlocked = result?.value === true;
-        const payload = {
-          blocked: isBlocked,
-          checkedAt: new Date().toISOString(),
-        };
-        await storageService.setPreference(
-          BLOCKED_STORAGE_KEY,
-          JSON.stringify(payload),
-        );
+        if (doctor) {
+          const { blocked, reason } = await sendOnlineStatus(doctor);
+          const payload = {
+            blocked: blocked,
+            reason: reason,
+            checkedAt: new Date().toISOString(),
+          };
+          await storageService.setPreference(
+            BLOCKED_STORAGE_KEY,
+            JSON.stringify(payload),
+          );
 
-        if (isBlocked) navigate("/blocked");
+          if (blocked) navigate("/blocked");
+        }
       } catch (e) {
         console.error("checkFeature blocked_users:", e);
       }
     };
     void checkFeature();
-  }, [getFeatureFlag, navigate]);
+  }, [navigate]);
 
-  const sendOnlineStatus = async (doctor: Doctor) => {
-    console.log("doctor", doctor);
-
+  const sendOnlineStatus = async (
+    doctor: Doctor,
+  ): Promise<{ blocked: boolean; reason: string | null }> => {
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/clients/heartbeat`, {
-        id: doctor.id,
-        nome: doctor.nome,
-        cognome: doctor.cognome,
-        email: doctor.email,
-        numero_telefono: doctor.telefono,
-        specializzazione: doctor.specializzazione,
-      });
+      const result = await axios.post(
+        `${import.meta.env.VITE_API_URL}/clients/heartbeat`,
+        {
+          id: doctor.id,
+          nome: doctor.nome,
+          cognome: doctor.cognome,
+          email: doctor.email,
+          numero_telefono: doctor.telefono,
+          specializzazione: doctor.specializzazione,
+          tipo: "ginecologia",
+        },
+      );
+      return {
+        blocked: Boolean(result.data.blocked),
+        reason:
+          typeof result.data.reason === "string" ? result.data.reason : null,
+      };
     } catch (e) {
       console.error("sendOnlineStatus:", e);
+      return { blocked: true, reason: null };
     }
   };
 
