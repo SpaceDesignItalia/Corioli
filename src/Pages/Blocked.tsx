@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardBody, CardHeader, Button } from "@nextui-org/react";
 import { ShieldAlert, Mail, Phone, RefreshCw } from "lucide-react";
@@ -93,6 +93,28 @@ export default function Blocked() {
     }
   };
 
+  const getStatus = async () => {
+    try {
+      const raw = await storageService.getPreference(BLOCKED_STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw) as {
+          blocked?: boolean;
+          reason?: string | null;
+        };
+        setReason(data.reason ?? null);
+      } else {
+        setReason(null);
+      }
+    } catch (parseError) {
+      console.error("Errore lettura stato bloccato da storage:", parseError);
+      setReason(null);
+    }
+  };
+
+  useEffect(() => {
+    getStatus();
+  }, []);
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-transparent to-transparent" />
@@ -107,7 +129,7 @@ export default function Blocked() {
             Account temporaneamente sospeso
           </h1>
           <p className="text-center text-slate-300 text-sm">
-            L&apos;accesso a Corioli è stato disattivato.
+            L&apos;accesso a Corioli è stato disattivato. <br />
             {reason && (
               <p className="text-slate-300 text-sm">Motivo: {reason}</p>
             )}
