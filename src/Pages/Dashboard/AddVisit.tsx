@@ -45,6 +45,7 @@ import {
   getCentileForWeight,
   getCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
+import { getFetalGrowthDataPointsFromVisits } from "../../utils/fetalGrowthChartUtils";
 import {
   ArrowLeft,
   Printer,
@@ -56,6 +57,8 @@ import {
   Trash2,
   Copy,
   X,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -209,6 +212,7 @@ const createDefaultOstetriciaData = () => ({
   settimaneGestazione: "",
   ultimaMestruazione: "",
   dataPresunta: "",
+  modalitaConcepimento: "",
   problemaClinico: "",
   gravidanzePrec: 0,
   partiPrec: 0,
@@ -220,6 +224,9 @@ const createDefaultOstetriciaData = () => ({
   pesoPreGravidanza: 0,
   pesoAttuale: 0,
   pressioneArteriosa: "",
+  fumaInGravidanza: "",
+  pacchettiSigaretteAlGiorno: 0,
+  assunzioneAcidoFolico: "",
   altezzaUterina: "",
   battitiFetali: "",
   movimentiFetali: "",
@@ -251,10 +258,15 @@ export default function AddVisit() {
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] =
     useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
+  const [isIncludeFetalGrowthChartModalOpen, setIsIncludeFetalGrowthChartModalOpen] =
+    useState(false);
   const [copiedPreviousType, setCopiedPreviousType] = useState<
     "ginecologica" | "ginecologica_pediatrica" | "ostetrica" | null
   >(null);
   const includeImagesResolverRef = useRef<((value: boolean) => void) | null>(
+    null,
+  );
+  const includeFetalGrowthChartResolverRef = useRef<((value: boolean) => void) | null>(
     null,
   );
   const initialLoadDone = useRef(false);
@@ -348,6 +360,10 @@ export default function AddVisit() {
                 partiPrecCesarei: visit.ostetricia?.partiPrecCesarei ?? 0,
                 abortiPrecSpontanei: visit.ostetricia?.abortiPrecSpontanei ?? 0,
                 ivgPrec: visit.ostetricia?.ivgPrec ?? 0,
+                fumaInGravidanza: visit.ostetricia?.fumaInGravidanza ?? "",
+                pacchettiSigaretteAlGiorno: visit.ostetricia?.pacchettiSigaretteAlGiorno ?? 0,
+                assunzioneAcidoFolico: visit.ostetricia?.assunzioneAcidoFolico ?? "",
+                modalitaConcepimento: visit.ostetricia?.modalitaConcepimento ?? "",
                 biometriaFetale: visit.ostetricia?.biometriaFetale ?? {
                   bpdMm: 0,
                   hcMm: 0,
@@ -714,6 +730,9 @@ export default function AddVisit() {
             acMm: 0,
             flMm: 0,
           },
+          // Non copiare peso attuale e pressione: vanno inseriti per la visita corrente
+          pesoAttuale: 0,
+          pressioneArteriosa: "",
         }));
       } else {
         setOstetriciaData((prev) => ({
@@ -843,6 +862,19 @@ export default function AddVisit() {
     includeImagesResolverRef.current = null;
   };
 
+  const askIncludeFetalGrowthChart = (): Promise<boolean> => {
+    setIsIncludeFetalGrowthChartModalOpen(true);
+    return new Promise((resolve) => {
+      includeFetalGrowthChartResolverRef.current = resolve;
+    });
+  };
+
+  const resolveIncludeFetalGrowthChart = (include: boolean) => {
+    setIsIncludeFetalGrowthChartModalOpen(false);
+    includeFetalGrowthChartResolverRef.current?.(include);
+    includeFetalGrowthChartResolverRef.current = null;
+  };
+
   const handlePrintPdf = async () => {
     if (!patient) return;
     if (
@@ -892,6 +924,19 @@ export default function AddVisit() {
       includeEcografiaImages = await askIncludeEcografiaImages(imageCount);
     }
 
+    let includeFetalGrowthChart = false;
+    if (visitData.tipo === "ostetrica") {
+      includeFetalGrowthChart = await askIncludeFetalGrowthChart();
+    }
+
+    let fetalGrowthDataPoints: { gaWeeks: number; pesoGrammi: number }[] | undefined;
+    if (visitData.tipo === "ostetrica" && includeFetalGrowthChart) {
+      const allVisits = await VisitService.getVisitsByPatientId(patient.id);
+      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(allVisits, fetalFormula);
+    } else {
+      fetalGrowthDataPoints = undefined;
+    }
+
     setPdfLoading(true);
     try {
       const blob =
@@ -902,6 +947,8 @@ export default function AddVisit() {
             })
           : await PdfService.generateObstetricPDF(patient, currentVisit, {
               includeEcografiaImages,
+              includeFetalGrowthChart,
+              fetalGrowthDataPoints,
             });
       if (!blob) {
         showToast("Impossibile generare il PDF per la stampa.", "error");
@@ -1841,38 +1888,116 @@ export default function AddVisit() {
                       labelPlacement="outside"
                       classNames={{ input: "text-base", label: "pb-1" }}
                     />
+                    <Select
+                      label="Modalità di concepimento"
+                      placeholder="Seleziona"
+                      variant="bordered"
+                      labelPlacement="outside"
+                      selectedKeys={
+                        ostetriciaData.modalitaConcepimento
+                          ? [ostetriciaData.modalitaConcepimento]
+                          : []
+                      }
+                      onSelectionChange={(keys) =>
+                        handleOstetriciaChange(
+                          "modalitaConcepimento",
+                          (Array.from(keys)[0] as string) ?? "",
+                        )
+                      }
+                      classNames={{ label: "pb-1" }}
+                    >
+                      <SelectItem key="spontaneo" value="spontaneo">
+                        Spontaneo
+                      </SelectItem>
+                      <SelectItem key="fivet" value="fivet">
+                        FIVET
+                      </SelectItem>
+                      <SelectItem key="icsi" value="icsi">
+                        ICSI
+                      </SelectItem>
+                      <SelectItem key="iui" value="iui">
+                        IUI / Inseminazione
+                      </SelectItem>
+                      <SelectItem key="donazione_ovociti" value="donazione_ovociti">
+                        Donazione ovociti
+                      </SelectItem>
+                      <SelectItem key="altra" value="altra">
+                        Altra
+                      </SelectItem>
+                    </Select>
 
                     <Divider className="my-2" />
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col sm:flex-row items-end gap-3 w-full">
                       <Input
-                        label="Peso Pre (kg)"
+                        label="Peso Pre gravidanza (kg)"
                         type="number"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        value={ostetriciaData.pesoPreGravidanza.toString()}
+                        value={ostetriciaData.pesoPreGravidanza === 0 ? "" : ostetriciaData.pesoPreGravidanza.toString()}
                         onValueChange={(v) =>
                           handleOstetriciaChange(
                             "pesoPreGravidanza",
-                            parseFloat(v) || 0,
+                            v === "" ? 0 : parseFloat(v) || 0,
                           )
                         }
+                        placeholder="0"
+                        className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
+                      
+                      {/* Indicatore aumento peso + BMI (compatto e discreto) */}
+                      {ostetriciaData.pesoPreGravidanza > 0 && ostetriciaData.pesoAttuale > 0 && (
+                        <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
+                          {(() => {
+                             const diff = ostetriciaData.pesoAttuale - ostetriciaData.pesoPreGravidanza;
+                             const isNegative = diff < 0;
+                             const colorClass = isNegative ? "text-success-600 bg-success-50/80 border-success-200" : "text-primary-600 bg-primary-50/80 border-primary-200";
+                             const hasAltezza = patient?.altezza != null && patient.altezza > 0;
+                             const h = hasAltezza ? patient!.altezza / 100 : 0;
+                             const bmiPartenza =
+                               hasAltezza && ostetriciaData.pesoPreGravidanza > 0
+                                 ? (ostetriciaData.pesoPreGravidanza / (h * h)).toFixed(1)
+                                 : null;
+                             const bmiAttuale =
+                               hasAltezza && ostetriciaData.pesoAttuale > 0
+                                 ? (ostetriciaData.pesoAttuale / (h * h)).toFixed(1)
+                                 : null;
+                             return (
+                               <div className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 ${colorClass}`}>
+                                 <div className="flex items-center gap-1 text-xs font-semibold">
+                                   {diff >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                                   <span>{Math.abs(diff).toFixed(1)} kg</span>
+                                 </div>
+                                 {(bmiPartenza != null || bmiAttuale != null) && (
+                                   <div className="text-[10px] font-medium opacity-85 leading-tight">
+                                     {bmiPartenza != null && <span>part. {bmiPartenza}</span>}
+                                     {bmiPartenza != null && bmiAttuale != null && " · "}
+                                     {bmiAttuale != null && <span>BMI {bmiAttuale}</span>}
+                                   </div>
+                                 )}
+                               </div>
+                             );
+                          })()}
+                        </div>
+                      )}
+
                       <Input
                         label="Peso Attuale (kg)"
                         type="number"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        value={ostetriciaData.pesoAttuale.toString()}
+                        value={ostetriciaData.pesoAttuale === 0 ? "" : ostetriciaData.pesoAttuale.toString()}
                         onValueChange={(v) =>
                           handleOstetriciaChange(
                             "pesoAttuale",
-                            parseFloat(v) || 0,
+                            v === "" ? 0 : parseFloat(v) || 0,
                           )
                         }
+                        placeholder="0"
+                        className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
                     </div>
@@ -1888,6 +2013,73 @@ export default function AddVisit() {
                       }
                       classNames={{ label: "pb-1" }}
                     />
+                    <Select
+                      label="Fuma in gravidanza (pacc./giorno)"
+                      placeholder="Seleziona"
+                      size="sm"
+                      variant="bordered"
+                      labelPlacement="outside"
+                      selectedKeys={
+                        ostetriciaData.fumaInGravidanza
+                          ? [ostetriciaData.fumaInGravidanza]
+                          : []
+                      }
+                      onSelectionChange={(keys) =>
+                        handleOstetriciaChange(
+                          "fumaInGravidanza",
+                          (Array.from(keys)[0] as string) ?? "",
+                        )
+                      }
+                      classNames={{ label: "pb-1" }}
+                    >
+                      <SelectItem key="no" value="no">
+                        No (non fumatrice)
+                      </SelectItem>
+                      <SelectItem key="meno_1" value="meno_1">
+                        Meno di 1 pacc./giorno
+                      </SelectItem>
+                      <SelectItem key="1" value="1">
+                        1 pacc./giorno
+                      </SelectItem>
+                      <SelectItem key="2" value="2">
+                        2 pacc./giorno
+                      </SelectItem>
+                      <SelectItem key="3" value="3">
+                        3 pacc./giorno
+                      </SelectItem>
+                      <SelectItem key="4" value="4">
+                        4 pacc./giorno
+                      </SelectItem>
+                      <SelectItem key="5_plus" value="5_plus">
+                        5+ pacc./giorno
+                      </SelectItem>
+                    </Select>
+                    <Select
+                      label="Assunzione acido folico"
+                      placeholder="Seleziona"
+                      size="sm"
+                      variant="bordered"
+                      labelPlacement="outside"
+                      selectedKeys={
+                        ostetriciaData.assunzioneAcidoFolico
+                          ? [ostetriciaData.assunzioneAcidoFolico]
+                          : []
+                      }
+                      onSelectionChange={(keys) =>
+                        handleOstetriciaChange(
+                          "assunzioneAcidoFolico",
+                          (Array.from(keys)[0] as string) ?? "",
+                        )
+                      }
+                      classNames={{ label: "pb-1" }}
+                    >
+                      <SelectItem key="si" value="si">
+                        Sì
+                      </SelectItem>
+                      <SelectItem key="no" value="no">
+                        No
+                      </SelectItem>
+                    </Select>
                   </CardBody>
                 </Card>
 
@@ -2424,6 +2616,36 @@ export default function AddVisit() {
               onPress={() => resolveIncludeEcografiaImages(true)}
             >
               Si, includi immagini
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isIncludeFetalGrowthChartModalOpen}
+        onClose={() => resolveIncludeFetalGrowthChart(false)}
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>Includere grafico crescita fetale?</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-gray-600">
+              Vuoi inserire nel PDF il grafico dei centili di crescita fetale
+              (peso stimato vs epoca gestazionale)?
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="light"
+              onPress={() => resolveIncludeFetalGrowthChart(false)}
+            >
+              No, genera senza grafico
+            </Button>
+            <Button
+              color="primary"
+              onPress={() => resolveIncludeFetalGrowthChart(true)}
+            >
+              Sì, includi grafico
             </Button>
           </ModalFooter>
         </ModalContent>

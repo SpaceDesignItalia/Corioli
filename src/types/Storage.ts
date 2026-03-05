@@ -14,6 +14,13 @@ export interface Patient {
   indirizzo?: string;
   telefono?: string;
   email?: string;
+  /** Campi clinici opzionali nel profilo */
+  gruppoSanguigno?: string;
+  allergie?: string;
+  altezza?: number; // in cm
+  peso?: number; // in kg (utile per BMI iniziale)
+  /** Note rapide del medico (visibili in scheda paziente, modificabili al volo) */
+  notaBene?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +83,8 @@ export interface Visit {
     settimaneGestazione: string;
     ultimaMestruazione: string;
     dataPresunta: string;
+    /** Modalità di concepimento: spontaneo, FIVET, ICSI, IUI, donazione ovociti, altra */
+    modalitaConcepimento?: string;
     problemaClinico: string;
     gravidanzePrec: number;
     partiPrec: number;
@@ -89,6 +98,12 @@ export interface Visit {
     pesoPreGravidanza: number;
     pesoAttuale: number;
     pressioneArteriosa: string;
+    /** Fuma in gravidanza: "si" | "no" */
+    fumaInGravidanza?: string;
+    /** Pacchetti di sigarette al giorno (se fumatrice) */
+    pacchettiSigaretteAlGiorno?: number;
+    /** Assunzione acido folico: "si" | "no" */
+    assunzioneAcidoFolico?: string;
     altezzaUterina: string;
     battitiFetali: string;
     movimentiFetali: string;

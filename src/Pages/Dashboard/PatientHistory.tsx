@@ -38,6 +38,8 @@ import {
   UserIcon,
   FileTextIcon,
   CalendarIcon,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
@@ -64,6 +66,7 @@ import {
   getCentileForWeight,
   getCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
+import { getFetalGrowthDataPointsFromVisits } from "../../utils/fetalGrowthChartUtils";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -153,6 +156,9 @@ export default function PatientHistory() {
     useState<RichiestaEsameComplementare | null>(null);
   const [editingRichiestaEsame, setEditingRichiestaEsame] =
     useState<RichiestaEsameComplementare | null>(null);
+  const [notaBeneLocal, setNotaBeneLocal] = useState("");
+  const [savingNotaBene, setSavingNotaBene] = useState(false);
+  const [isNotaBeneOpen, setIsNotaBeneOpen] = useState(false);
   const [nuovaRichiestaNome, setNuovaRichiestaNome] = useState("");
   const [nuovaRichiestaNote, setNuovaRichiestaNote] = useState("");
   const [nuovaRichiestaData, setNuovaRichiestaData] = useState(() =>
@@ -163,6 +169,9 @@ export default function PatientHistory() {
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] =
     useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
+  const [isIncludeFetalGrowthChartModalOpen, setIsIncludeFetalGrowthChartModalOpen] =
+    useState(false);
+  const [pendingPrintIncludeImages, setPendingPrintIncludeImages] = useState<boolean>(false);
   const [fetalFormulaPref, setFetalFormulaPref] = useState("hadlock4");
   const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
   /** URL del PDF generato per l’anteprima (stesso contenuto della stampa). Revocare in cleanup. */
@@ -228,6 +237,10 @@ export default function PatientHistory() {
   };
 
   useEffect(() => {
+    setNotaBeneLocal(patient?.notaBene ?? "");
+  }, [patient?.id, patient?.notaBene]);
+
+  useEffect(() => {
     loadData();
     // Carica template esami
     TemplateService.getAllTemplates()
@@ -282,6 +295,18 @@ export default function PatientHistory() {
               })
             : await PdfService.generateObstetricPDF(patient, selectedVisit, {
                 includeEcografiaImages: true,
+                includeFetalGrowthChart: true,
+                fetalGrowthDataPoints:
+                  selectedVisit.tipo === "ostetrica"
+                    ? getFetalGrowthDataPointsFromVisits(
+                        visits.filter(
+                          (v) =>
+                            v.tipo === "ostetrica" &&
+                            v.dataVisita <= selectedVisit.dataVisita,
+                        ),
+                        fetalFormulaPref,
+                      )
+                    : undefined,
               });
         if (blob && !revoked) {
           const url = URL.createObjectURL(blob);
@@ -304,7 +329,7 @@ export default function PatientHistory() {
       });
       setPreviewPdfLoading(false);
     };
-  }, [isOpen, selectedVisit?.id, patient?.id]);
+  }, [isOpen, selectedVisit?.id, patient?.id, visits, fetalFormulaPref]);
 
   // Genera il PDF di anteprima (stesso della stampa) quando si apre il modale su visita ginecologica/ostetrica
   useEffect(() => {
@@ -331,6 +356,18 @@ export default function PatientHistory() {
               })
             : await PdfService.generateObstetricPDF(patient, selectedVisit, {
                 includeEcografiaImages: true,
+                includeFetalGrowthChart: true,
+                fetalGrowthDataPoints:
+                  selectedVisit.tipo === "ostetrica"
+                    ? getFetalGrowthDataPointsFromVisits(
+                        visits.filter(
+                          (v) =>
+                            v.tipo === "ostetrica" &&
+                            v.dataVisita <= selectedVisit.dataVisita,
+                        ),
+                        fetalFormulaPref,
+                      )
+                    : undefined,
               });
         if (blob && !revoked) {
           const url = URL.createObjectURL(blob);
@@ -353,7 +390,7 @@ export default function PatientHistory() {
       });
       setPreviewPdfLoading(false);
     };
-  }, [isOpen, selectedVisit?.id, patient?.id]);
+  }, [isOpen, selectedVisit?.id, patient?.id, visits, fetalFormulaPref]);
 
   const ensureDoctorProfileComplete = () => {
     if (isDoctorProfileComplete(doctor)) return true;
@@ -585,6 +622,10 @@ export default function PatientHistory() {
       indirizzo: patient.indirizzo || "",
       telefono: patient.telefono || "",
       email: patient.email || "",
+      gruppoSanguigno: patient.gruppoSanguigno || "",
+      allergie: patient.allergie || "",
+      altezza: patient.altezza,
+      notaBene: patient.notaBene || "",
     });
     setSuccessMsg(null);
     onEditOpen();
@@ -612,6 +653,25 @@ export default function PatientHistory() {
       setError("Errore durante l'aggiornamento del paziente.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveNotaBene = async () => {
+    if (!patient) return;
+    setSavingNotaBene(true);
+    try {
+      await PatientService.updatePatient(patient.id, {
+        notaBene: notaBeneLocal.trim() || undefined,
+        updatedAt: new Date().toISOString(),
+      });
+      const updated = await PatientService.getPatientById(patient.id);
+      if (updated) setPatient(updated);
+      showToast("Nota salvata.");
+    } catch (err) {
+      console.error("Errore salvataggio nota:", err);
+      showToast("Errore nel salvataggio della nota.", "error");
+    } finally {
+      setSavingNotaBene(false);
     }
   };
 
@@ -782,11 +842,34 @@ export default function PatientHistory() {
       return;
     }
 
+    if (visit.tipo === "ostetrica") {
+      setPendingPrintVisit(visit);
+      setPendingPrintIncludeImages(false);
+      setIsIncludeFetalGrowthChartModalOpen(true);
+      return;
+    }
+
     await runPrintPdf(visit, false);
   };
 
-  const runPrintPdf = async (visit: Visit, includeEcografiaImages: boolean) => {
+  const runPrintPdf = async (
+    visit: Visit,
+    includeEcografiaImages: boolean,
+    includeFetalGrowthChart?: boolean,
+  ) => {
     if (!patient) return;
+    let fetalGrowthDataPoints: { gaWeeks: number; pesoGrammi: number }[] | undefined;
+    if (visit.tipo === "ostetrica" && includeFetalGrowthChart) {
+      const fino = visits.filter(
+        (v) => v.tipo === "ostetrica" && v.dataVisita <= visit.dataVisita,
+      );
+      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(
+        fino,
+        fetalFormulaPref,
+      );
+    } else {
+      fetalGrowthDataPoints = undefined;
+    }
     setPdfLoading(true);
     try {
       const blob =
@@ -797,6 +880,8 @@ export default function PatientHistory() {
             })
           : await PdfService.generateObstetricPDF(patient, visit, {
               includeEcografiaImages,
+              includeFetalGrowthChart: includeFetalGrowthChart ?? false,
+              fetalGrowthDataPoints,
             });
       console.log("blob", blob);
       if (!blob) {
@@ -841,12 +926,25 @@ export default function PatientHistory() {
     }
   };
 
-  const handleIncludeImagesChoice = async (include: boolean) => {
+  const handleIncludeImagesChoice = (include: boolean) => {
     const visit = pendingPrintVisit;
     setIsIncludeImagesModalOpen(false);
+    if (!visit) return;
+    if (visit.tipo === "ostetrica") {
+      setPendingPrintIncludeImages(include);
+      setIsIncludeFetalGrowthChartModalOpen(true);
+      return;
+    }
+    setPendingPrintVisit(null);
+    runPrintPdf(visit, include);
+  };
+
+  const handleIncludeFetalGrowthChartChoice = async (include: boolean) => {
+    const visit = pendingPrintVisit;
+    setIsIncludeFetalGrowthChartModalOpen(false);
     setPendingPrintVisit(null);
     if (!visit) return;
-    await runPrintPdf(visit, include);
+    await runPrintPdf(visit, pendingPrintIncludeImages, include);
   };
 
   if (loading) {
@@ -955,6 +1053,62 @@ export default function PatientHistory() {
               </Button>
             </div>
           </div>
+
+          {/* Nota bene: tendina integrata */}
+          <Divider className="my-3" />
+          <div className="flex items-center justify-between gap-2 py-2.5 px-2 -mx-2 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setIsNotaBeneOpen((prev) => !prev)}
+              className="flex items-center justify-between gap-2 flex-1 min-w-0 text-left hover:bg-default-100 rounded-lg py-1 px-1 -mx-1 transition-colors"
+            >
+              <span className="text-sm font-semibold text-default-700 flex items-center gap-2 min-w-0">
+                Nota bene
+                {!isNotaBeneOpen && notaBeneLocal.trim() && (
+                  <span className="text-default-400 font-normal normal-case truncate max-w-[220px]">
+                    — {notaBeneLocal.trim().slice(0, 40)}
+                    {notaBeneLocal.trim().length > 40 ? "…" : ""}
+                  </span>
+                )}
+              </span>
+              {isNotaBeneOpen ? (
+                <ChevronUp size={18} className="text-default-500 shrink-0" />
+              ) : (
+                <ChevronDown size={18} className="text-default-500 shrink-0" />
+              )}
+            </button>
+            {isNotaBeneOpen && (
+              <Button
+                color="primary"
+                variant="light"
+                size="sm"
+                onPress={handleSaveNotaBene}
+                isLoading={savingNotaBene}
+                isDisabled={savingNotaBene}
+                className="shrink-0 h-7 min-w-0 px-2 text-xs"
+              >
+                Salva
+              </Button>
+            )}
+          </div>
+          {isNotaBeneOpen && (
+            <div className="mt-1 rounded-xl border border-default-200 bg-default-50/50 p-4">
+              <Textarea
+                placeholder="Note rapide (preferenze, richieste, promemoria)..."
+                value={notaBeneLocal}
+                onValueChange={setNotaBeneLocal}
+                variant="bordered"
+                minRows={2}
+                maxRows={4}
+                size="sm"
+                classNames={{
+                  input: "text-sm",
+                  inputWrapper: "bg-white shadow-sm",
+                }}
+                className="w-full"
+              />
+            </div>
+          )}
         </CardBody>
       </Card>
 
@@ -1612,6 +1766,61 @@ export default function PatientHistory() {
                 className="md:col-span-2"
               />
             </div>
+
+            <Divider className="my-2" />
+            <p className="text-sm font-medium text-gray-500">Dati clinici</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                label="Gruppo sanguigno"
+                placeholder="Seleziona"
+                selectedKeys={
+                  editData.gruppoSanguigno ? [editData.gruppoSanguigno] : []
+                }
+                onSelectionChange={(keys) =>
+                  setEditData((prev) => ({
+                    ...prev,
+                    gruppoSanguigno: (Array.from(keys)[0] as string) || "",
+                  }))
+                }
+                variant="bordered"
+              >
+                {["A+", "A-", "B+", "B-", "AB+", "AB-", "0+", "0-", "Non noto"].map(
+                  (g) => (
+                    <SelectItem key={g} value={g}>
+                      {g}
+                    </SelectItem>
+                  )
+                )}
+              </Select>
+              <Input
+                label="Altezza (cm)"
+                type="number"
+                min={0}
+                value={
+                  editData.altezza != null ? String(editData.altezza) : ""
+                }
+                onValueChange={(v) =>
+                  setEditData((prev) => ({
+                    ...prev,
+                    altezza: v === "" ? undefined : parseFloat(v) || undefined,
+                  }))
+                }
+                variant="bordered"
+                placeholder="0"
+              />
+            </div>
+            <div className="mt-2">
+              <Textarea
+                label="Allergie / Intolleranze"
+                placeholder="Elenca eventuali allergie a farmaci, alimenti, ecc."
+                value={editData.allergie || ""}
+                onValueChange={(v) =>
+                  setEditData((prev) => ({ ...prev, allergie: v }))
+                }
+                variant="bordered"
+                minRows={2}
+              />
+            </div>
           </ModalBody>
           <ModalFooter className="flex justify-between items-center">
             <Button
@@ -1968,6 +2177,39 @@ export default function PatientHistory() {
               onPress={() => handleIncludeImagesChoice(true)}
             >
               Si, includi immagini
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isIncludeFetalGrowthChartModalOpen}
+        onClose={() => {
+          setPendingPrintVisit(null);
+          setIsIncludeFetalGrowthChartModalOpen(false);
+        }}
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>Includere grafico crescita fetale?</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-gray-600">
+              Vuoi inserire nel PDF il grafico dei centili di crescita fetale
+              (peso stimato vs epoca gestazionale)?
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="light"
+              onPress={() => handleIncludeFetalGrowthChartChoice(false)}
+            >
+              No, genera senza grafico
+            </Button>
+            <Button
+              color="primary"
+              onPress={() => handleIncludeFetalGrowthChartChoice(true)}
+            >
+              Sì, includi grafico
             </Button>
           </ModalFooter>
         </ModalContent>

@@ -109,3 +109,27 @@ export function getCentileLabel(centile: number | null): string {
   if (below != null && above != null) return `${below}-${above}°`;
   return `${centile}°`;
 }
+
+/** Range settimane per il grafico */
+export const FETAL_GROWTH_WEEK_RANGE = { min: MIN_WEEK, max: MAX_WEEK } as const;
+
+/**
+ * Restituisce i punti delle curve centili per disegnare il grafico (es. in PDF).
+ * Ogni elemento: { centile: 5|10|25|50|75|90|95, points: { week, weight }[] }.
+ */
+export function getCentileCurveData(): {
+  centile: (typeof CENTILE_INDEX)[number];
+  points: { week: number; weight: number }[];
+}[] {
+  return CENTILE_INDEX.map((centile, idx) => ({
+    centile,
+    points: Array.from(
+      { length: MAX_WEEK - MIN_WEEK + 1 },
+      (_, i) => {
+        const week = MIN_WEEK + i;
+        const row = CENTILE_TABLE[week];
+        return { week, weight: row ? row[idx] : 0 };
+      },
+    ),
+  }));
+}

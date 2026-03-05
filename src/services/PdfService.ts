@@ -11,6 +11,8 @@ import {
   parseGestationalWeeks,
   getCentileForWeight,
   getCentileLabel,
+  getCentileCurveData,
+  FETAL_GROWTH_WEEK_RANGE,
 } from "../utils/fetalGrowthCentiles";
 
 // ─── Layout Constants ───────────────────────────────────────────────────────
@@ -26,8 +28,16 @@ const SECONDARY_COLOR = [60, 60, 60]; // Dark Gray
 const ACCENT_COLOR = [240, 240, 240]; // Very Light Gray
 const BORDER_COLOR = [200, 200, 200]; // Light Gray
 
+export interface FetalGrowthPoint {
+  gaWeeks: number;
+  pesoGrammi: number;
+}
+
 interface VisitPdfOptions {
   includeEcografiaImages?: boolean;
+  includeFetalGrowthChart?: boolean;
+  /** Punti (GA, peso) da disegnare: visita corrente + eventuali visite precedenti. Se assente, si usa solo il punto della visita corrente. */
+  fetalGrowthDataPoints?: FetalGrowthPoint[];
 }
 
 interface FooterVisibilityOptions {
@@ -304,13 +314,22 @@ export class PdfService {
     );
 
     const age = this.calculateAge(patient.dataNascita);
-    const details = [
-      `Nato/a il: ${this.formatDate(patient.dataNascita)} ${age ? `(${age} anni)` : ""}`,
-      `CF: ${patient.codiceFiscale || "-"}`,
-      `Sesso: ${patient.sesso || "-"}`,
-    ].join("   •   ");
-
-    doc.text(this.s(details), MARGIN_L + 4, contentY + 5);
+    const detailsParts: string[] = [];
+    if (patient.dataNascita) {
+      detailsParts.push(
+        `Nato/a il: ${this.formatDate(patient.dataNascita)} ${age ? `(${age} anni)` : ""}`,
+      );
+    }
+    if (patient.codiceFiscale?.trim()) {
+      detailsParts.push(`CF: ${patient.codiceFiscale}`);
+    }
+    if (patient.sesso) {
+      detailsParts.push(`Sesso: ${patient.sesso}`);
+    }
+    const details = detailsParts.join("   •   ");
+    if (details) {
+      doc.text(this.s(details), MARGIN_L + 4, contentY + 5);
+    }
 
     return boxY + boxHeight + 8; // Reduced spacing after box
   }
@@ -367,21 +386,34 @@ export class PdfService {
     return y + SECTION_GAP;
   }
 
-  /** Draw a simple key-value row enclosed in lines - COMPACT */
+  /** Esclude campi con valore vuoto o "-" (per non mostrarli in PDF). */
+  private static filterGridItems(
+    items: { label: string; value: string }[],
+  ): { label: string; value: string }[] {
+    return items.filter((item) => {
+      const v = item.value;
+      return v != null && String(v).trim() !== "" && v !== "-";
+    });
+  }
+
+  /** Draw a simple key-value row enclosed in lines - COMPACT. Ometti i campi con valore vuoto o "-". */
   private static drawGridRow(
     doc: jsPDF,
     items: { label: string; value: string }[],
     y: number,
   ): number {
+    const filtered = this.filterGridItems(items);
+    if (filtered.length === 0) return y;
+
     const rowHeight = 10; // Reduced height
-    const colWidth = PAGE_W / items.length;
+    const colWidth = PAGE_W / filtered.length;
 
     // Top line
     doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
     doc.setLineWidth(0.1);
     doc.line(MARGIN_L, y, MARGIN_R, y);
 
-    items.forEach((item, i) => {
+    filtered.forEach((item, i) => {
       const x = MARGIN_L + colWidth * i;
 
       // Label
@@ -405,7 +437,7 @@ export class PdfService {
       });
 
       // Vertical divider (except last)
-      if (i < items.length - 1) {
+      if (i < filtered.length - 1) {
         doc.line(x + colWidth, y, x + colWidth, y + rowHeight);
       }
     });
@@ -532,6 +564,162 @@ export class PdfService {
     );
   }
 
+  /** Grafico crescita fetale (centili): assi con tick, griglia, curve etichettate, traiettoria, legenda. Ottimizzato per A4 e B/N. */
+  private static drawFetalGrowthChart(
+    doc: jsPDF,
+    points: FetalGrowthPoint[],
+    startY: number,
+  ): number {
+    const chartLeft = MARGIN_L + 20;
+    const chartW = PAGE_W - 26;
+    const chartH = 46;
+    const titleGap = 6; // spazio tra sottotitolo e bordo superiore del grafico
+    const chartTop = startY + 8 + titleGap; // titolo + sottotitolo + gap
+    const chartBottom = chartTop + chartH;
+    const weekMin = FETAL_GROWTH_WEEK_RANGE.min;
+    const weekMax = FETAL_GROWTH_WEEK_RANGE.max;
+    const weightMax = 6000;
+    const gridGray = 230;
+    const axisGray = 80;
+
+    const toX = (week: number) =>
+      chartLeft + ((week - weekMin) / (weekMax - weekMin)) * chartW;
+    const toY = (weight: number) =>
+      chartBottom - (weight / weightMax) * chartH;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+    doc.text("Crescita fetale – Peso stimato (EFW) vs Età gestazionale", MARGIN_L, startY + 4);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    doc.setTextColor(SECONDARY_COLOR[0], SECONDARY_COLOR[1], SECONDARY_COLOR[2]);
+    doc.text("Curve di riferimento: Hadlock (EFW) | Peso in grammi", MARGIN_L, startY + 8);
+
+    doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
+    doc.setLineWidth(0.25);
+    doc.rect(chartLeft, chartTop, chartW, chartH);
+
+    // Griglia: verticale ogni 2 settimane, orizzontale ogni 1000 g
+    doc.setDrawColor(gridGray, gridGray, gridGray);
+    doc.setLineWidth(0.1);
+    for (let w = weekMin; w <= weekMax; w += 2) {
+      const x = toX(w);
+      doc.line(x, chartTop, x, chartBottom);
+    }
+    for (let g = 0; g <= weightMax; g += 1000) {
+      const y = toY(g);
+      doc.line(chartLeft, y, chartLeft + chartW, y);
+    }
+
+    // Assi e tick con etichette
+    doc.setDrawColor(axisGray, axisGray, axisGray);
+    doc.setLineWidth(0.2);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6);
+    doc.setTextColor(axisGray, axisGray, axisGray);
+    for (let w = weekMin; w <= weekMax; w += 2) {
+      const x = toX(w);
+      doc.line(x, chartBottom, x, chartBottom + 2);
+      doc.text(String(w), x - 2, chartBottom + 5, { align: "center" });
+    }
+    doc.text("Età gestazionale (settimane)", chartLeft + chartW / 2 - 18, chartBottom + 10);
+    for (let g = 0; g <= weightMax; g += 1000) {
+      const y = toY(g);
+      doc.line(chartLeft - 2, y, chartLeft, y);
+      doc.text(String(g), chartLeft - 4, y + 1.2, { align: "right" });
+    }
+    doc.text("Peso fetale stimato (g)", MARGIN_L, chartTop + chartH / 2, { angle: 90 });
+
+    // Curve centili con toni di grigio diversi (P50 più marcata) ed etichette P5, P10, … P95
+    const curves = getCentileCurveData();
+    const centileGray: Record<number, number> = {
+      5: 170, 10: 150, 25: 120, 50: 50, 75: 120, 90: 150, 95: 170,
+    };
+    curves.forEach(({ centile, points: curvePts }) => {
+      const gray = centileGray[centile] ?? 120;
+      doc.setDrawColor(gray, gray, gray);
+      doc.setLineWidth(centile === 50 ? 0.4 : 0.22);
+      for (let i = 0; i < curvePts.length - 1; i++) {
+        const a = curvePts[i];
+        const b = curvePts[i + 1];
+        doc.line(toX(a.week), toY(a.weight), toX(b.week), toY(b.weight));
+      }
+      const last = curvePts[curvePts.length - 1];
+      doc.setFontSize(5.5);
+      doc.setTextColor(gray, gray, gray);
+      doc.text(`P${centile}`, toX(41.2), toY(last.weight) - 0.8);
+    });
+
+    // Ordina punti per GA e traccia linea di traiettoria
+    const sortedPoints = [...points].sort((a, b) => a.gaWeeks - b.gaWeeks);
+    const inRange = (p: FetalGrowthPoint) =>
+      p.gaWeeks >= weekMin &&
+      p.gaWeeks <= weekMax &&
+      p.pesoGrammi > 0 &&
+      p.pesoGrammi <= weightMax;
+    const validPoints = sortedPoints.filter(inRange);
+    if (validPoints.length >= 2) {
+      doc.setDrawColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+      doc.setLineWidth(0.35);
+      for (let i = 0; i < validPoints.length - 1; i++) {
+        const a = validPoints[i];
+        const b = validPoints[i + 1];
+        doc.line(toX(a.gaWeeks), toY(a.pesoGrammi), toX(b.gaWeeks), toY(b.pesoGrammi));
+      }
+    }
+
+    // Punti: precedenti piccoli grigi, corrente più grande con bordo (leggibile in B/N)
+    validPoints.forEach((p, i) => {
+      const cx = toX(p.gaWeeks);
+      const cy = toY(p.pesoGrammi);
+      const isLast = i === validPoints.length - 1;
+      if (isLast) {
+        doc.setDrawColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+        doc.setFillColor(255, 255, 255);
+        doc.setLineWidth(0.45);
+        doc.circle(cx, cy, 2.2, "FD");
+        doc.circle(cx, cy, 2.2, "S");
+      } else {
+        doc.setDrawColor(100, 100, 100);
+        doc.setFillColor(100, 100, 100);
+        doc.setLineWidth(0.2);
+        doc.circle(cx, cy, 1, "FD");
+      }
+    });
+
+    // Legenda e valore corrente
+    const legendY = chartBottom + 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6);
+    doc.setTextColor(SECONDARY_COLOR[0], SECONDARY_COLOR[1], SECONDARY_COLOR[2]);
+    doc.text("Precedenti (punti)  —  Traiettoria (linea)  —  Visita corrente (evidenziato)", chartLeft, legendY);
+    const lastPoint = validPoints[validPoints.length - 1];
+    if (lastPoint) {
+      const centile = getCentileForWeight(lastPoint.pesoGrammi, lastPoint.gaWeeks);
+      const centileStr = getCentileLabel(centile);
+      const gaLabel = `${Math.floor(lastPoint.gaWeeks)}+${Math.round((lastPoint.gaWeeks % 1) * 7)}`;
+      const valueText = centileStr
+        ? `EFW ${lastPoint.pesoGrammi} g – ${gaLabel} sett – ${centileStr} centile`
+        : `EFW ${lastPoint.pesoGrammi} g – ${gaLabel} sett`;
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+      doc.text(valueText, chartLeft + chartW - 2, legendY, { align: "right" });
+      if (centile != null && (centile < 10 || centile > 90)) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(5.5);
+        doc.text("(valore al di fuori del range di normalità)", chartLeft + chartW - 2, legendY + 3.5, { align: "right" });
+      }
+    }
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(5);
+    doc.setTextColor(SECONDARY_COLOR[0], SECONDARY_COLOR[1], SECONDARY_COLOR[2]);
+    doc.text("EFW: stima ecografica. Le curve sono indicative e non sostituiscono il giudizio clinico.", MARGIN_L, legendY + 8);
+
+    return legendY + 12;
+  }
+
   // ─── Footer ─────────────────────────────────────────────────────────────
   private static drawFooter(doc: jsPDF, doctor: Doctor | null, visibility?: FooterVisibilityOptions) {
     const pageH = doc.internal.pageSize.height;
@@ -597,6 +785,7 @@ export class PdfService {
       settimaneGestazione: "",
       ultimaMestruazione: "",
       dataPresunta: "",
+      modalitaConcepimento: "",
       problemaClinico: visit.descrizioneClinica ?? "",
       gravidanzePrec: 0,
       partiPrec: 0,
@@ -604,6 +793,9 @@ export class PdfService {
       pesoPreGravidanza: 0,
       pesoAttuale: 0,
       pressioneArteriosa: "",
+      fumaInGravidanza: "",
+      pacchettiSigaretteAlGiorno: 0,
+      assunzioneAcidoFolico: "",
       altezzaUterina: "",
       battitiFetali: "",
       movimentiFetali: "",
@@ -749,6 +941,17 @@ export class PdfService {
       obs.abortiPrecSpontanei != null || obs.ivgPrec != null
         ? `${obs.abortiPrec} (${obs.abortiPrecSpontanei ?? 0} AS, ${obs.ivgPrec ?? 0} IVG)`
         : String(obs.abortiPrec);
+    const modalitaConcepimentoLabels: Record<string, string> = {
+      spontaneo: "Spontaneo",
+      fivet: "FIVET",
+      icsi: "ICSI",
+      iui: "IUI/Inseminazione",
+      donazione_ovociti: "Donazione ovociti",
+      altra: "Altra",
+    };
+    const modalitaConcepimentoValue = obs.modalitaConcepimento
+      ? modalitaConcepimentoLabels[obs.modalitaConcepimento] ?? obs.modalitaConcepimento
+      : "-";
     y = this.drawGridRow(
       doc,
       [
@@ -759,6 +962,7 @@ export class PdfService {
           label: "ULTIMA MESTRUAZIONE",
           value: this.formatDate(obs.ultimaMestruazione),
         },
+        { label: "MODALITÀ CONCEP.", value: modalitaConcepimentoValue },
       ],
       y,
     );
@@ -783,36 +987,91 @@ export class PdfService {
         : `${stima.pesoGrammi} g`;
     }
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(
-      SECONDARY_COLOR[0],
-      SECONDARY_COLOR[1],
-      SECONDARY_COLOR[2],
-    );
-    doc.text("PARAMETRI ATTUALI", MARGIN_L, y - 2);
+    const hasAltezza =
+      patient?.altezza != null && patient.altezza > 0;
+    const bmiPartenzaValue =
+      hasAltezza &&
+      obs.pesoPreGravidanza != null &&
+      Number(obs.pesoPreGravidanza) > 0
+        ? (Number(obs.pesoPreGravidanza) / Math.pow(patient!.altezza / 100, 2)).toFixed(1)
+        : "-";
+    const bmiValue =
+      hasAltezza &&
+      obs.pesoAttuale != null &&
+      Number(obs.pesoAttuale) > 0
+        ? (Number(obs.pesoAttuale) / Math.pow(patient!.altezza / 100, 2)).toFixed(1)
+        : "-";
 
-    y = this.drawGridRow(
-      doc,
-      [
-        { label: "SETT. GESTAZIONE", value: obs.settimaneGestazione },
-        { label: "DATA PRESUNTA", value: this.formatDate(obs.dataPresunta) },
-        { label: "PRESSIONE", value: obs.pressioneArteriosa },
-        {
-          label: "PESO ATTUALE",
-          value: obs.pesoAttuale ? `${obs.pesoAttuale} kg` : "-",
-        },
-        {
-          label: "INCREM. PONDERALE",
-          value:
-            obs.pesoAttuale && obs.pesoPreGravidanza
-              ? `${(Number(obs.pesoAttuale) - Number(obs.pesoPreGravidanza)).toFixed(1)} kg`
-              : "-",
-        },
-        { label: "PESO FETALE STIMATO", value: pesoFetaleValue },
-      ],
-      y,
-    );
+    const fumaLabels: Record<string, string> = {
+      no: "No",
+      meno_1: "<1 pacc./gg",
+      "1": "1 pacc./gg",
+      "2": "2 pacc./gg",
+      "3": "3 pacc./gg",
+      "4": "4 pacc./gg",
+      "5_plus": "5+ pacc./gg",
+    };
+    const fumaValue = obs.fumaInGravidanza
+      ? fumaLabels[obs.fumaInGravidanza] ?? obs.fumaInGravidanza
+      : "-";
+    // Retrocompatibilità: se salvato con vecchio formato "si" + pacchettiSigaretteAlGiorno
+    const fumaDisplay =
+      fumaValue !== "-"
+        ? fumaValue
+        : obs.pacchettiSigaretteAlGiorno != null &&
+            Number(obs.pacchettiSigaretteAlGiorno) > 0
+          ? `${obs.pacchettiSigaretteAlGiorno} pacc./gg`
+          : "-";
+
+    const acidoFolicoValue = obs.assunzioneAcidoFolico === "si" ? "Sì" : obs.assunzioneAcidoFolico === "no" ? "No" : "-";
+
+    const parametriItems = [
+      { label: "SETT. GESTAZIONE", value: obs.settimaneGestazione ?? "" },
+      { label: "DATA PRESUNTA", value: this.formatDate(obs.dataPresunta) },
+      { label: "PRESSIONE", value: obs.pressioneArteriosa ?? "" },
+      {
+        label: "PESO ATTUALE",
+        value: obs.pesoAttuale ? `${obs.pesoAttuale} kg` : "-",
+      },
+      {
+        label: "INCREM. PONDERALE",
+        value:
+          obs.pesoAttuale && obs.pesoPreGravidanza
+            ? `${(Number(obs.pesoAttuale) - Number(obs.pesoPreGravidanza)).toFixed(1)} kg`
+            : "-",
+      },
+      { label: "BMI PARTENZA", value: bmiPartenzaValue },
+      { label: "BMI", value: bmiValue },
+      { label: "FUMA (pacc./gg)", value: fumaDisplay },
+      { label: "ACIDO FOLICO", value: acidoFolicoValue },
+      { label: "PESO FETALE STIMATO", value: pesoFetaleValue },
+    ];
+    const parametriFiltered = this.filterGridItems(parametriItems);
+    if (parametriFiltered.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(
+        SECONDARY_COLOR[0],
+        SECONDARY_COLOR[1],
+        SECONDARY_COLOR[2],
+      );
+      doc.text("PARAMETRI ATTUALI", MARGIN_L, y - 2);
+      y = this.drawGridRow(doc, parametriItems, y);
+    }
+
+    if (options?.includeFetalGrowthChart) {
+      let chartPoints = options.fetalGrowthDataPoints;
+      if (!chartPoints?.length && stima?.calcolabile && stima.pesoGrammi != null) {
+        const ga = parseGestationalWeeks(obs.settimaneGestazione ?? "");
+        if (ga != null && ga >= FETAL_GROWTH_WEEK_RANGE.min && ga <= FETAL_GROWTH_WEEK_RANGE.max) {
+          chartPoints = [{ gaWeeks: ga, pesoGrammi: stima.pesoGrammi }];
+        }
+      }
+      if (chartPoints?.length) {
+        y = this.pageBreak(doc, y, 92);
+        y = this.drawFetalGrowthChart(doc, chartPoints, y);
+      }
+    }
 
     // ── Sections ──
     y = this.drawSection(doc, "ANAMNESI", obs.prestazione, y);

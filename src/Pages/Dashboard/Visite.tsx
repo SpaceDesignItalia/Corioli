@@ -26,6 +26,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useToast } from "../../contexts/ToastContext";
 import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
+import { getFetalGrowthDataPointsFromVisits } from "../../utils/fetalGrowthChartUtils";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -97,6 +98,8 @@ export default function Visite() {
   const [showDoctorEmailInPdf, setShowDoctorEmailInPdf] = useState(true);
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] = useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
+  const [isIncludeFetalGrowthChartModalOpen, setIsIncludeFetalGrowthChartModalOpen] = useState(false);
+  const [pendingPrintIncludeImages, setPendingPrintIncludeImages] = useState(false);
   const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
   const { showToast } = useToast();
 
@@ -151,9 +154,25 @@ export default function Visite() {
     setPreviewPdfLoading(true);
     (async () => {
       try {
+        const fetalGrowthDataPoints =
+          selectedVisit.tipo === "ostetrica"
+            ? getFetalGrowthDataPointsFromVisits(
+                visits.filter(
+                  (v) =>
+                    v.patientId === selectedVisit.patientId &&
+                    v.tipo === "ostetrica" &&
+                    v.dataVisita <= selectedVisit.dataVisita,
+                ),
+                fetalFormula,
+              )
+            : undefined;
         const blob = isGyn
           ? await PdfService.generateGynecologicalPDF(patientForPreview, selectedVisit, { includeEcografiaImages: true })
-          : await PdfService.generateObstetricPDF(patientForPreview, selectedVisit, { includeEcografiaImages: true });
+          : await PdfService.generateObstetricPDF(patientForPreview, selectedVisit, {
+              includeEcografiaImages: true,
+              includeFetalGrowthChart: true,
+              fetalGrowthDataPoints,
+            });
         if (blob && !revoked) {
           const url = URL.createObjectURL(blob);
           setPreviewPdfBlobUrl(url);
@@ -173,7 +192,7 @@ export default function Visite() {
       });
       setPreviewPdfLoading(false);
     };
-  }, [isOpen, selectedVisit?.id, patientForPreview?.id]);
+  }, [isOpen, selectedVisit?.id, patientForPreview?.id, visits, fetalFormula]);
 
   useEffect(() => {
     const load = async () => {
@@ -298,13 +317,30 @@ export default function Visite() {
     return visit.conclusioniDiagnostiche;
   };
 
-  const runPrintPdf = async (visit: Visit, includeEcografiaImages: boolean) => {
+  const runPrintPdf = async (
+    visit: Visit,
+    includeEcografiaImages: boolean,
+    includeFetalGrowthChart?: boolean,
+  ) => {
     if (!patientForPreview) return;
+    let fetalGrowthDataPoints: { gaWeeks: number; pesoGrammi: number }[] | undefined;
+    if (visit.tipo === "ostetrica" && includeFetalGrowthChart) {
+      const fino = visits.filter(
+        (v) => v.patientId === visit.patientId && v.tipo === "ostetrica" && v.dataVisita <= visit.dataVisita,
+      );
+      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(fino, fetalFormula);
+    } else {
+      fetalGrowthDataPoints = undefined;
+    }
     setPdfLoading(true);
     try {
       const blob = visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica"
         ? await PdfService.generateGynecologicalPDF(patientForPreview, visit, { includeEcografiaImages })
-        : await PdfService.generateObstetricPDF(patientForPreview, visit, { includeEcografiaImages });
+        : await PdfService.generateObstetricPDF(patientForPreview, visit, {
+            includeEcografiaImages,
+            includeFetalGrowthChart: includeFetalGrowthChart ?? false,
+            fetalGrowthDataPoints,
+          });
       if (!blob) {
         showToast("Impossibile generare il PDF per la stampa.", "error");
         return;
@@ -353,15 +389,34 @@ export default function Visite() {
       setIsIncludeImagesModalOpen(true);
       return;
     }
+    if (visit.tipo === "ostetrica") {
+      setPendingPrintVisit(visit);
+      setPendingPrintIncludeImages(false);
+      setIsIncludeFetalGrowthChartModalOpen(true);
+      return;
+    }
     await runPrintPdf(visit, false);
   };
 
-  const handleIncludeImagesChoice = async (include: boolean) => {
+  const handleIncludeImagesChoice = (include: boolean) => {
     const visit = pendingPrintVisit;
     setIsIncludeImagesModalOpen(false);
+    if (!visit) return;
+    if (visit.tipo === "ostetrica") {
+      setPendingPrintIncludeImages(include);
+      setIsIncludeFetalGrowthChartModalOpen(true);
+      return;
+    }
+    setPendingPrintVisit(null);
+    runPrintPdf(visit, include);
+  };
+
+  const handleIncludeFetalGrowthChartChoice = async (include: boolean) => {
+    const visit = pendingPrintVisit;
+    setIsIncludeFetalGrowthChartModalOpen(false);
     setPendingPrintVisit(null);
     if (!visit) return;
-    await runPrintPdf(visit, include);
+    await runPrintPdf(visit, pendingPrintIncludeImages, include);
   };
 
   const handleGeneratePdfFromPreview = async (visit: Visit) => {
@@ -803,6 +858,33 @@ export default function Visite() {
             </Button>
             <Button color="primary" onPress={() => handleIncludeImagesChoice(true)}>
               Si, includi immagini
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isIncludeFetalGrowthChartModalOpen}
+        onClose={() => {
+          setPendingPrintVisit(null);
+          setIsIncludeFetalGrowthChartModalOpen(false);
+        }}
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>Includere grafico crescita fetale?</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-gray-600">
+              Vuoi inserire nel PDF il grafico dei centili di crescita fetale
+              (peso stimato vs epoca gestazionale)?
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={() => handleIncludeFetalGrowthChartChoice(false)}>
+              No, genera senza grafico
+            </Button>
+            <Button color="primary" onPress={() => handleIncludeFetalGrowthChartChoice(true)}>
+              Sì, includi grafico
             </Button>
           </ModalFooter>
         </ModalContent>
