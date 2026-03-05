@@ -56,6 +56,7 @@ import {
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
 import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
+import axios from "axios";
 
 const SettingsScreen = () => {
   // ... state declarations ...
@@ -161,6 +162,7 @@ const SettingsScreen = () => {
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateBoxVisible, setUpdateBoxVisible] = useState(false);
 
   const handleNotificationsToggle = () => {
     setNotificationsEnabled(!notificationsEnabled);
@@ -249,6 +251,35 @@ const SettingsScreen = () => {
     loadTemplates();
   }, []);
 
+  const checkUpdateAccess = async (): Promise<boolean> => {
+    try {
+      const doctor = await DoctorService.getDoctor();
+      const clientId = doctor?.id?.trim();
+      if (!clientId) return false;
+
+      const api = (window as unknown as {
+        electronAPI?: { getAppVersion?: () => Promise<string> };
+      }).electronAPI;
+      const currentVersion =
+        (await api?.getAppVersion?.()) || appVersion || "0.0.0";
+
+      const access = await axios.get<{ allowed: boolean; shouldUpdate: boolean }>(
+        `${import.meta.env.VITE_API_URL}/updates/check-access`,
+        {
+          params: {
+            app: "corioli",
+            clientId,
+            currentVersion,
+          },
+        },
+      );
+
+      return Boolean(access.data?.allowed);
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
     const loadCounts = async () => {
       try {
@@ -287,6 +318,14 @@ const SettingsScreen = () => {
     }).electronAPI;
     if (!api?.getAppVersion) return;
     api.getAppVersion().then((v) => setAppVersion(v || ""));
+    void checkUpdateAccess().then((allowed) => {
+      setUpdateBoxVisible(allowed);
+      if (!allowed) {
+        setUpdateAvailable(null);
+        setUpdateDownloaded(false);
+        setUpdateError(null);
+      }
+    });
     api.onUpdaterChecking?.(() => { setUpdateError(null); setUpdateChecking(true); });
     api.onUpdaterAvailable?.((info) => { setUpdateChecking(false); setUpdateAvailable(info?.version ?? "Nuova versione"); });
     api.onUpdaterNotAvailable?.(() => { setUpdateChecking(false); setUpdateAvailable(null); setUpdateError(null); });
@@ -305,6 +344,9 @@ const SettingsScreen = () => {
   const handleCheckForUpdates = async () => {
     const api = (window as unknown as { electronAPI?: { updaterCheck?: () => Promise<{ version?: string; noUpdate?: boolean; error?: string }> } }).electronAPI;
     if (!api?.updaterCheck) return;
+    const allowed = await checkUpdateAccess();
+    setUpdateBoxVisible(allowed);
+    if (!allowed) return;
     setUpdateError(null);
     setUpdateAvailable(null);
     setUpdateDownloaded(false);
@@ -1232,7 +1274,7 @@ const SettingsScreen = () => {
         </Card>
       )}
 
-      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
+      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && updateBoxVisible && (
         <Card className="shadow-sm border border-default-200">
           <CardBody className="py-2 px-4">
             <div className="flex items-center justify-between w-full gap-3">
