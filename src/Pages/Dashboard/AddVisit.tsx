@@ -2013,73 +2013,75 @@ export default function AddVisit() {
                       }
                       classNames={{ label: "pb-1" }}
                     />
-                    <Select
-                      label="Fuma in gravidanza (pacc./giorno)"
-                      placeholder="Seleziona"
-                      size="sm"
-                      variant="bordered"
-                      labelPlacement="outside"
-                      selectedKeys={
-                        ostetriciaData.fumaInGravidanza
-                          ? [ostetriciaData.fumaInGravidanza]
-                          : []
-                      }
-                      onSelectionChange={(keys) =>
-                        handleOstetriciaChange(
-                          "fumaInGravidanza",
-                          (Array.from(keys)[0] as string) ?? "",
-                        )
-                      }
-                      classNames={{ label: "pb-1" }}
-                    >
-                      <SelectItem key="no" value="no">
-                        No (non fumatrice)
-                      </SelectItem>
-                      <SelectItem key="meno_1" value="meno_1">
-                        Meno di 1 pacc./giorno
-                      </SelectItem>
-                      <SelectItem key="1" value="1">
-                        1 pacc./giorno
-                      </SelectItem>
-                      <SelectItem key="2" value="2">
-                        2 pacc./giorno
-                      </SelectItem>
-                      <SelectItem key="3" value="3">
-                        3 pacc./giorno
-                      </SelectItem>
-                      <SelectItem key="4" value="4">
-                        4 pacc./giorno
-                      </SelectItem>
-                      <SelectItem key="5_plus" value="5_plus">
-                        5+ pacc./giorno
-                      </SelectItem>
-                    </Select>
-                    <Select
-                      label="Assunzione acido folico"
-                      placeholder="Seleziona"
-                      size="sm"
-                      variant="bordered"
-                      labelPlacement="outside"
-                      selectedKeys={
-                        ostetriciaData.assunzioneAcidoFolico
-                          ? [ostetriciaData.assunzioneAcidoFolico]
-                          : []
-                      }
-                      onSelectionChange={(keys) =>
-                        handleOstetriciaChange(
-                          "assunzioneAcidoFolico",
-                          (Array.from(keys)[0] as string) ?? "",
-                        )
-                      }
-                      classNames={{ label: "pb-1" }}
-                    >
-                      <SelectItem key="si" value="si">
-                        Sì
-                      </SelectItem>
-                      <SelectItem key="no" value="no">
-                        No
-                      </SelectItem>
-                    </Select>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Select
+                        label="Fuma in gravidanza"
+                        placeholder="Seleziona"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        selectedKeys={
+                          ostetriciaData.fumaInGravidanza
+                            ? [ostetriciaData.fumaInGravidanza]
+                            : []
+                        }
+                        onSelectionChange={(keys) =>
+                          handleOstetriciaChange(
+                            "fumaInGravidanza",
+                            (Array.from(keys)[0] as string) ?? "",
+                          )
+                        }
+                        classNames={{ label: "pb-1" }}
+                      >
+                        <SelectItem key="no" value="no">
+                          No (non fumatrice)
+                        </SelectItem>
+                        <SelectItem key="meno_1" value="meno_1">
+                          Meno di 1 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="1" value="1">
+                          1 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="2" value="2">
+                          2 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="3" value="3">
+                          3 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="4" value="4">
+                          4 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="5_plus" value="5_plus">
+                          5+ pacc./giorno
+                        </SelectItem>
+                      </Select>
+                      <Select
+                        label="Assunzione acido folico"
+                        placeholder="Seleziona"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        selectedKeys={
+                          ostetriciaData.assunzioneAcidoFolico
+                            ? [ostetriciaData.assunzioneAcidoFolico]
+                            : []
+                        }
+                        onSelectionChange={(keys) =>
+                          handleOstetriciaChange(
+                            "assunzioneAcidoFolico",
+                            (Array.from(keys)[0] as string) ?? "",
+                          )
+                        }
+                        classNames={{ label: "pb-1" }}
+                      >
+                        <SelectItem key="si" value="si">
+                          Sì
+                        </SelectItem>
+                        <SelectItem key="no" value="no">
+                          No
+                        </SelectItem>
+                      </Select>
+                    </div>
                   </CardBody>
                 </Card>
 
