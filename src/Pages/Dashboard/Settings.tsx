@@ -27,6 +27,7 @@ import {
   ModalFooter,
   useDisclosure,
   Progress,
+  Spinner,
 } from "@nextui-org/react";
 import {
   User,
@@ -158,9 +159,12 @@ const SettingsScreen = () => {
   >({});
 
   const [appVersion, setAppVersion] = useState<string>("");
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" && navigator.onLine);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [updateDownloading, setUpdateDownloading] = useState(false);
+  const [updateDownloadPercent, setUpdateDownloadPercent] = useState(0);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateBoxVisible, setUpdateBoxVisible] = useState(false);
 
@@ -302,6 +306,17 @@ const SettingsScreen = () => {
   }, []);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     const api = (window as unknown as {
       electronAPI?: {
         getAppVersion?: () => Promise<string>;
@@ -316,8 +331,11 @@ const SettingsScreen = () => {
         removeAllListeners?: (channel: string) => void;
       };
     }).electronAPI;
-    if (!api?.getAppVersion) return;
-    api.getAppVersion().then((v) => setAppVersion(v || ""));
+    if (api?.getAppVersion) {
+      api.getAppVersion().then((v) => setAppVersion(v || ""));
+    } else if (typeof import.meta.env.VITE_APP_VERSION === "string") {
+      setAppVersion(import.meta.env.VITE_APP_VERSION);
+    }
     void checkUpdateAccess().then((allowed) => {
       setUpdateBoxVisible(allowed);
       if (!allowed) {
@@ -326,11 +344,24 @@ const SettingsScreen = () => {
         setUpdateError(null);
       }
     });
-    api.onUpdaterChecking?.(() => { setUpdateError(null); setUpdateChecking(true); });
-    api.onUpdaterAvailable?.((info) => { setUpdateChecking(false); setUpdateAvailable(info?.version ?? "Nuova versione"); });
-    api.onUpdaterNotAvailable?.(() => { setUpdateChecking(false); setUpdateAvailable(null); setUpdateError(null); });
-    api.onUpdaterDownloaded?.(() => { setUpdateDownloaded(true); });
-    api.onUpdaterError?.((msg) => { setUpdateChecking(false); setUpdateError(msg); });
+    api.onUpdaterChecking?.(() => { setUpdateError(null); setUpdateChecking(true); setUpdateDownloading(false); });
+    api.onUpdaterAvailable?.((info) => {
+      setUpdateChecking(false);
+      setUpdateAvailable(info?.version ?? "Nuova versione");
+      setUpdateDownloading(true);
+      setUpdateDownloadPercent(0);
+    });
+    api.onUpdaterNotAvailable?.(() => { setUpdateChecking(false); setUpdateAvailable(null); setUpdateError(null); setUpdateDownloading(false); });
+    api.onUpdaterProgress?.((p: { percent?: number }) => {
+      setUpdateDownloading(true);
+      setUpdateDownloadPercent(typeof p?.percent === "number" ? Math.round(p.percent) : 0);
+    });
+    api.onUpdaterDownloaded?.(() => {
+      setUpdateDownloading(false);
+      setUpdateDownloadPercent(0);
+      setUpdateDownloaded(true);
+    });
+    api.onUpdaterError?.((msg) => { setUpdateChecking(false); setUpdateDownloading(false); setUpdateError(msg); });
     return () => {
       api.removeAllListeners?.("updater:checking");
       api.removeAllListeners?.("updater:available");
@@ -350,6 +381,8 @@ const SettingsScreen = () => {
     setUpdateError(null);
     setUpdateAvailable(null);
     setUpdateDownloaded(false);
+    setUpdateDownloading(false);
+    setUpdateDownloadPercent(0);
     setUpdateChecking(true);
     try {
       const result = await api.updaterCheck();
@@ -1280,6 +1313,18 @@ const SettingsScreen = () => {
             <div className="flex items-center justify-between w-full gap-3">
               <div className="flex items-center gap-2 flex-shrink-0">
                 <h2 className="text-base font-semibold text-gray-900">Aggiornamenti</h2>
+                {updateChecking && (
+                  <span className="flex items-center gap-1.5 text-sm text-default-500">
+                    <Spinner size="sm" color="primary" />
+                    Controllo in corso...
+                  </span>
+                )}
+                {updateDownloading && (
+                  <span className="flex items-center gap-1.5 text-sm text-primary">
+                    <Spinner size="sm" color="primary" />
+                    Download in corso...
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 ml-auto overflow-x-auto whitespace-nowrap">
                 {appVersion && (
@@ -1293,11 +1338,12 @@ const SettingsScreen = () => {
                   color="primary"
                   onPress={handleCheckForUpdates}
                   isLoading={updateChecking}
+                  isDisabled={updateDownloading}
                   startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
                 >
                   Controlla
                 </Button>
-                {updateAvailable && !updateDownloaded && (
+                {updateAvailable && !updateDownloaded && !updateDownloading && (
                   <Chip color="primary" variant="flat">
                     Disponibile: {updateAvailable}
                   </Chip>
@@ -1329,6 +1375,20 @@ const SettingsScreen = () => {
                 </a>
               </div>
             </div>
+            {updateDownloading && (
+              <div className="mt-2 w-full">
+                <Progress
+                  size="sm"
+                  value={updateDownloadPercent}
+                  color="primary"
+                  className="max-w-full"
+                  aria-label="Progresso download aggiornamento"
+                />
+                <p className="text-xs text-default-500 mt-1">
+                  {updateDownloadPercent}% scaricato
+                </p>
+              </div>
+            )}
           </CardBody>
         </Card>
       )}
@@ -2087,10 +2147,10 @@ const SettingsScreen = () => {
         <CardBody>
           <div className="text-center space-y-2">
             <h3 className="font-semibold text-gray-900">Corioli Desktop</h3>
-            <div className="flex justify-center gap-4 text-sm text-gray-600">
-              <span>Versione 1.0.0</span>
+            <div className="flex justify-center gap-4 text-sm text-gray-600 flex-wrap">
+              <span>Versione {appVersion || "—"}</span>
               <span>•</span>
-              <span>Modalità Offline</span>
+              <span>{isOnline ? "Modalità Online" : "Modalità Offline"}</span>
               <span>•</span>
               <span>Dati Locali</span>
             </div>

@@ -46,6 +46,12 @@ interface FooterVisibilityOptions {
 }
 
 export class PdfService {
+  /** Contesto per disegnare il footer su ogni pagina prima di un page break (impostato dalle generate*PDF). */
+  private static footerContext: {
+    doctor: Doctor | null;
+    options: FooterVisibilityOptions;
+  } | null = null;
+
   // ─── Text Sanitization ──────────────────────────────────────────────────
   private static sanitizeText(text: string): string {
     if (!text) return "";
@@ -174,10 +180,12 @@ export class PdfService {
     doc.line(MARGIN_L, y, MARGIN_R, y);
   }
 
-  /** Page break check — returns new Y or same Y */
+  /** Page break check — returns new Y or same Y. Se c'è footerContext, disegna il footer sulla pagina corrente prima di aggiungere la nuova. */
   private static pageBreak(doc: jsPDF, y: number, needed = 40): number {
     if (y + needed > 275) {
-      // Increased tolerance (less bottom margin)
+      if (PdfService.footerContext) {
+        this.drawFooter(doc, PdfService.footerContext.doctor, PdfService.footerContext.options);
+      }
       doc.addPage();
       return 20; // Start higher on new page
     }
@@ -335,6 +343,7 @@ export class PdfService {
   }
 
   // ─── Section Drawing ────────────────────────────────────────────────────
+  /** Disegna il contenuto riga per riga con page break per non oltrepassare il piede di pagina. */
   private static drawSection(
     doc: jsPDF,
     title: string,
@@ -358,18 +367,23 @@ export class PdfService {
 
     y += 8; // Closer content
 
-    // Content
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5); // Slightly smaller font
-    doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
-
+    // Content: riga per riga con page break così il testo non supera il piede di pagina.
+    // Dopo ogni pageBreak drawFooter imposta font 7: ripristiniamo font/contenuto prima di ogni riga.
     const sanitized = this.s(content);
     const lines = doc.splitTextToSize(sanitized, PAGE_W - 4);
-    doc.text(lines, MARGIN_L + 2, y);
-    y += lines.length * LINE_H;
+    for (const line of lines) {
+      y = this.pageBreak(doc, y, LINE_H);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+      doc.text(line, MARGIN_L + 2, y);
+      y += LINE_H;
+    }
 
-    // Optional Note (Disclaimer)
+    // Optional Note (Disclaimer) — anche la nota con page break; ripristinare stile nota dopo ogni break.
+    const NOTE_LINE_H = 3;
     if (note) {
+      y = this.pageBreak(doc, y, NOTE_LINE_H + 2);
       y += 2;
       doc.setFont("helvetica", "italic");
       doc.setFontSize(7);
@@ -379,8 +393,18 @@ export class PdfService {
         SECONDARY_COLOR[2],
       );
       const noteLines = doc.splitTextToSize(note, PAGE_W - 4);
-      doc.text(noteLines, MARGIN_L + 2, y);
-      y += noteLines.length * 3;
+      for (const line of noteLines) {
+        y = this.pageBreak(doc, y, NOTE_LINE_H);
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(7);
+        doc.setTextColor(
+          SECONDARY_COLOR[0],
+          SECONDARY_COLOR[1],
+          SECONDARY_COLOR[2],
+        );
+        doc.text(line, MARGIN_L + 2, y);
+        y += NOTE_LINE_H;
+      }
     }
 
     return y + SECTION_GAP;
@@ -841,6 +865,11 @@ export class PdfService {
       DoctorService.getDoctor(),
       PreferenceService.getPreferences(),
     ]);
+    const footerOpts: FooterVisibilityOptions = {
+      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
+    };
+    PdfService.footerContext = { doctor, options: footerOpts };
     const doc = new jsPDF();
 
     let y = this.drawHeader(
@@ -901,11 +930,12 @@ export class PdfService {
       y = await this.drawEcografiaImages(doc, gyn.ecografiaImmagini, y);
     }
     y = this.drawSection(doc, "Conclusioni e Terapia", gyn.terapiaSpecifica, y);
-    this.drawFooter(doc, doctor, {
-      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
-      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
-    });
-    return doc.output("blob") as Blob;
+    try {
+      this.drawFooter(doc, doctor, footerOpts);
+      return doc.output("blob") as Blob;
+    } finally {
+      PdfService.footerContext = null;
+    }
   }
 
   static async generateObstetricPDF(
@@ -920,6 +950,11 @@ export class PdfService {
       DoctorService.getDoctor(),
       PreferenceService.getPreferences(),
     ]);
+    const footerOpts: FooterVisibilityOptions = {
+      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
+    };
+    PdfService.footerContext = { doctor, options: footerOpts };
     const formulaPesoFetale =
       (prefs?.formulaPesoFetale as string) || "hadlock4";
     const doc = new jsPDF();
@@ -1089,11 +1124,12 @@ export class PdfService {
       y = await this.drawEcografiaImages(doc, obs.ecografiaImmagini, y);
     }
     y = this.drawSection(doc, "Conclusioni e Terapia", obs.noteOstetriche, y);
-    this.drawFooter(doc, doctor, {
-      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
-      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
-    });
-    return doc.output("blob") as Blob;
+    try {
+      this.drawFooter(doc, doctor, footerOpts);
+      return doc.output("blob") as Blob;
+    } finally {
+      PdfService.footerContext = null;
+    }
   }
 
   /** PDF dedicato: foglio a parte per una singola richiesta esame complementare */

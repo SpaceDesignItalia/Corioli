@@ -1405,11 +1405,13 @@ export default function PatientHistory() {
         scrollBehavior="inside"
         classNames={
           previewFullscreen
-            ? { base: "m-0 max-w-[100vw] max-h-[100vh] rounded-none" }
+            ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" }
             : undefined
         }
       >
-        <ModalContent>
+        <ModalContent
+          className={previewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}
+        >
           {selectedVisit && (
             <>
               <ModalHeader className="flex flex-col gap-1">
@@ -1438,7 +1440,9 @@ export default function PatientHistory() {
                   </Chip>
                 </div>
               </ModalHeader>
-              <ModalBody>
+              <ModalBody
+                className={previewFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : undefined}
+              >
                 {(selectedVisit.tipo === "ginecologica" ||
                   selectedVisit.tipo === "ginecologica_pediatrica" ||
                   selectedVisit.tipo === "ostetrica") &&
@@ -1447,11 +1451,21 @@ export default function PatientHistory() {
                       <Spinner size="lg" color="primary" label="Generazione anteprima PDF..." />
                     </div>
                   ) : previewPdfBlobUrl ? (
-                    <div className="bg-[#e5e5e5] rounded-lg p-2 flex flex-col min-h-[70vh]">
+                    <div
+                      className={
+                        previewFullscreen
+                          ? "flex-1 min-h-0 flex flex-col rounded-lg p-2 bg-[#e5e5e5]"
+                          : "bg-[#e5e5e5] rounded-lg p-2 flex flex-col min-h-[70vh]"
+                      }
+                    >
                       <iframe
                         src={previewPdfBlobUrl}
                         title="Anteprima referto"
-                        className="flex-1 w-full min-h-[70vh] rounded border border-gray-300 bg-white"
+                        className={
+                          previewFullscreen
+                            ? "flex-1 w-full min-h-0 rounded border border-gray-300 bg-white"
+                            : "flex-1 w-full min-h-[70vh] rounded border border-gray-300 bg-white"
+                        }
                       />
                     </div>
                   ) : (
