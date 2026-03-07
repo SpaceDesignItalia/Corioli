@@ -7,11 +7,12 @@ import {
 import { DoctorService, PreferenceService } from "./OfflineServices";
 import { calcolaStimePesoFetale } from "../utils/fetalWeightUtils";
 import {
-  parseGestationalWeeks,
   estimateCentileRank,
   formatCentileLabel,
-  getGrowthCategory,
   getCentileForWeight,
+  getGrowthCategory,
+  getWeightPercentiles,
+  parseGestationalWeeks,
 } from "../utils/fetalGrowthCentiles";
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
@@ -24,11 +25,14 @@ const LH = 4.8;
 
 // ─── B&W palette ─────────────────────────────────────────────────────────────
 const K0 = [0, 0, 0] as const;
-const K30 = [30, 30, 30] as const;
-const K80 = [80, 80, 80] as const;
-const K140 = [140, 140, 140] as const;
-const K200 = [200, 200, 200] as const;
-const K235 = [235, 235, 235] as const;
+const K30: [number, number, number] = [30, 30, 30];
+const K80: [number, number, number] = [80, 80, 80];
+const K100: [number, number, number] = [100, 100, 100];
+const K140: [number, number, number] = [140, 140, 140];
+const K200: [number, number, number] = [200, 200, 200];
+const K235: [number, number, number] = [235, 235, 235];
+const K240: [number, number, number] = [240, 240, 240];
+const K245: [number, number, number] = [245, 245, 245] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BIOMETRIC CENTILE DATA (Hadlock Refined)
@@ -477,6 +481,7 @@ export class PdfService {
     if (hasEfw) {
       const EFW_COL_A = 52;   // label (largo per "PSF - Peso Stimato Fetale" senza toccare la riga)
       const EFW_COL_B = 44;   // value
+      const EFW_COL_C = PW - EFW_COL_A - EFW_COL_B;  // bar
 
       y = this.pb(doc, y, ROW_H * 2 + 2);
 
@@ -515,6 +520,21 @@ export class PdfService {
       }
       doc.text(`${efwGrams} g${efwCentileStr}`, ML + EFW_COL_A + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
       doc.line(ML + EFW_COL_A + EFW_COL_B, y, ML + EFW_COL_A + EFW_COL_B, y + ROW_H);
+
+      // grafico a barre del percentile
+      if (gaWeeks !== null) {
+        const pesoRef = getWeightPercentiles(gaWeeks);
+        if (pesoRef) {
+          this.drawPercentileBar(
+            doc,
+            ML + EFW_COL_A + EFW_COL_B,
+            y + ROW_H / 2,
+            EFW_COL_C,
+            pesoRef.p5, pesoRef.p50, pesoRef.p95,
+            efwGrams,
+          );
+        }
+      }
 
       y += ROW_H;
 
@@ -979,50 +999,71 @@ export class PdfService {
     const abortiV = obs.abortiPrecSpontanei != null || obs.ivgPrec != null
       ? `${obs.abortiPrec} (${obs.abortiPrecSpontanei ?? 0} AS, ${obs.ivgPrec ?? 0} IVG)` : String(obs.abortiPrec);
 
-    // ── SEZIONE 1 — Datazione e gravidanza (4 col × 45mm = 180mm) ────────────
-    y = this.heading(doc, y, "Datazione e gravidanza");
-    y = this.table(doc, y, [
-      { header: "Ultima Mestruazione", w: 38 },
-      { header: "Modalita' Concepimento", w: 44 },
-      { header: "Settimane Gestazione", w: 40 },
-      { header: "Data Presunta Parto", w: 58 },
-    ], [[fd(obs.ultimaMestruazione), concep, v(obs.settimaneGestazione), fd(obs.dataPresunta)]], { rowH: 8 });
+    // ── INQUADRAMENTO OSTETRICO E MATERNO ─────────────────────────────────────────
+    y = this.heading(doc, y, "Inquadramento Ostetrico e Materno");
+    y = this.pb(doc, y, 40);
 
-    // ── SEZIONE 2 — Storia ostetrica (3 col × 60mm = 180mm) ──────────────────
-    y = this.heading(doc, y, "Storia ostetrica");
-    y = this.table(doc, y, [
-      { header: "Gravidanze prec. (G)", w: 60 },
-      { header: "Parti prec. (P)", w: 60 },
-      { header: "Aborti prec. (A)", w: 60 },
-    ], [[String(obs.gravidanzePrec), partiV, abortiV]], { rowH: 8 });
+    const colW = PW / 3;
 
-    // ── SEZIONE 3 — Parametri materni (4+4 col × 45mm = 180mm each row) ──────
-    y = this.heading(doc, y, "Parametri materni");
-    // Riga A: pesi + pressione
-    y = this.table(doc, y, [
-      { header: "Peso pre-gravidanza", w: 45 },
-      { header: "Peso attuale", w: 45 },
-      { header: "Incremento ponderale", w: 45 },
-      { header: "Pressione arteriosa", w: 45 },
-    ], [[
-      obs.pesoPreGravidanza ? `${obs.pesoPreGravidanza} kg` : "-",
-      obs.pesoAttuale ? `${obs.pesoAttuale} kg` : "-",
-      delta, v(obs.pressioneArteriosa),
-    ]], { rowH: 8 });
-    // Riga B: BMI + stile di vita
-    y = this.table(doc, y, [
-      { header: "BMI pre-gravidanza", w: 45 },
-      { header: "BMI attuale", w: 45 },
-      { header: "Fumo in gravidanza", w: 45 },
-      { header: "Acido folico", w: 45 },
-    ], [[bmiPre, bmiNow, fumo, folico]], { rowH: 8 });
-    // Riga C: battiti + movimenti (opzionale)
-    if (obs.battitiFetali || obs.movimentiFetali) {
-      y = this.table(doc, y, [
-        { header: "Battiti fetali", w: 90 },
-        { header: "Movimenti fetali", w: 90 },
-      ], [[obs.battitiFetali ?? "-", obs.movimentiFetali ?? "-"]], { rowH: 8 });
+    // Configura i 3 blocchi di informazioni
+    const dateInfo = [
+      { label: "U.M.", value: fd(obs.ultimaMestruazione) },
+      { label: "D.P.P.", value: fd(obs.dataPresunta) },
+      { label: "Epoca", value: v(obs.settimaneGestazione) },
+      { label: "Concepimento", value: concep },
+    ];
+
+    const historyInfo = [
+      { label: "Gravidanze (G)", value: String(obs.gravidanzePrec) },
+      { label: "Parti (P)", value: partiV },
+      { label: "Aborti (A)", value: abortiV },
+    ];
+
+    const materniInfo = [
+      { label: "Pesi (Pre/Att)", value: `${obs.pesoPreGravidanza || '-'} / ${obs.pesoAttuale || '-'} kg` },
+      { label: "Incr. pond.", value: delta },
+      { label: "BMI (Pre/Att)", value: `${bmiPre} / ${bmiNow}` },
+      { label: "PA", value: v(obs.pressioneArteriosa) },
+      { label: "Stile di vita", value: `${fumo} fumo, ${folico} acido folico` },
+    ];
+
+    const allBlocks = [dateInfo, historyInfo, materniInfo];
+    let maxY = y;
+
+    // Disegna l'intestazione dei 3 sotto-blocchi per renderli subito distinguibili
+    const subHeaders = ["Datazione", "Storia Ostetrica", "Parametri Materni"];
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K100);
+    this.dc(doc, K200); doc.setLineWidth(0.2);
+
+    for (let c = 0; c < 3; c++) {
+      const cx = ML + c * colW;
+
+      // Sotto-titolo grigio
+      this.fc(doc, K240);
+      doc.rect(cx, y, colW - 2, 6, "F");
+      this.tc(doc, K30);
+      doc.text(subHeaders[c], cx + 2, y + 4);
+
+      let cy = y + 8;
+      doc.setFontSize(8);
+
+      for (const item of allBlocks[c]) {
+        if (!item) continue;
+        doc.setFont("helvetica", "bold"); this.tc(doc, K80);
+        const lbl = san(item.label) + ": ";
+        doc.text(lbl, cx, cy);
+
+        doc.setFont("helvetica", "normal"); this.tc(doc, K0);
+        const vlines = doc.splitTextToSize(san(item.value), colW - doc.getTextWidth(lbl) - 3);
+        for (const line of vlines) {
+          doc.text(line, cx + doc.getTextWidth(lbl), cy);
+          cy += LH;
+        }
+      }
+      maxY = Math.max(maxY, cy);
     }
+
+    y = maxY + 2;
 
     // ── SEZIONE 4 — Biometria fetale con barre percentile inline ─────────────
     y = this.drawBiometriaTable(

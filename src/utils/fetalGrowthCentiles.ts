@@ -127,21 +127,31 @@ export function getGrowthCategory(centile: number): "SGA" | "LGA" | "AGA" {
   return "AGA";
 }
 
-/**
- * Dato il peso in grammi e l'età gestazionale (settimane decimali),
- * restituisce il centile puntuale (0-100) usando la logica a 3 punti (p5, p50, p95)
- * coerente col PDF.
- */
 export function getCentileForWeight(weightG: number, gaWeeks: number): number | null {
   if (gaWeeks < MIN_WEEK || gaWeeks > MAX_WEEK || weightG <= 0) return null;
   const row = getPercentilesAtWeek(gaWeeks);
   if (!row) return null;
   // row corrisponde a CENTILE_INDEX = [5, 10, 25, 50, 75, 90, 95]
   // Usiamo p5 (idx 0), p50 (idx 3), p95 (idx 6) per coerenza col PDF
-  const p5 = row[0];
-  const p50 = row[3];
-  const p95 = row[6];
+  const p5 = row[0] ?? 0;
+  const p50 = row[3] ?? 0;
+  const p95 = row[6] ?? 0;
   return estimateCentileRank(weightG, p5, p50, p95);
+}
+
+/**
+ * Restituisce i valori assoluti di peso per i percentili 5, 50 e 95 alla settimana indicata.
+ * Utile per disegnare graficamente la barra dei percentili nel PDF.
+ */
+export function getWeightPercentiles(gaWeeks: number): { p5: number; p50: number; p95: number } | null {
+  if (gaWeeks < MIN_WEEK || gaWeeks > MAX_WEEK) return null;
+  const row = getPercentilesAtWeek(gaWeeks);
+  if (!row) return null;
+  return {
+    p5: row[0] ?? 0,
+    p50: row[3] ?? 0,
+    p95: row[6] ?? 0,
+  };
 }
 
 /**
