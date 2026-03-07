@@ -4,32 +4,32 @@
  * Peso in grammi, età gestazionale in settimane (es. 22.43 per 22+3).
  */
 
-/** Peso (g) per centili 5, 10, 25, 50, 75, 90, 95 a ogni settimana 20-42 */
+/** Peso (g) per centili 5, 10, 25, 50, 75, 90, 95 a ogni settimana 20-42 (Hadlock -3% population adjustment) */
 const CENTILE_TABLE: Record<number, [number, number, number, number, number, number, number]> = {
   // week: [p5, p10, p25, p50, p75, p90, p95]
-  20: [260, 280, 300, 331, 365, 400, 420],
-  21: [315, 340, 365, 399, 438, 478, 502],
-  22: [375, 405, 435, 478, 525, 575, 605],
-  23: [442, 478, 515, 568, 625, 685, 720],
-  24: [518, 560, 605, 670, 738, 810, 852],
-  25: [602, 650, 702, 785, 865, 950, 1000],
-  26: [695, 752, 812, 913, 1005, 1105, 1162],
-  27: [798, 862, 932, 1055, 1162, 1278, 1345],
-  28: [908, 982, 1062, 1210, 1335, 1470, 1548],
-  29: [1028, 1112, 1202, 1379, 1522, 1675, 1765],
-  30: [1158, 1252, 1355, 1560, 1722, 1898, 2000],
-  31: [1298, 1405, 1520, 1754, 1935, 2135, 2250],
-  32: [1448, 1568, 1698, 1960, 2162, 2385, 2515],
-  33: [1610, 1742, 1885, 2178, 2402, 2648, 2792],
-  34: [1782, 1928, 2085, 2407, 2655, 2928, 3085],
-  35: [1965, 2125, 2300, 2646, 2920, 3220, 3395],
-  36: [2158, 2335, 2528, 2895, 3195, 3525, 3718],
-  37: [2362, 2555, 2768, 3153, 3482, 3842, 4052],
-  38: [2575, 2785, 3015, 3419, 3782, 4175, 4402],
-  39: [2798, 3025, 3275, 3692, 4095, 4522, 4770],
-  40: [3032, 3278, 3550, 3971, 4420, 4882, 5152],
-  41: [3275, 3542, 3835, 4255, 4758, 5258, 5550],
-  42: [3528, 3815, 4132, 4543, 5110, 5648, 5962],
+  20: [252, 272, 291, 321, 354, 388, 407],
+  21: [306, 330, 354, 387, 425, 464, 487],
+  22: [364, 393, 422, 464, 509, 558, 587],
+  23: [429, 464, 500, 551, 606, 664, 698],
+  24: [502, 543, 587, 650, 716, 786, 826],
+  25: [584, 631, 681, 761, 839, 922, 970],
+  26: [674, 729, 788, 886, 975, 1072, 1127],
+  27: [774, 836, 904, 1023, 1127, 1240, 1305],
+  28: [881, 953, 1030, 1174, 1295, 1426, 1502],
+  29: [997, 1079, 1166, 1338, 1476, 1625, 1712],
+  30: [1123, 1214, 1314, 1513, 1670, 1841, 1940],
+  31: [1259, 1363, 1474, 1701, 1877, 2071, 2183],
+  32: [1405, 1521, 1647, 1901, 2097, 2313, 2440],
+  33: [1562, 1690, 1828, 2113, 2330, 2569, 2708],
+  34: [1729, 1870, 2022, 2335, 2575, 2840, 2992],
+  35: [1906, 2061, 2231, 2567, 2832, 3123, 3293],
+  36: [2093, 2265, 2452, 2808, 3099, 3419, 3606],
+  37: [2291, 2478, 2685, 3058, 3378, 3727, 3930],
+  38: [2498, 2701, 2925, 3316, 3669, 4050, 4270],
+  39: [2714, 2934, 3177, 3581, 3972, 4386, 4627],
+  40: [2941, 3180, 3444, 3852, 4287, 4736, 4997],
+  41: [3177, 3436, 3720, 4127, 4615, 5100, 5384],
+  42: [3422, 3701, 4008, 4407, 4957, 5479, 5783],
 };
 
 const CENTILE_INDEX = [5, 10, 25, 50, 75, 90, 95] as const;
@@ -74,40 +74,83 @@ function getPercentilesAtWeek(week: number): number[] | null {
 }
 
 /**
+ * Calcola la Cumulative Distribution Function (CDF) della distribuzione normale standard.
+ * Approssimazione numerica (Abramowitz & Stegun 7.1.26).
+ * Errore < 1.5 * 10^-7.
+ */
+function normalCDF(x: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989422804014337 * Math.exp(-x * x / 2);
+  const prob = d * t * (0.319381530 * t + -0.356563782 * t * t + 1.781477937 * t * t * t + -1.821255978 * t * t * t * t + 1.330274429 * t * t * t * t * t);
+  if (x > 0) return 1 - prob;
+  return prob;
+}
+
+/**
+ * Stima il rango centile (0-100) assumendo una distribuzione normale.
+ * Ricostruisce Media e SD dai percentili p5, p50, p95 forniti.
+ * Mean = p50
+ * SD = (p95 - p5) / 3.29  (poiché p5-p95 copre +/- 1.645 SD = 3.29 SD)
+ */
+export function estimateCentileRank(value: number, p5: number, p50: number, p95: number): number {
+  // Sanity check
+  if (p5 >= p95) return 50;
+
+  const mean = p50;
+  const sd = (p95 - p5) / 3.29;
+
+  if (sd <= 0) return 50;
+
+  const z = (value - mean) / sd;
+  const percentile = normalCDF(z) * 100;
+
+  // Clamp 0-100 (anche se CDF lo fa già matematicamente, utile per precisione JS)
+  return Math.min(100, Math.max(0, percentile));
+}
+
+/** Formatta il centile per la UI (es. <5°, 78°, >95°) */
+export function formatCentileLabel(rank: number): string {
+  if (rank <= 5.01) return "<5°";
+  if (rank >= 94.99) return ">95°";
+  return `${Math.round(rank)}°`;
+}
+
+/**
+ * Restituisce la categoria di crescita clinica basata sul centile.
+ * SGA: Small for Gestational Age (<10°)
+ * LGA: Large for Gestational Age (>90°)
+ * AGA: Appropriate for Gestational Age (10-90°)
+ */
+export function getGrowthCategory(centile: number): "SGA" | "LGA" | "AGA" {
+  if (centile < 10) return "SGA";
+  if (centile > 90) return "LGA";
+  return "AGA";
+}
+
+/**
  * Dato il peso in grammi e l'età gestazionale (settimane decimali),
- * restituisce il centile approssimato (5, 10, 25, 50, 75, 90, 95 o interpolato).
- * Restituisce null se GA o peso fuori range.
+ * restituisce il centile puntuale (0-100) usando la logica a 3 punti (p5, p50, p95)
+ * coerente col PDF.
  */
 export function getCentileForWeight(weightG: number, gaWeeks: number): number | null {
   if (gaWeeks < MIN_WEEK || gaWeeks > MAX_WEEK || weightG <= 0) return null;
   const row = getPercentilesAtWeek(gaWeeks);
   if (!row) return null;
-  if (weightG <= row[0]) return 5;
-  if (weightG >= row[6]) return 95;
-  for (let i = 0; i < CENTILE_INDEX.length - 1; i++) {
-    if (weightG >= row[i] && weightG <= row[i + 1]) {
-      const p0 = CENTILE_INDEX[i];
-      const p1 = CENTILE_INDEX[i + 1];
-      const t = (weightG - row[i]) / (row[i + 1] - row[i]);
-      return Math.round(p0 + t * (p1 - p0));
-    }
-  }
-  return null;
+  // row corrisponde a CENTILE_INDEX = [5, 10, 25, 50, 75, 90, 95]
+  // Usiamo p5 (idx 0), p50 (idx 3), p95 (idx 6) per coerenza col PDF
+  const p5 = row[0];
+  const p50 = row[3];
+  const p95 = row[6];
+  return estimateCentileRank(weightG, p5, p50, p95);
 }
 
 /**
- * Restituisce una etichetta breve per il centile (es. "<5", "50", "75-90", ">95").
+ * DEPRECATA: Usa formatCentileLabel(rank) invece.
+ * Mantenuta per retrocompatibilità se necessario, ma ora delega.
  */
 export function getCentileLabel(centile: number | null): string {
   if (centile == null) return "";
-  if (centile <= 5) return "<5°";
-  if (centile >= 95) return ">95°";
-  const idx = CENTILE_INDEX.indexOf(centile as (typeof CENTILE_INDEX)[number]);
-  if (idx >= 0) return `${centile}°`;
-  const below = CENTILE_INDEX.filter((p) => p < centile).pop();
-  const above = CENTILE_INDEX.filter((p) => p > centile).shift();
-  if (below != null && above != null) return `${below}-${above}°`;
-  return `${centile}°`;
+  return formatCentileLabel(centile);
 }
 
 /** Range settimane per il grafico */

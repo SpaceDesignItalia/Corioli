@@ -511,25 +511,48 @@ export default function AddVisit() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fullscreenImage]);
 
-  // Calcolo automatico gravidanza
-  useEffect(() => {
-    if (ostetriciaData.ultimaMestruazione && visitData.tipo === "ostetrica") {
-      const lmp = parseISO(ostetriciaData.ultimaMestruazione);
-      if (isValid(lmp)) {
-        const dpp = addDays(lmp, 280);
-        const today = new Date();
-        const diffDays = differenceInDays(today, lmp);
-        const weeks = Math.floor(diffDays / 7);
-        const days = diffDays % 7;
+  const [suggestions, setSuggestions] = useState<{
+    gestazione?: string;
+    dpp?: string;
+  }>({});
 
-        setOstetriciaData((prev) => ({
-          ...prev,
-          dataPresunta: dpp.toISOString().slice(0, 10),
-          settimaneGestazione: `${weeks}+${days}`,
-        }));
+  // Calcolo suggerimenti gravidanza
+  useEffect(() => {
+    if (visitData.tipo !== "ostetrica") {
+      setSuggestions({});
+      return;
+    }
+
+    const newState: { gestazione?: string; dpp?: string } = {};
+    const lmp = parseISO(ostetriciaData.ultimaMestruazione || "");
+    const visitDate = parseISO(visitData.dataVisita);
+
+    if (isValid(lmp)) {
+      // DPP
+      const dppDate = addDays(lmp, 280);
+      const dppStr = format(dppDate, "yyyy-MM-dd");
+      if (dppStr !== ostetriciaData.dataPresunta) {
+        newState.dpp = dppStr;
+      }
+
+      // Settimane
+      if (isValid(visitDate)) {
+        const diffDays = differenceInDays(visitDate, lmp);
+        if (diffDays > 0 && diffDays < 300) { // sanity check
+          const weeks = Math.floor(diffDays / 7);
+          const days = diffDays % 7;
+          const gestStr = `${weeks}+${days}`;
+          if (gestStr !== ostetriciaData.settimaneGestazione) {
+            newState.gestazione = gestStr;
+          }
+        }
       }
     }
-  }, [ostetriciaData.ultimaMestruazione, visitData.tipo]);
+    setSuggestions(newState);
+  }, [ostetriciaData.ultimaMestruazione, visitData.dataVisita, ostetriciaData.dataPresunta, ostetriciaData.settimaneGestazione, visitData.tipo]);
+
+  // Calcolo automatico gravidanza spostato negli handler onChange per evitare sovrascritture indesiderate al mount.
+
 
   const handleTemplateSelect = (
     category: "ginecologia" | "ostetrica",
@@ -1027,14 +1050,17 @@ export default function AddVisit() {
       const diffDays = currentGaDays != null ? Math.abs(gaDays - currentGaDays) : 999;
       if (diffDays >= 1) {
         next.settimaneGestazione = newSettimane;
-        const edd = subDays(new Date(), gaDays);
-        const dpp = addDays(edd, 280);
-        next.dataPresunta = format(dpp, "yyyy-MM-dd");
+        const visitDate = parseISO(visitData.dataVisita);
+        if (isValid(visitDate)) {
+          const edd = subDays(visitDate, gaDays);
+          const dpp = addDays(edd, 280);
+          next.dataPresunta = format(dpp, "yyyy-MM-dd");
+        }
         const oldSett = prev.settimaneGestazione || "—";
         const oldDpp = prev.dataPresunta ? format(parseISO(prev.dataPresunta), "dd/MM/yyyy") : "—";
         setTimeout(() => {
           showToast(
-            `In base al CRL (${num} mm): settimane da ${oldSett} a ${newSettimane}; data presunta parto da ${oldDpp} a ${format(dpp, "dd/MM/yyyy")}.`,
+            `In base al CRL (${num} mm): settimane da ${oldSett} a ${newSettimane}; data presunta parto da ${oldDpp} a ${next.dataPresunta ? format(parseISO(next.dataPresunta), "dd/MM/yyyy") : "—"}.`,
             "warning",
           );
         }, 0);
@@ -1896,18 +1922,38 @@ export default function AddVisit() {
                     Dati Gravidanza Attuale
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-10">
-                    <Input
-                      type="text"
-                      label="Settimane di Gestazione"
-                      value={ostetriciaData.settimaneGestazione}
-                      onValueChange={(value) =>
-                        handleOstetriciaChange("settimaneGestazione", value)
-                      }
-                      variant="bordered"
-                      labelPlacement="outside"
-                      placeholder="es. 22+3"
-                      classNames={{ input: "text-base", label: "pb-1" }}
-                    />
+                    <div className="relative">
+                      <Input
+                        type="text"
+                        label="Settimane di Gestazione"
+                        value={ostetriciaData.settimaneGestazione}
+                        onValueChange={(value) =>
+                          handleOstetriciaChange("settimaneGestazione", value)
+                        }
+                        variant="bordered"
+                        labelPlacement="outside"
+                        placeholder="es. 22+3"
+                        classNames={{ input: "text-base", label: "pb-1" }}
+                      />
+                      {suggestions.gestazione && (
+                        <div className="absolute right-0 -top-1 z-10">
+                          <Chip
+                            size="sm"
+                            color="primary"
+                            variant="flat"
+                            className="cursor-pointer hover:bg-primary/20 h-6 px-1"
+                            onClick={() =>
+                              handleOstetriciaChange(
+                                "settimaneGestazione",
+                                suggestions.gestazione,
+                              )
+                            }
+                          >
+                            Suggerito: {suggestions.gestazione}
+                          </Chip>
+                        </div>
+                      )}
+                    </div>
                     <Input
                       type="date"
                       label="Ultima Mestruazione"
@@ -1919,17 +1965,37 @@ export default function AddVisit() {
                       labelPlacement="outside"
                       classNames={{ input: "text-base", label: "pb-1" }}
                     />
-                    <Input
-                      type="date"
-                      label="Data Presunta Parto"
-                      value={ostetriciaData.dataPresunta}
-                      onValueChange={(value) =>
-                        handleOstetriciaChange("dataPresunta", value)
-                      }
-                      variant="bordered"
-                      labelPlacement="outside"
-                      classNames={{ input: "text-base", label: "pb-1" }}
-                    />
+                    <div className="relative">
+                      <Input
+                        type="date"
+                        label="Data Presunta Parto"
+                        value={ostetriciaData.dataPresunta}
+                        onValueChange={(value) =>
+                          handleOstetriciaChange("dataPresunta", value)
+                        }
+                        variant="bordered"
+                        labelPlacement="outside"
+                        classNames={{ input: "text-base", label: "pb-1" }}
+                      />
+                      {suggestions.dpp && (
+                        <div className="absolute right-0 -top-1 z-10">
+                          <Chip
+                            size="sm"
+                            color="primary"
+                            variant="flat"
+                            className="cursor-pointer hover:bg-primary/20 h-6 px-1"
+                            onClick={() =>
+                              handleOstetriciaChange("dataPresunta", suggestions.dpp)
+                            }
+                          >
+                            Suggerito: {format(
+                              parseISO(suggestions.dpp),
+                              "dd/MM/yyyy",
+                            )}
+                          </Chip>
+                        </div>
+                      )}
+                    </div>
                     <Select
                       label="Modalità di concepimento"
                       placeholder="Seleziona"

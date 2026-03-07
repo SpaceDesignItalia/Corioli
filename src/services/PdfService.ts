@@ -8,107 +8,128 @@ import { DoctorService, PreferenceService } from "./OfflineServices";
 import { calcolaStimePesoFetale } from "../utils/fetalWeightUtils";
 import {
   parseGestationalWeeks,
+  estimateCentileRank,
+  formatCentileLabel,
+  getGrowthCategory,
+  getCentileForWeight,
 } from "../utils/fetalGrowthCentiles";
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
-const ML     = 15;
-const MR     = 195;
-const PW     = MR - ML;   // 180 mm
+const ML = 15;
+const MR = 195;
+const PW = MR - ML;   // 180 mm
 const PAGE_H = 297;
 const FOOT_Y = PAGE_H - 14;
-const LH     = 4.8;
+const LH = 4.8;
 
 // ─── B&W palette ─────────────────────────────────────────────────────────────
-const K0   = [0,   0,   0  ] as const;
-const K30  = [30,  30,  30 ] as const;
-const K80  = [80,  80,  80 ] as const;
+const K0 = [0, 0, 0] as const;
+const K30 = [30, 30, 30] as const;
+const K80 = [80, 80, 80] as const;
 const K140 = [140, 140, 140] as const;
 const K200 = [200, 200, 200] as const;
 const K235 = [235, 235, 235] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BIOMETRIC CENTILE DATA  (Hadlock 1984 / WHO)
+// BIOMETRIC CENTILE DATA (Hadlock Refined)
+// Ricalcolati su medie Hadlock standard con SD tipiche:
+// BPD +/- 6mm, HC +/- 18mm, AC +/- 21mm, FL +/- 4.6mm
 // ─────────────────────────────────────────────────────────────────────────────
 interface CentilePoint { week: number; p5: number; p50: number; p95: number; }
 
+// ─── Hadlock Biometric Centiles (Smoothed Means & Empirical SDs) ───
 const BPD_CENTILES: CentilePoint[] = [
-  {week:14,p5:25,p50:28,p95:31},{week:16,p5:33,p50:37,p95:41},
-  {week:18,p5:41,p50:45,p95:50},{week:20,p5:47,p50:52,p95:57},
-  {week:22,p5:53,p50:58,p95:64},{week:24,p5:59,p50:64,p95:70},
-  {week:26,p5:64,p50:70,p95:76},{week:28,p5:69,p50:75,p95:82},
-  {week:30,p5:74,p50:81,p95:88},{week:32,p5:79,p50:86,p95:93},
-  {week:34,p5:83,p50:90,p95:98},{week:36,p5:87,p50:94,p95:102},
-  {week:38,p5:90,p50:98,p95:106},{week:40,p5:93,p50:101,p95:109},
+  { week: 14, p5: 22, p50: 26, p95: 30 },
+  { week: 16, p5: 29, p50: 33, p95: 37 },
+  { week: 18, p5: 36, p50: 41, p95: 46 },
+  { week: 20, p5: 43, p50: 48, p95: 53 },
+  { week: 22, p5: 50, p50: 55, p95: 60 },
+  { week: 24, p5: 56, p50: 61, p95: 66 },
+  { week: 26, p5: 61, p50: 67, p95: 73 },
+  { week: 28, p5: 67, p50: 73, p95: 79 },
+  { week: 30, p5: 72, p50: 78, p95: 84 },
+  { week: 32, p5: 77, p50: 83, p95: 89 },
+  { week: 34, p5: 80, p50: 87, p95: 94 },
+  { week: 36, p5: 83, p50: 90, p95: 97 },
+  { week: 38, p5: 86, p50: 93, p95: 100 },
+  { week: 40, p5: 88, p50: 95, p95: 102 },
 ];
 const HC_CENTILES: CentilePoint[] = [
-  {week:14,p5:95, p50:105,p95:115},{week:16,p5:125,p50:137,p95:150},
-  {week:18,p5:153,p50:167,p95:182},{week:20,p5:178,p50:194,p95:211},
-  {week:22,p5:201,p50:219,p95:238},{week:24,p5:222,p50:241,p95:262},
-  {week:26,p5:241,p50:261,p95:283},{week:28,p5:257,p50:279,p95:302},
-  {week:30,p5:272,p50:295,p95:319},{week:32,p5:285,p50:308,p95:333},
-  {week:34,p5:296,p50:320,p95:345},{week:36,p5:305,p50:329,p95:355},
-  {week:38,p5:312,p50:337,p95:363},{week:40,p5:317,p50:343,p95:369},
+  { week: 14, p5: 89, p50: 99, p95: 109 },
+  { week: 16, p5: 113, p50: 124, p95: 135 },
+  { week: 18, p5: 138, p50: 150, p95: 162 },
+  { week: 20, p5: 162, p50: 175, p95: 188 },
+  { week: 22, p5: 184, p50: 198, p95: 212 },
+  { week: 24, p5: 207, p50: 222, p95: 237 },
+  { week: 26, p5: 227, p50: 243, p95: 259 },
+  { week: 28, p5: 246, p50: 263, p95: 280 },
+  { week: 30, p5: 264, p50: 282, p95: 300 },
+  { week: 32, p5: 279, p50: 298, p95: 317 },
+  { week: 34, p5: 293, p50: 313, p95: 333 },
+  { week: 36, p5: 304, p50: 325, p95: 346 },
+  { week: 38, p5: 313, p50: 335, p95: 357 },
+  { week: 40, p5: 320, p50: 343, p95: 366 },
 ];
 const AC_CENTILES: CentilePoint[] = [
-  {week:14,p5:72, p50:83, p95:95}, {week:16,p5:99, p50:112,p95:127},
-  {week:18,p5:124,p50:140,p95:158},{week:20,p5:148,p50:167,p95:188},
-  {week:22,p5:171,p50:193,p95:217},{week:24,p5:194,p50:218,p95:244},
-  {week:26,p5:216,p50:242,p95:271},{week:28,p5:237,p50:265,p95:296},
-  {week:30,p5:256,p50:287,p95:320},{week:32,p5:275,p50:307,p95:343},
-  {week:34,p5:291,p50:326,p95:364},{week:36,p5:306,p50:343,p95:383},
-  {week:38,p5:319,p50:358,p95:400},{week:40,p5:329,p50:370,p95:415},
+  { week: 14, p5: 68, p50: 78, p95: 88 },
+  { week: 16, p5: 91, p50: 103, p95: 115 },
+  { week: 18, p5: 114, p50: 127, p95: 140 },
+  { week: 20, p5: 137, p50: 152, p95: 167 },
+  { week: 22, p5: 158, p50: 175, p95: 192 },
+  { week: 24, p5: 178, p50: 197, p95: 216 },
+  { week: 26, p5: 199, p50: 219, p95: 239 },
+  { week: 28, p5: 218, p50: 240, p95: 262 },
+  { week: 30, p5: 235, p50: 259, p95: 283 },
+  { week: 32, p5: 253, p50: 279, p95: 305 },
+  { week: 34, p5: 270, p50: 298, p95: 326 },
+  { week: 36, p5: 287, p50: 316, p95: 345 },
+  { week: 38, p5: 302, p50: 333, p95: 364 },
+  { week: 40, p5: 315, p50: 348, p95: 381 },
 ];
 const FL_CENTILES: CentilePoint[] = [
-  {week:14,p5:14,p50:16,p95:19},{week:16,p5:22,p50:25,p95:28},
-  {week:18,p5:29,p50:33,p95:37},{week:20,p5:35,p50:40,p95:45},
-  {week:22,p5:41,p50:46,p95:51},{week:24,p5:46,p50:52,p95:58},
-  {week:26,p5:51,p50:57,p95:63},{week:28,p5:55,p50:62,p95:69},
-  {week:30,p5:59,p50:66,p95:74},{week:32,p5:63,p50:70,p95:78},
-  {week:34,p5:66,p50:74,p95:82},{week:36,p5:69,p50:77,p95:85},
-  {week:38,p5:71,p50:79,p95:88},{week:40,p5:73,p50:81,p95:90},
+  { week: 14, p5: 12, p50: 14, p95: 16 },
+  { week: 16, p5: 17, p50: 20, p95: 23 },
+  { week: 18, p5: 24, p50: 27, p95: 30 },
+  { week: 20, p5: 30, p50: 33, p95: 36 },
+  { week: 22, p5: 35, p50: 38, p95: 41 },
+  { week: 24, p5: 40, p50: 44, p95: 48 },
+  { week: 26, p5: 45, p50: 49, p95: 53 },
+  { week: 28, p5: 50, p50: 54, p95: 58 },
+  { week: 30, p5: 54, p50: 58, p95: 62 },
+  { week: 32, p5: 56, p50: 61, p95: 66 },
+  { week: 34, p5: 60, p50: 65, p95: 70 },
+  { week: 36, p5: 63, p50: 68, p95: 73 },
+  { week: 38, p5: 65, p50: 71, p95: 77 },
+  { week: 40, p5: 68, p50: 74, p95: 80 },
 ];
 
-// EFW centile data for the percentile bar (Hadlock, grams)
-const EFW_CENTILES: CentilePoint[] = [
-  {week:20,p5:249, p50:331, p95:431},{week:22,p5:333,p50:430,p95:551},
-  {week:24,p5:444,p50:563,p95:710},{week:26,p5:576,p50:726,p95:911},
-  {week:28,p5:744,p50:920,p95:1145},{week:30,p5:937,p50:1153,p95:1426},
-  {week:32,p5:1147,p50:1408,p95:1735},{week:34,p5:1375,p50:1678,p95:2057},
-  {week:36,p5:1591,p50:1933,p95:2363},{week:38,p5:1780,p50:2162,p95:2646},
-  {week:40,p5:2939,p50:3462,p95:3980},
-];
-
+// EFW centile calculation uses getCentileForWeight from fetalGrowthCentiles (Hadlock-based)
+// This ensures UI and PDF use the same consistent weight centile reference.
 // ─────────────────────────────────────────────────────────────────────────────
 // Interpolate centile values at a given gestational age
 // ─────────────────────────────────────────────────────────────────────────────
-function interpolateCentile(data: CentilePoint[], gaWeeks: number): { p5:number; p50:number; p95:number } | null {
+function interpolateCentile(data: CentilePoint[], gaWeeks: number): { p5: number; p50: number; p95: number } | null {
   if (!data.length) return null;
   if (gaWeeks <= data[0].week) return { p5: data[0].p5, p50: data[0].p50, p95: data[0].p95 };
-  if (gaWeeks >= data[data.length-1].week) {
-    const last = data[data.length-1];
+  if (gaWeeks >= data[data.length - 1].week) {
+    const last = data[data.length - 1];
     return { p5: last.p5, p50: last.p50, p95: last.p95 };
   }
   for (let i = 0; i < data.length - 1; i++) {
-    if (gaWeeks >= data[i].week && gaWeeks <= data[i+1].week) {
-      const t = (gaWeeks - data[i].week) / (data[i+1].week - data[i].week);
+    if (gaWeeks >= data[i].week && gaWeeks <= data[i + 1].week) {
+      const t = (gaWeeks - data[i].week) / (data[i + 1].week - data[i].week);
       return {
-        p5:  data[i].p5  + t * (data[i+1].p5  - data[i].p5),
-        p50: data[i].p50 + t * (data[i+1].p50 - data[i].p50),
-        p95: data[i].p95 + t * (data[i+1].p95 - data[i].p95),
+        p5: data[i].p5 + t * (data[i + 1].p5 - data[i].p5),
+        p50: data[i].p50 + t * (data[i + 1].p50 - data[i].p50),
+        p95: data[i].p95 + t * (data[i + 1].p95 - data[i].p95),
       };
     }
   }
   return null;
 }
 
-// Estimate centile rank (0-100) of a measured value given p5, p50, p95
-function estimateCentileRank(value: number, p5: number, p50: number, p95: number): number {
-  // Use piecewise linear interpolation between known percentiles
-  if (value <= p5)  return Math.max(0,  (value / p5) * 5);
-  if (value <= p50) return 5  + ((value - p5)  / (p50 - p5))  * 45;
-  if (value <= p95) return 50 + ((value - p50) / (p95 - p50)) * 45;
-  return Math.min(100, 95 + ((value - p95) / (p95 * 0.1)) * 5);
-}
+// Rimosso estimateCentileRank locale, importato da utils
+
 
 export interface FetalGrowthPoint {
   gaWeeks: number;
@@ -132,17 +153,17 @@ interface FooterVisibilityOptions {
 // ─── Sanitizer + utils ────────────────────────────────────────────────────────
 function san(t: string): string {
   if (!t) return "";
-  const M: Record<number,string> = {
-    224:"a'",232:"e'",233:"e'",236:"i'",242:"o'",249:"u'",
-    192:"A'",200:"E'",201:"E'",204:"I'",210:"O'",217:"U'",
+  const M: Record<number, string> = {
+    224: "a'", 232: "e'", 233: "e'", 236: "i'", 242: "o'", 249: "u'",
+    192: "A'", 200: "E'", 201: "E'", 204: "I'", 210: "O'", 217: "U'",
   };
   let r = "";
   for (let i = 0; i < t.length; i++) {
     const c = t.charCodeAt(i);
     if (M[c]) { r += M[c]; continue; }
-    if (c === 195 && i+1 < t.length) {
-      const n = t.charCodeAt(i+1);
-      const U: Record<number,string> = {160:"a'",168:"e'",169:"e'",172:"i'",178:"o'",185:"u'"};
+    if (c === 195 && i + 1 < t.length) {
+      const n = t.charCodeAt(i + 1);
+      const U: Record<number, string> = { 160: "a'", 168: "e'", 169: "e'", 172: "i'", 178: "o'", 185: "u'" };
       if (U[n]) { r += U[n]; i++; continue; }
     }
     r += t[i];
@@ -162,22 +183,22 @@ function calcAge(dob: string): string {
   if (t.getMonth() < b.getMonth() || (t.getMonth() === b.getMonth() && t.getDate() < b.getDate())) a--;
   return String(a);
 }
-function v(x: string|number|undefined|null, fb="-"): string {
-  return (x===undefined||x===null||String(x).trim()==="") ? fb : String(x);
+function v(x: string | number | undefined | null, fb = "-"): string {
+  return (x === undefined || x === null || String(x).trim() === "") ? fb : String(x);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 export class PdfService {
 
-  private static fCtx: { doctor: Doctor|null; opts: FooterVisibilityOptions }|null = null;
+  private static fCtx: { doctor: Doctor | null; opts: FooterVisibilityOptions } | null = null;
 
-  private static fc(d:jsPDF,c:readonly number[]){d.setFillColor(c[0],c[1],c[2]);}
-  private static dc(d:jsPDF,c:readonly number[]){d.setDrawColor(c[0],c[1],c[2]);}
-  private static tc(d:jsPDF,c:readonly number[]){d.setTextColor(c[0],c[1],c[2]);}
+  private static fc(d: jsPDF, c: readonly number[]) { d.setFillColor(c[0], c[1], c[2]); }
+  private static dc(d: jsPDF, c: readonly number[]) { d.setDrawColor(c[0], c[1], c[2]); }
+  private static tc(d: jsPDF, c: readonly number[]) { d.setTextColor(c[0], c[1], c[2]); }
 
   // ── page break ───────────────────────────────────────────────────────────────
-  private static pb(doc:jsPDF, y:number, need=30): number {
-    if (y+need > FOOT_Y-8) {
+  private static pb(doc: jsPDF, y: number, need = 30): number {
+    if (y + need > FOOT_Y - 8) {
       if (this.fCtx) this.drawFooter(doc, this.fCtx.doctor, this.fCtx.opts);
       doc.addPage(); return 18;
     }
@@ -185,11 +206,11 @@ export class PdfService {
   }
 
   // ── multiline text block ─────────────────────────────────────────────────────
-  private static block(doc:jsPDF, text:string, x:number, y:number, maxW:number, lh=LH): number {
+  private static block(doc: jsPDF, text: string, x: number, y: number, maxW: number, lh = LH): number {
     if (!text?.trim()) return y;
-    const lines:string[] = doc.splitTextToSize(san(text), maxW);
+    const lines: string[] = doc.splitTextToSize(san(text), maxW);
     for (const line of lines) {
-      y = this.pb(doc, y, lh+1);
+      y = this.pb(doc, y, lh + 1);
       doc.text(line, x, y);
       y += lh;
     }
@@ -197,8 +218,8 @@ export class PdfService {
   }
 
   // ── horizontal rule ──────────────────────────────────────────────────────────
-  private static rule(doc:jsPDF, y:number, x1=ML, x2=MR, lw=0.2) {
-    this.dc(doc,K200); doc.setLineWidth(lw); doc.line(x1,y,x2,y);
+  private static rule(doc: jsPDF, y: number, x1 = ML, x2 = MR, lw = 0.2) {
+    this.dc(doc, K200); doc.setLineWidth(lw); doc.line(x1, y, x2, y);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -211,36 +232,36 @@ export class PdfService {
     opts?: { rowH?: number; fontSize?: number; headerFontSize?: number },
   ): number {
     const ROW_H = opts?.rowH ?? 7;
-    const FONT  = opts?.fontSize ?? 8.5;
+    const FONT = opts?.fontSize ?? 8.5;
     const HFONT = opts?.headerFontSize ?? 7.5;
-    const PAD   = 1.8;
-    const totalW = cols.reduce((s,c)=>s+c.w, 0);
+    const PAD = 1.8;
+    const totalW = cols.reduce((s, c) => s + c.w, 0);
 
     y = this.pb(doc, y, ROW_H * (rows.length + 1) + 4);
 
     // header
-    this.fc(doc,K235); doc.rect(ML, y, totalW, ROW_H, "F");
-    this.dc(doc,K200); doc.setLineWidth(0.2); doc.rect(ML, y, totalW, ROW_H, "S");
-    doc.setFont("helvetica","bold"); doc.setFontSize(HFONT); this.tc(doc,K30);
+    this.fc(doc, K235); doc.rect(ML, y, totalW, ROW_H, "F");
+    this.dc(doc, K200); doc.setLineWidth(0.2); doc.rect(ML, y, totalW, ROW_H, "S");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(HFONT); this.tc(doc, K30);
     let cx = ML;
     cols.forEach(col => {
-      if (cx > ML) { this.dc(doc,K200); doc.setLineWidth(0.15); doc.line(cx,y,cx,y+ROW_H); }
-      const lines = doc.splitTextToSize(san(col.header), col.w - PAD*2);
-      doc.text(lines[0]??'', cx+PAD, y + ROW_H/2 + HFONT*0.18, {baseline:"middle"});
+      if (cx > ML) { this.dc(doc, K200); doc.setLineWidth(0.15); doc.line(cx, y, cx, y + ROW_H); }
+      const lines = doc.splitTextToSize(san(col.header), col.w - PAD * 2);
+      doc.text(lines[0] ?? '', cx + PAD, y + ROW_H / 2 + HFONT * 0.18, { baseline: "middle" });
       cx += col.w;
     });
     y += ROW_H;
 
     // rows
     rows.forEach(row => {
-      y = this.pb(doc, y, ROW_H+2);
-      this.dc(doc,K200); doc.setLineWidth(0.15); doc.rect(ML, y, totalW, ROW_H, "S");
+      y = this.pb(doc, y, ROW_H + 2);
+      this.dc(doc, K200); doc.setLineWidth(0.15); doc.rect(ML, y, totalW, ROW_H, "S");
       cx = ML;
-      doc.setFont("helvetica","normal"); doc.setFontSize(FONT); this.tc(doc,K30);
-      cols.forEach((col,ci) => {
-        if (cx > ML) { this.dc(doc,K200); doc.setLineWidth(0.15); doc.line(cx,y,cx,y+ROW_H); }
-        const cellLines = doc.splitTextToSize(san(v(row[ci])), col.w - PAD*2);
-        doc.text(cellLines[0]??'', cx+PAD, y + ROW_H/2 + FONT*0.18, {baseline:"middle"});
+      doc.setFont("helvetica", "normal"); doc.setFontSize(FONT); this.tc(doc, K30);
+      cols.forEach((col, ci) => {
+        if (cx > ML) { this.dc(doc, K200); doc.setLineWidth(0.15); doc.line(cx, y, cx, y + ROW_H); }
+        const cellLines = doc.splitTextToSize(san(v(row[ci])), col.w - PAD * 2);
+        doc.text(cellLines[0] ?? '', cx + PAD, y + ROW_H / 2 + FONT * 0.18, { baseline: "middle" });
         cx += col.w;
       });
       y += ROW_H;
@@ -250,7 +271,7 @@ export class PdfService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // PERCENTILE BAR  |----+-------◆--|  78%
+  // PERCENTILE BAR  |----+-------◆--|  78°
   //
   // Draws the inline graphic exactly like the Careggi reference document.
   // bx, by  = left edge, vertical center of bar
@@ -266,10 +287,10 @@ export class PdfService {
   ): void {
     // The bar line runs from x0 to x1, with some padding inside barW
     const PAD_L = 3;
-    const PAD_R = 14;  // space for centile % text on the right
+    const PAD_R = 16;  // space for centile text on the right
     const lineX0 = bx + PAD_L;
     const lineX1 = bx + barW - PAD_R;
-    const lineW  = lineX1 - lineX0;
+    const lineW = lineX1 - lineX0;
 
     // Map a measurement value to X position (clamped to bar range)
     const toX = (val: number): number => {
@@ -299,20 +320,33 @@ export class PdfService {
     const dSize = 1.6;  // half-diagonal of diamond
     this.fc(doc, K30); this.dc(doc, K30); doc.setLineWidth(0.1);
     // draw a rotated square (diamond) using polygon
-    doc.moveTo(xPat,       midY - dSize);
+    doc.moveTo(xPat, midY - dSize);
     doc.lineTo(xPat + dSize, midY);
-    doc.lineTo(xPat,       midY + dSize);
+    doc.lineTo(xPat, midY + dSize);
     doc.lineTo(xPat - dSize, midY);
-    doc.lineTo(xPat,       midY - dSize);
+    doc.lineTo(xPat, midY - dSize);
     (doc as any).fillStroke();
 
     // ── centile % text ──
     const rank = estimateCentileRank(patVal, p5, p50, p95);
-    const pctStr = `${Math.round(rank)}%`;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    this.tc(doc, K30);
+    const cat = getGrowthCategory(rank);
+    let pctStr = formatCentileLabel(rank);
+
+    if (cat !== "AGA") {
+      pctStr += ` (${cat})`; // es. "5° (SGA)"
+      doc.setFont("helvetica", "bold");
+      // Se vuoi rosso: this.tc(doc, [180, 0, 0]);
+    } else {
+      doc.setFont("helvetica", "normal");
+      this.tc(doc, K30);
+    }
+
+    doc.setFontSize(7);
     doc.text(pctStr, lineX1 + 2, midY + 1);
+
+    // Ripristino stile base
+    doc.setFont("helvetica", "normal");
+    this.tc(doc, K30);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -342,10 +376,10 @@ export class PdfService {
       centiles: CentilePoint[];
     };
     const items: BioItem[] = [];
-    if (bpd > 0) items.push({ label:"DBP", unit:"mm", val:bpd, centiles:BPD_CENTILES });
-    if (hc  > 0) items.push({ label:"CC",  unit:"mm", val:hc,  centiles:HC_CENTILES  });
-    if (ac  > 0) items.push({ label:"CA",  unit:"mm", val:ac,  centiles:AC_CENTILES  });
-    if (fl  > 0) items.push({ label:"FL",  unit:"mm", val:fl,  centiles:FL_CENTILES  });
+    if (bpd > 0) items.push({ label: "DBP", unit: "mm", val: bpd, centiles: BPD_CENTILES });
+    if (hc > 0) items.push({ label: "CC", unit: "mm", val: hc, centiles: HC_CENTILES });
+    if (ac > 0) items.push({ label: "CA", unit: "mm", val: ac, centiles: AC_CENTILES });
+    if (fl > 0) items.push({ label: "FL", unit: "mm", val: fl, centiles: FL_CENTILES });
 
     const hasEfw = efwGrams > 0;
     if (!items.length && !hasEfw) return y;
@@ -353,33 +387,33 @@ export class PdfService {
     y = this.pb(doc, y, 12 + Math.ceil(items.length / 2) * 8 + (hasEfw ? 8 : 0) + 4);
 
     // Section heading
-    doc.setFont("helvetica","bold"); doc.setFontSize(9); this.tc(doc,K0);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); this.tc(doc, K0);
     doc.text("Biometria fetale", ML, y);
-    this.rule(doc, y+1.2, ML, ML + doc.getTextWidth("Biometria fetale"), 0.4);
+    this.rule(doc, y + 1.2, ML, ML + doc.getTextWidth("Biometria fetale"), 0.4);
     y += 5.5;
 
     // ── column widths ──
     // Two blocks side by side, each 90mm wide.
     // Within each block:  label=18 | value=22 | bar=50  → 90mm
     const BLOCK_W = 90;      // each side
-    const COL_A   = 18;      // label
-    const COL_B   = 22;      // value
-    const COL_C   = BLOCK_W - COL_A - COL_B;  // bar = 50mm
-    const ROW_H   = 8;
-    const PAD     = 1.8;
+    const COL_A = 18;      // label
+    const COL_B = 22;      // value
+    const COL_C = BLOCK_W - COL_A - COL_B;  // bar = 50mm
+    const ROW_H = 8;
+    const PAD = 1.8;
 
     const drawHeaderBlock = (bx: number) => {
       this.fc(doc, K235);
       doc.rect(bx, y, BLOCK_W, ROW_H, "F");
       this.dc(doc, K200); doc.setLineWidth(0.2);
       doc.rect(bx, y, BLOCK_W, ROW_H, "S");
-      doc.setFont("helvetica","bold"); doc.setFontSize(7.5); this.tc(doc,K30);
-      doc.text("Misura",       bx + PAD,             y + ROW_H/2 + 0.5, {baseline:"middle"});
-      this.dc(doc,K200); doc.setLineWidth(0.15);
-      doc.line(bx+COL_A, y, bx+COL_A, y+ROW_H);
-      doc.text("Valore",       bx + COL_A + PAD,     y + ROW_H/2 + 0.5, {baseline:"middle"});
-      doc.line(bx+COL_A+COL_B, y, bx+COL_A+COL_B, y+ROW_H);
-      doc.text("Percentile",   bx + COL_A+COL_B+PAD, y + ROW_H/2 + 0.5, {baseline:"middle"});
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); this.tc(doc, K30);
+      doc.text("Misura", bx + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
+      this.dc(doc, K200); doc.setLineWidth(0.15);
+      doc.line(bx + COL_A, y, bx + COL_A, y + ROW_H);
+      doc.text("Valore", bx + COL_A + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
+      doc.line(bx + COL_A + COL_B, y, bx + COL_A + COL_B, y + ROW_H);
+      doc.text("Percentile", bx + COL_A + COL_B + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
     };
 
     // Determine layout: how many rows
@@ -390,7 +424,7 @@ export class PdfService {
       drawHeaderBlock(ML);
       if (items.length > 1) drawHeaderBlock(ML + BLOCK_W);
       // vertical separator between blocks
-      this.dc(doc,K200); doc.setLineWidth(0.2);
+      this.dc(doc, K200); doc.setLineWidth(0.2);
       doc.line(ML + BLOCK_W, y, ML + BLOCK_W, y + ROW_H + rowCount * ROW_H);
     }
     y += ROW_H;
@@ -406,19 +440,19 @@ export class PdfService {
         const bx = ML + side * BLOCK_W;
 
         // row border
-        this.dc(doc,K200); doc.setLineWidth(0.15);
+        this.dc(doc, K200); doc.setLineWidth(0.15);
         doc.rect(bx, y, BLOCK_W, ROW_H, "S");
 
         // Col A — label
-        doc.setFont("helvetica","bold"); doc.setFontSize(8.5); this.tc(doc,K30);
-        doc.text(san(item.label), bx + PAD, y + ROW_H/2 + 0.5, {baseline:"middle"});
-        this.dc(doc,K200); doc.setLineWidth(0.15);
-        doc.line(bx+COL_A, y, bx+COL_A, y+ROW_H);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); this.tc(doc, K30);
+        doc.text(san(item.label), bx + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
+        this.dc(doc, K200); doc.setLineWidth(0.15);
+        doc.line(bx + COL_A, y, bx + COL_A, y + ROW_H);
 
         // Col B — value
-        doc.setFont("helvetica","normal"); doc.setFontSize(8.5); this.tc(doc,K30);
-        doc.text(`${item.val} ${item.unit}`, bx+COL_A+PAD, y + ROW_H/2 + 0.5, {baseline:"middle"});
-        doc.line(bx+COL_A+COL_B, y, bx+COL_A+COL_B, y+ROW_H);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K30);
+        doc.text(`${item.val} ${item.unit}`, bx + COL_A + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
+        doc.line(bx + COL_A + COL_B, y, bx + COL_A + COL_B, y + ROW_H);
 
         // Col C — percentile bar (only if we have GA)
         if (gaWeeks !== null) {
@@ -441,66 +475,53 @@ export class PdfService {
 
     // ── EFW row — full width (180mm) ──────────────────────────────────────────
     if (hasEfw) {
-      const EFW_COL_A = 36;   // label
+      const EFW_COL_A = 52;   // label (largo per "PSF - Peso Stimato Fetale" senza toccare la riga)
       const EFW_COL_B = 44;   // value
-      const EFW_COL_C = PW - EFW_COL_A - EFW_COL_B;  // bar = 100mm
 
       y = this.pb(doc, y, ROW_H * 2 + 2);
 
       // header
-      this.fc(doc,K235); doc.rect(ML, y, PW, ROW_H, "F");
-      this.dc(doc,K200); doc.setLineWidth(0.2); doc.rect(ML, y, PW, ROW_H, "S");
-      doc.setFont("helvetica","bold"); doc.setFontSize(7.5); this.tc(doc,K30);
-      doc.text("Calcolo del peso fetale", ML + PAD, y + ROW_H/2 + 0.5, {baseline:"middle"});
+      this.fc(doc, K235); doc.rect(ML, y, PW, ROW_H, "F");
+      this.dc(doc, K200); doc.setLineWidth(0.2); doc.rect(ML, y, PW, ROW_H, "S");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); this.tc(doc, K30);
+      doc.text("Calcolo del peso fetale", ML + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
       y += ROW_H;
 
       // data row
       y = this.pb(doc, y, ROW_H + 2);
-      this.dc(doc,K200); doc.setLineWidth(0.15); doc.rect(ML, y, PW, ROW_H, "S");
+      this.dc(doc, K200); doc.setLineWidth(0.15); doc.rect(ML, y, PW, ROW_H, "S");
 
-      // label
-      doc.setFont("helvetica","bold"); doc.setFontSize(8); this.tc(doc,K30);
-      doc.text("PSF - Peso Stimato Fetale", ML + PAD, y + ROW_H/2 + 0.5, {baseline:"middle"});
-      this.dc(doc,K200); doc.setLineWidth(0.15);
-      doc.line(ML+EFW_COL_A, y, ML+EFW_COL_A, y+ROW_H);
+      // label (con larghezza max per non sovrapporsi alla riga verticale)
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K30);
+      const efwLabel = "PSF - Peso Stimato Fetale";
+      const efwLabelW = EFW_COL_A - PAD * 2;
+      const efwLabelLines = doc.splitTextToSize(san(efwLabel), efwLabelW);
+      doc.text(efwLabelLines[0] ?? efwLabel, ML + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
+      this.dc(doc, K200); doc.setLineWidth(0.15);
+      doc.line(ML + EFW_COL_A, y, ML + EFW_COL_A, y + ROW_H);
 
       // value
-      doc.setFont("helvetica","normal"); doc.setFontSize(8.5); this.tc(doc,K30);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K30);
 
-      // compute centile label for EFW
+      // compute centile label for EFW using shared Hadlock-based table (same as UI)
       let efwCentileStr = "";
+      let efwRank: number | null = null;
       if (gaWeeks !== null) {
-        const efwRef = interpolateCentile(EFW_CENTILES, gaWeeks);
-        if (efwRef) {
-          const rank = estimateCentileRank(efwGrams, efwRef.p5, efwRef.p50, efwRef.p95);
-          efwCentileStr = ` (${Math.round(rank)}° centile)`;
+        efwRank = getCentileForWeight(efwGrams, gaWeeks);
+        if (efwRank !== null) {
+          const cat = getGrowthCategory(efwRank);
+          efwCentileStr = ` (${formatCentileLabel(efwRank)} centile${cat !== "AGA" ? ` - ${cat}` : ""})`;
         }
       }
-      doc.text(`${efwGrams} g${efwCentileStr}`, ML+EFW_COL_A+PAD, y + ROW_H/2 + 0.5, {baseline:"middle"});
-      doc.line(ML+EFW_COL_A+EFW_COL_B, y, ML+EFW_COL_A+EFW_COL_B, y+ROW_H);
-
-      // bar — wider since EFW spans full row
-      if (gaWeeks !== null) {
-        const efwRef = interpolateCentile(EFW_CENTILES, gaWeeks);
-        if (efwRef) {
-          this.drawPercentileBar(
-            doc,
-            ML + EFW_COL_A + EFW_COL_B,
-            y + ROW_H / 2,
-            EFW_COL_C,
-            efwRef.p5, efwRef.p50, efwRef.p95,
-            efwGrams,
-          );
-        }
-      }
-
-      // formula note
-      doc.setFont("helvetica","italic"); doc.setFontSize(6.5); this.tc(doc,K140);
-      const formulaNote = "EFW per Hadlock (DBP-CC-CA-FL)";
-      doc.text(formulaNote, ML + EFW_COL_A + EFW_COL_B + PAD + 48,
-        y + ROW_H/2 + 0.5, {baseline:"middle"});
+      doc.text(`${efwGrams} g${efwCentileStr}`, ML + EFW_COL_A + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
+      doc.line(ML + EFW_COL_A + EFW_COL_B, y, ML + EFW_COL_A + EFW_COL_B, y + ROW_H);
 
       y += ROW_H;
+
+      // formula note sotto la riga, per evitare sovrapposizione con la barra
+      doc.setFont("helvetica", "italic"); doc.setFontSize(6.5); this.tc(doc, K140);
+      doc.text("EFW per Hadlock (DBP-CC-CA-FL)", ML + PAD, y + 3);
+      y += 5;
     }
 
     return y + 3;
@@ -509,11 +530,11 @@ export class PdfService {
   // ─────────────────────────────────────────────────────────────────────────────
   // SECTION HEADING
   // ─────────────────────────────────────────────────────────────────────────────
-  private static heading(doc:jsPDF, y:number, text:string): number {
+  private static heading(doc: jsPDF, y: number, text: string): number {
     y = this.pb(doc, y, 12);
-    doc.setFont("helvetica","bold"); doc.setFontSize(9); this.tc(doc,K0);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); this.tc(doc, K0);
     doc.text(san(text), ML, y);
-    this.rule(doc, y+1.2, ML, ML + doc.getTextWidth(san(text)), 0.4);
+    this.rule(doc, y + 1.2, ML, ML + doc.getTextWidth(san(text)), 0.4);
     return y + 5.5;
   }
 
@@ -521,29 +542,29 @@ export class PdfService {
   // DOCUMENT HEADER
   // ─────────────────────────────────────────────────────────────────────────────
   private static drawHeader(
-    doc:jsPDF, title:string, subtitle:string,
-    doctor:Doctor|null, showDoctor=true
+    doc: jsPDF, title: string, subtitle: string,
+    doctor: Doctor | null, showDoctor = true
   ): number {
     let y = 16;
     if (showDoctor && doctor) {
-      doc.setFont("times","bold"); doc.setFontSize(14); this.tc(doc,K0);
-      doc.text(san(`Dott. ${doctor.nome} ${doctor.cognome}`.toUpperCase()), 105, y, {align:"center"});
+      doc.setFont("times", "bold"); doc.setFontSize(14); this.tc(doc, K0);
+      doc.text(san(`Dott. ${doctor.nome} ${doctor.cognome}`.toUpperCase()), 105, y, { align: "center" });
       y += 5.5;
       if (doctor.specializzazione) {
-        doc.setFont("helvetica","normal"); doc.setFontSize(8.5); this.tc(doc,K80);
-        doc.text(san(doctor.specializzazione), 105, y, {align:"center"});
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K80);
+        doc.text(san(doctor.specializzazione), 105, y, { align: "center" });
         y += 4.5;
       }
     } else if (showDoctor) {
-      doc.setFont("times","bold"); doc.setFontSize(14); this.tc(doc,K0);
-      doc.text("STUDIO MEDICO", 105, y, {align:"center"}); y += 9;
+      doc.setFont("times", "bold"); doc.setFontSize(14); this.tc(doc, K0);
+      doc.text("STUDIO MEDICO", 105, y, { align: "center" }); y += 9;
     }
     this.rule(doc, y, ML, MR, 0.5); y += 5;
-    doc.setFont("helvetica","bold"); doc.setFontSize(12); this.tc(doc,K0);
-    doc.text(san(title), 105, y, {align:"center"}); y += 5;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12); this.tc(doc, K0);
+    doc.text(san(title), 105, y, { align: "center" }); y += 5;
     if (subtitle) {
-      doc.setFont("helvetica","normal"); doc.setFontSize(8.5); this.tc(doc,K80);
-      doc.text(san(subtitle), 105, y, {align:"center"}); y += 4;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K80);
+      doc.text(san(subtitle), 105, y, { align: "center" }); y += 4;
     }
     this.rule(doc, y, ML, MR, 0.3);
     return y + 4;
@@ -553,46 +574,46 @@ export class PdfService {
   // PATIENT BLOCK
   // ─────────────────────────────────────────────────────────────────────────────
   private static drawPatientBlock(
-    doc:jsPDF, patient:Patient, visitDate:string,
-    y:number, dateLabel="Data visita"
+    doc: jsPDF, patient: Patient, visitDate: string,
+    y: number, dateLabel = "Data visita"
   ): number {
     const a = calcAge(patient.dataNascita);
     const dob = patient.dataNascita
       ? `${fd(patient.dataNascita)}${a ? `  (${a} anni)` : ""}` : "-";
 
-    const left:{label:string;value:string}[] = [
-      {label:"Paziente",       value:`${patient.nome} ${patient.cognome}`},
-      {label:"Data di nascita",value:dob},
-      ...(patient.codiceFiscale?.trim()?[{label:"Cod. Fiscale",value:patient.codiceFiscale}]:[]),
+    const left: { label: string; value: string }[] = [
+      { label: "Paziente", value: `${patient.nome} ${patient.cognome}` },
+      { label: "Data di nascita", value: dob },
+      ...(patient.codiceFiscale?.trim() ? [{ label: "Cod. Fiscale", value: patient.codiceFiscale }] : []),
     ];
-    const right:{label:string;value:string}[] = [
-      {label:dateLabel,value:fd(visitDate)},
-      ...(patient.sesso?[{label:"Sesso",value:patient.sesso}]:[]),
+    const right: { label: string; value: string }[] = [
+      { label: dateLabel, value: fd(visitDate) },
+      ...(patient.sesso ? [{ label: "Sesso", value: patient.sesso }] : []),
     ];
 
-    const halfW = PW/2 - 4;
-    let ly=y, ry=y;
+    const halfW = PW / 2 - 4;
+    let ly = y, ry = y;
 
     for (const item of left) {
-      if (!item.value||item.value==="-") continue;
-      ly = this.pb(doc, ly, LH+1);
-      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); this.tc(doc,K80);
-      const lbl = san(item.label)+": ";
+      if (!item.value || item.value === "-") continue;
+      ly = this.pb(doc, ly, LH + 1);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); this.tc(doc, K80);
+      const lbl = san(item.label) + ": ";
       doc.text(lbl, ML, ly);
-      doc.setFont("helvetica","normal"); doc.setFontSize(8.5); this.tc(doc,K0);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K0);
       const vlines = doc.splitTextToSize(san(item.value), halfW - doc.getTextWidth(lbl));
-      doc.text(vlines[0]??'', ML+doc.getTextWidth(lbl), ly); ly+=LH;
-      for (let i=1;i<vlines.length;i++){doc.text(vlines[i], ML+doc.getTextWidth(lbl), ly);ly+=LH;}
+      doc.text(vlines[0] ?? '', ML + doc.getTextWidth(lbl), ly); ly += LH;
+      for (let i = 1; i < vlines.length; i++) { doc.text(vlines[i], ML + doc.getTextWidth(lbl), ly); ly += LH; }
     }
     for (const item of right) {
-      if (!item.value||item.value==="-") continue;
-      ry = this.pb(doc, ry, LH+1);
-      const rx = ML + PW/2 + 4;
-      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); this.tc(doc,K80);
-      const lbl = san(item.label)+": ";
+      if (!item.value || item.value === "-") continue;
+      ry = this.pb(doc, ry, LH + 1);
+      const rx = ML + PW / 2 + 4;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); this.tc(doc, K80);
+      const lbl = san(item.label) + ": ";
       doc.text(lbl, rx, ry);
-      doc.setFont("helvetica","normal"); doc.setFontSize(8.5); this.tc(doc,K0);
-      doc.text(san(item.value), rx+doc.getTextWidth(lbl), ry); ry+=LH;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K0);
+      doc.text(san(item.value), rx + doc.getTextWidth(lbl), ry); ry += LH;
     }
 
     y = Math.max(ly, ry) + 2;
@@ -604,20 +625,20 @@ export class PdfService {
   // TEXT SECTION
   // ─────────────────────────────────────────────────────────────────────────────
   private static drawTextSection(
-    doc:jsPDF, y:number, title:string,
-    content:string|undefined|null, note?:string
+    doc: jsPDF, y: number, title: string,
+    content: string | undefined | null, note?: string
   ): number {
     if (!content?.trim()) return y;
     y = this.pb(doc, y, 14);
-    doc.setFont("helvetica","bold"); doc.setFontSize(9.5); this.tc(doc,K0);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); this.tc(doc, K0);
     doc.text(san(title), ML, y);
-    this.rule(doc, y+1.5, ML, MR, 0.25); y += 5.5;
-    doc.setFont("helvetica","normal"); doc.setFontSize(9.5); this.tc(doc,K30);
-    y = this.block(doc, content, ML+1, y, PW-2, LH);
+    this.rule(doc, y + 1.5, ML, MR, 0.25); y += 5.5;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); this.tc(doc, K30);
+    y = this.block(doc, content, ML + 1, y, PW - 2, LH);
     if (note) {
       y += 1.5;
-      doc.setFont("helvetica","italic"); doc.setFontSize(7); this.tc(doc,K140);
-      y = this.block(doc, note, ML+1, y, PW-2, 3.8);
+      doc.setFont("helvetica", "italic"); doc.setFontSize(7); this.tc(doc, K140);
+      y = this.block(doc, note, ML + 1, y, PW - 2, 3.8);
     }
     return y + 4;
   }
@@ -644,7 +665,7 @@ export class PdfService {
     const AX_L = 10;
     const AX_B = 6;
     const PLOT_W = CW - AX_L;
-    const PLOT_H = ROW_H - AX_B - 5; 
+    const PLOT_H = ROW_H - AX_B - 5;
 
     // Helper to draw a single chart
     const drawOne = (
@@ -694,7 +715,7 @@ export class PdfService {
 
       // Draw Curves (p5, p50, p95)
       const weeks = Array.from({ length: maxW - minW + 1 }, (_, i) => minW + i);
-      
+
       const drawCurve = (pKey: 'p5' | 'p50' | 'p95', color: readonly number[], lw: number) => {
         doc.setDrawColor(color[0], color[1], color[2]);
         doc.setLineWidth(lw);
@@ -709,8 +730,8 @@ export class PdfService {
         }
       };
 
-      drawCurve('p5',  K200, 0.15);
-      drawCurve('p50', K80,  0.25);
+      drawCurve('p5', K200, 0.15);
+      drawCurve('p50', K80, 0.25);
       drawCurve('p95', K200, 0.15);
 
       // Draw Patient Points
@@ -745,7 +766,7 @@ export class PdfService {
     // Row 1
     drawOne(ML, y, "DBP", BPD_CENTILES, 110, "bpdMm");
     drawOne(ML + CW + GAP, y, "CC", HC_CENTILES, 380, "hcMm");
-    
+
     y += ROW_H + 4;
 
     // Row 2
@@ -758,92 +779,96 @@ export class PdfService {
   // ─────────────────────────────────────────────────────────────────────────────
   // IMAGE GALLERY
   // ─────────────────────────────────────────────────────────────────────────────
-  private static toJpeg(url:string):Promise<string>{
-    return new Promise((res,rej)=>{
-      const img=new Image(); img.crossOrigin="anonymous";
-      img.onload=()=>{
-        const c=document.createElement("canvas");
-        c.width=img.naturalWidth; c.height=img.naturalHeight;
-        const ctx=c.getContext("2d")!;
-        ctx.fillStyle="#fff"; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(img,0,0);
-        res(c.toDataURL("image/jpeg",0.88));
+  private static toJpeg(url: string): Promise<string> {
+    return new Promise((res, rej) => {
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const ctx = c.getContext("2d")!;
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0);
+        res(c.toDataURL("image/jpeg", 0.88));
       };
-      img.onerror=()=>rej(new Error("fail")); img.src=url;
+      img.onerror = () => rej(new Error("fail")); img.src = url;
     });
   }
 
-  private static async drawImages(doc:jsPDF, imgs:string[]|undefined, y:number):Promise<number>{
+  private static async drawImages(doc: jsPDF, imgs: string[] | undefined, y: number): Promise<number> {
     if (!imgs?.length) return y;
     y = this.heading(doc, y, "Immagini ecografia");
-    const COLS=2, GAP=4, tW=(PW-GAP)/COLS, tH=55;
-    for (let i=0;i<imgs.length;i+=COLS){
-      y=this.pb(doc,y,tH+6);
-      const row=imgs.slice(i,i+COLS);
-      const conv=await Promise.all(row.map(im=>this.toJpeg(im).catch(()=>null)));
-      conv.forEach((img,col)=>{
-        const x=ML+col*(tW+GAP);
-        this.dc(doc,K200); doc.setLineWidth(0.2); doc.rect(x,y,tW,tH,"S");
-        if(img){
-          try{
-            const p=(doc as any).getImageProperties(img);
-            const r=p.width/p.height;
-            let w=tW-3,h=w/r;
-            if(h>tH-3){h=tH-3;w=h*r;}
-            doc.addImage(img,"JPEG",x+(tW-w)/2,y+(tH-h)/2,w,h);
-          }catch{
-            doc.setFont("helvetica","italic");doc.setFontSize(7);this.tc(doc,K140);
-            doc.text("Immagine non disponibile",x+tW/2,y+tH/2,{align:"center"});
+    const COLS = 2, GAP = 4, tW = (PW - GAP) / COLS, tH = 55;
+    for (let i = 0; i < imgs.length; i += COLS) {
+      y = this.pb(doc, y, tH + 6);
+      const row = imgs.slice(i, i + COLS);
+      const conv = await Promise.all(row.map(im => this.toJpeg(im).catch(() => null)));
+      conv.forEach((img, col) => {
+        const x = ML + col * (tW + GAP);
+        this.dc(doc, K200); doc.setLineWidth(0.2); doc.rect(x, y, tW, tH, "S");
+        if (img) {
+          try {
+            const p = (doc as any).getImageProperties(img);
+            const r = p.width / p.height;
+            let w = tW - 3, h = w / r;
+            if (h > tH - 3) { h = tH - 3; w = h * r; }
+            doc.addImage(img, "JPEG", x + (tW - w) / 2, y + (tH - h) / 2, w, h);
+          } catch {
+            doc.setFont("helvetica", "italic"); doc.setFontSize(7); this.tc(doc, K140);
+            doc.text("Immagine non disponibile", x + tW / 2, y + tH / 2, { align: "center" });
           }
         }
       });
-      y+=tH+4;
+      y += tH + 4;
     }
-    return y+4;
+    return y + 4;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // FOOTER
   // ─────────────────────────────────────────────────────────────────────────────
-  private static drawFooter(doc:jsPDF, doctor:Doctor|null, vis?:FooterVisibilityOptions){
-    this.rule(doc, FOOT_Y, ML+10, MR-10, 0.2);
-    const parts:string[]=[];
-    if (doctor?.ambulatori?.length){
-      const a=doctor.ambulatori.find(x=>x.isPrimario)||doctor.ambulatori[0];
+  private static drawFooter(doc: jsPDF, doctor: Doctor | null, vis?: FooterVisibilityOptions) {
+    this.rule(doc, FOOT_Y, ML + 10, MR - 10, 0.2);
+    const parts: string[] = [];
+    if (doctor?.ambulatori?.length) {
+      const a = doctor.ambulatori.find(x => x.isPrimario) || doctor.ambulatori[0];
       parts.push(san(`${a.nome} - ${a.indirizzo}, ${a.citta}`));
     }
-    if (vis?.showDoctorPhoneInPdf!==false&&doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
-    if (vis?.showDoctorEmailInPdf!==false&&doctor?.email)    parts.push(san(doctor.email));
-    doc.setFont("helvetica","normal"); doc.setFontSize(6.5); this.tc(doc,K140);
-    doc.text(parts.join("   |   "), 105, FOOT_Y+5, {align:"center"});
+    if (vis?.showDoctorPhoneInPdf !== false && doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
+    if (vis?.showDoctorEmailInPdf !== false && doctor?.email) parts.push(san(doctor.email));
+    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); this.tc(doc, K140);
+    doc.text(parts.join("   |   "), 105, FOOT_Y + 5, { align: "center" });
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // FLAT NORMALISERS
   // ─────────────────────────────────────────────────────────────────────────────
-  private static mkGyn(vv:Visit):NonNullable<Visit["ginecologia"]>{
-    const t=[vv.conclusioniDiagnostiche,vv.terapie].filter(Boolean).join("\n");
-    return{gravidanze:0,parti:0,aborti:0,ultimaMestruazione:"",prestazione:vv.anamnesi??"",
-      problemaClinico:vv.descrizioneClinica??"",chirurgiaPregessa:"",allergie:"",familiarita:"",
-      terapiaInAtto:"",vaccinazioneHPV:true,esameBimanuale:vv.esamiObiettivo??"",speculum:"",
-      ecografiaTV:"",accertamenti:"",conclusione:vv.conclusioniDiagnostiche??"",
-      terapiaSpecifica:t,ecografiaImmagini:[]};
+  private static mkGyn(vv: Visit): NonNullable<Visit["ginecologia"]> {
+    const t = [vv.conclusioniDiagnostiche, vv.terapie].filter(Boolean).join("\n");
+    return {
+      gravidanze: 0, parti: 0, aborti: 0, ultimaMestruazione: "", prestazione: vv.anamnesi ?? "",
+      problemaClinico: vv.descrizioneClinica ?? "", chirurgiaPregessa: "", allergie: "", familiarita: "",
+      terapiaInAtto: "", vaccinazioneHPV: true, esameBimanuale: vv.esamiObiettivo ?? "", speculum: "",
+      ecografiaTV: "", accertamenti: "", conclusione: vv.conclusioniDiagnostiche ?? "",
+      terapiaSpecifica: t, ecografiaImmagini: []
+    };
   }
-  private static mkObs(vv:Visit):NonNullable<Visit["ostetricia"]>{
-    const t=[vv.conclusioniDiagnostiche,vv.terapie].filter(Boolean).join("\n");
-    return{settimaneGestazione:"",ultimaMestruazione:"",dataPresunta:"",modalitaConcepimento:"",
-      problemaClinico:vv.descrizioneClinica??"",gravidanzePrec:0,partiPrec:0,abortiPrec:0,
-      pesoPreGravidanza:0,pesoAttuale:0,pressioneArteriosa:"",fumaInGravidanza:"",
-      pacchettiSigaretteAlGiorno:0,assunzioneAcidoFolico:"",altezzaUterina:"",battitiFetali:"",
-      movimentiFetali:"",esamiEseguiti:"",ecografiaOffice:vv.esamiObiettivo??"",
-      noteOstetriche:t,prestazione:vv.anamnesi??"",esameObiettivo:vv.esamiObiettivo??"",
-      ecografiaImmagini:[],biometriaFetale:{bpdMm:0,hcMm:0,acMm:0,flMm:0}};
+  private static mkObs(vv: Visit): NonNullable<Visit["ostetricia"]> {
+    const t = [vv.conclusioniDiagnostiche, vv.terapie].filter(Boolean).join("\n");
+    return {
+      settimaneGestazione: "", ultimaMestruazione: "", dataPresunta: "", modalitaConcepimento: "",
+      problemaClinico: vv.descrizioneClinica ?? "", gravidanzePrec: 0, partiPrec: 0, abortiPrec: 0,
+      pesoPreGravidanza: 0, pesoAttuale: 0, pressioneArteriosa: "", fumaInGravidanza: "",
+      pacchettiSigaretteAlGiorno: 0, assunzioneAcidoFolico: "", altezzaUterina: "", battitiFetali: "",
+      movimentiFetali: "", esamiEseguiti: "", ecografiaOffice: vv.esamiObiettivo ?? "",
+      noteOstetriche: t, prestazione: vv.anamnesi ?? "", esameObiettivo: vv.esamiObiettivo ?? "",
+      ecografiaImmagini: [], biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }
+    };
   }
-  private static norm(visit:Visit):Visit{
-    const isG=visit.tipo==="ginecologica"||visit.tipo==="ginecologica_pediatrica";
-    const isO=visit.tipo==="ostetrica";
-    const g=visit.ginecologia??(isG?this.mkGyn(visit):undefined);
-    const o=visit.ostetricia??(isO?this.mkObs(visit):undefined);
-    return(g||o)?{...visit,ginecologia:g,ostetricia:o}:visit;
+  private static norm(visit: Visit): Visit {
+    const isG = visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica";
+    const isO = visit.tipo === "ostetrica";
+    const g = visit.ginecologia ?? (isG ? this.mkGyn(visit) : undefined);
+    const o = visit.ostetricia ?? (isO ? this.mkObs(visit) : undefined);
+    return (g || o) ? { ...visit, ginecologia: g, ostetricia: o } : visit;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -851,151 +876,152 @@ export class PdfService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ─── VISITA GINECOLOGICA ───────────────────────────────────────────────────
-  static async generateGynecologicalPDF(patient:Patient, visit:Visit, options?:VisitPdfOptions){
-    const nv=this.norm(visit); if(!nv.ginecologia)return;
-    const gyn=nv.ginecologia;
-    const isPed=visit.tipo==="ginecologica_pediatrica";
+  static async generateGynecologicalPDF(patient: Patient, visit: Visit, options?: VisitPdfOptions) {
+    const nv = this.norm(visit); if (!nv.ginecologia) return;
+    const gyn = nv.ginecologia;
+    const isPed = visit.tipo === "ginecologica_pediatrica";
 
-    const[doctor,prefs]=await Promise.all([DoctorService.getDoctor(),PreferenceService.getPreferences()]);
-    const fo:FooterVisibilityOptions={
-      showDoctorPhoneInPdf:prefs?.showDoctorPhoneInPdf as boolean|undefined,
-      showDoctorEmailInPdf:prefs?.showDoctorEmailInPdf as boolean|undefined,
+    const [doctor, prefs] = await Promise.all([DoctorService.getDoctor(), PreferenceService.getPreferences()]);
+    const fo: FooterVisibilityOptions = {
+      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
     };
-    this.fCtx={doctor,opts:fo};
-    const doc=new jsPDF();
+    this.fCtx = { doctor, opts: fo };
+    const doc = new jsPDF();
 
-    let y=this.drawHeader(doc,
-      isPed?"VISITA GINECOLOGICA PEDIATRICA":"VISITA GINECOLOGICA",
-      "Referto Specialistico",doctor);
-    y=this.drawPatientBlock(doc,patient,visit.dataVisita,y);
+    let y = this.drawHeader(doc,
+      isPed ? "VISITA GINECOLOGICA PEDIATRICA" : "VISITA GINECOLOGICA",
+      "Referto Specialistico", doctor);
+    y = this.drawPatientBlock(doc, patient, visit.dataVisita, y);
 
-    const partiV=gyn.partiSpontanei!=null||gyn.partiCesarei!=null
-      ?`${gyn.parti} (${gyn.partiSpontanei??0} PS, ${gyn.partiCesarei??0} TC)`:String(gyn.parti);
-    const abortiV=gyn.abortiSpontanei!=null||gyn.ivg!=null
-      ?`${gyn.aborti} (${gyn.abortiSpontanei??0} AS, ${gyn.ivg??0} IVG)`:String(gyn.aborti);
+    const partiV = gyn.partiSpontanei != null || gyn.partiCesarei != null
+      ? `${gyn.parti} (${gyn.partiSpontanei ?? 0} PS, ${gyn.partiCesarei ?? 0} TC)` : String(gyn.parti);
+    const abortiV = gyn.abortiSpontanei != null || gyn.ivg != null
+      ? `${gyn.aborti} (${gyn.abortiSpontanei ?? 0} AS, ${gyn.ivg ?? 0} IVG)` : String(gyn.aborti);
 
     if (!isPed) {
-      y=this.heading(doc,y,"Dati anamnestici");
-      y=this.table(doc,y,[
-        {header:"Gravidanze (G)", w:40},
-        {header:"Parti (P)",      w:55},
-        {header:"Aborti (A)",     w:55},
-        {header:"Ultima Mestruazione", w:30},
-      ],[[String(gyn.gravidanze), partiV, abortiV,
-          gyn.ultimaMestruazione?.trim()?fd(gyn.ultimaMestruazione):"-"]],{rowH:8});
+      y = this.heading(doc, y, "Dati anamnestici");
+      y = this.table(doc, y, [
+        { header: "Gravidanze (G)", w: 40 },
+        { header: "Parti (P)", w: 55 },
+        { header: "Aborti (A)", w: 55 },
+        { header: "Ultima Mestruazione", w: 30 },
+      ], [[String(gyn.gravidanze), partiV, abortiV,
+      gyn.ultimaMestruazione?.trim() ? fd(gyn.ultimaMestruazione) : "-"]], { rowH: 8 });
     } else {
-      y=this.heading(doc,y,"Dati anamnestici");
-      y=this.table(doc,y,[
-        {header:"Menarca",          w:60},
-        {header:"Vaccinazione HPV", w:60},
-        {header:"Stadio Tanner (F)",w:60},
-      ],[[gyn.menarca??"-", gyn.vaccinazioneHPV?"Si'":"No", gyn.stadioTannerFemmina??"-"]],{rowH:8});
+      y = this.heading(doc, y, "Dati anamnestici");
+      y = this.table(doc, y, [
+        { header: "Menarca", w: 60 },
+        { header: "Vaccinazione HPV", w: 60 },
+        { header: "Stadio Tanner (F)", w: 60 },
+      ], [[gyn.menarca ?? "-", gyn.vaccinazioneHPV ? "Si'" : "No", gyn.stadioTannerFemmina ?? "-"]], { rowH: 8 });
     }
 
-    const SIEOG="Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
-    y=this.drawTextSection(doc,y,"Anamnesi",gyn.prestazione);
-    y=this.drawTextSection(doc,y,"Descrizione Problema / Dati Clinici",gyn.problemaClinico);
-    y=this.drawTextSection(doc,y,"Visita / Ecografia Office",gyn.esameBimanuale,SIEOG);
-    if(options?.includeEcografiaImages) y=await this.drawImages(doc,gyn.ecografiaImmagini,y);
-    y=this.drawTextSection(doc,y,"Conclusioni e Terapia",gyn.terapiaSpecifica);
+    const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
+    y = this.drawTextSection(doc, y, "Anamnesi", gyn.prestazione);
+    y = this.drawTextSection(doc, y, "Descrizione Problema / Dati Clinici", gyn.problemaClinico);
+    y = this.drawTextSection(doc, y, "Visita / Ecografia Office", gyn.esameBimanuale, SIEOG);
+    if (options?.includeEcografiaImages) y = await this.drawImages(doc, gyn.ecografiaImmagini, y);
+    y = this.drawTextSection(doc, y, "Conclusioni e Terapia", gyn.terapiaSpecifica);
 
-    try{this.drawFooter(doc,doctor,fo);return doc.output("blob") as Blob;}
-    finally{this.fCtx=null;}
+    try { this.drawFooter(doc, doctor, fo); return doc.output("blob") as Blob; }
+    finally { this.fCtx = null; }
   }
 
   // ─── VISITA OSTETRICA ──────────────────────────────────────────────────────
-  static async generateObstetricPDF(patient:Patient, visit:Visit, options?:VisitPdfOptions){
-    const nv=this.norm(visit); if(!nv.ostetricia)return;
-    const obs=nv.ostetricia;
+  static async generateObstetricPDF(patient: Patient, visit: Visit, options?: VisitPdfOptions) {
+    const nv = this.norm(visit); if (!nv.ostetricia) return;
+    const obs = nv.ostetricia;
 
-    const[doctor,prefs]=await Promise.all([DoctorService.getDoctor(),PreferenceService.getPreferences()]);
-    const fo:FooterVisibilityOptions={
-      showDoctorPhoneInPdf:prefs?.showDoctorPhoneInPdf as boolean|undefined,
-      showDoctorEmailInPdf:prefs?.showDoctorEmailInPdf as boolean|undefined,
+    const [doctor, prefs] = await Promise.all([DoctorService.getDoctor(), PreferenceService.getPreferences()]);
+    const fo: FooterVisibilityOptions = {
+      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
     };
-    this.fCtx={doctor,opts:fo};
-    const formula=(prefs?.formulaPesoFetale as string)||"hadlock4";
-    const doc=new jsPDF();
+    this.fCtx = { doctor, opts: fo };
+    const formula = (prefs?.formulaPesoFetale as string) || "hadlock4";
+    const doc = new jsPDF();
 
-    let y=this.drawHeader(doc,"VISITA OSTETRICA","Monitoraggio della Gravidanza",doctor);
-    y=this.drawPatientBlock(doc,patient,visit.dataVisita,y);
+    let y = this.drawHeader(doc, "VISITA OSTETRICA", "Monitoraggio della Gravidanza", doctor);
+    y = this.drawPatientBlock(doc, patient, visit.dataVisita, y);
 
     // ── calcoli ───────────────────────────────────────────────────────────────
-    const bio=obs.biometriaFetale??{bpdMm:0,hcMm:0,acMm:0,flMm:0};
-    const stime=calcolaStimePesoFetale(bio);
-    const stima=stime[formula]??stime.hadlock4;
-    const ga=parseGestationalWeeks(obs.settimaneGestazione??"");
+    const bio = obs.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
+    const stime = calcolaStimePesoFetale(bio);
+    const stima = stime[formula] ?? stime.hadlock4;
+    const ga = parseGestationalWeeks(obs.settimaneGestazione ?? "");
 
     const efwGrams = (stima?.calcolabile && stima.pesoGrammi != null) ? stima.pesoGrammi : 0;
 
-    const hasH=patient?.altezza!=null&&patient.altezza>0;
-    const bmiPre=hasH&&Number(obs.pesoPreGravidanza)>0
-      ?(Number(obs.pesoPreGravidanza)/Math.pow(patient!.altezza/100,2)).toFixed(1):"-";
-    const bmiNow=hasH&&Number(obs.pesoAttuale)>0
-      ?(Number(obs.pesoAttuale)/Math.pow(patient!.altezza/100,2)).toFixed(1):"-";
-    const delta=obs.pesoAttuale&&obs.pesoPreGravidanza
-      ?`${(Number(obs.pesoAttuale)-Number(obs.pesoPreGravidanza)).toFixed(1)} kg`:"-";
+    const patAltezza = patient?.altezza ?? 0;
+    const hasH = patAltezza > 0;
+    const bmiPre = hasH && Number(obs.pesoPreGravidanza) > 0
+      ? (Number(obs.pesoPreGravidanza) / Math.pow(patAltezza / 100, 2)).toFixed(1) : "-";
+    const bmiNow = hasH && Number(obs.pesoAttuale) > 0
+      ? (Number(obs.pesoAttuale) / Math.pow(patAltezza / 100, 2)).toFixed(1) : "-";
+    const delta = obs.pesoAttuale && obs.pesoPreGravidanza
+      ? `${(Number(obs.pesoAttuale) - Number(obs.pesoPreGravidanza)).toFixed(1)} kg` : "-";
 
-    const fumaMap:Record<string,string>={
-      no:"No",meno_1:"<1 pacc./gg","1":"1 pacc./gg","2":"2 pacc./gg",
-      "3":"3 pacc./gg","4":"4 pacc./gg","5_plus":"5+ pacc./gg",
+    const fumaMap: Record<string, string> = {
+      no: "No", meno_1: "<1 pacc./gg", "1": "1 pacc./gg", "2": "2 pacc./gg",
+      "3": "3 pacc./gg", "4": "4 pacc./gg", "5_plus": "5+ pacc./gg",
     };
-    const fumo=obs.fumaInGravidanza?(fumaMap[obs.fumaInGravidanza]??obs.fumaInGravidanza)
-      :obs.pacchettiSigaretteAlGiorno?`${obs.pacchettiSigaretteAlGiorno} pacc./gg`:"-";
-    const folico=obs.assunzioneAcidoFolico==="si"?"Si'":obs.assunzioneAcidoFolico==="no"?"No":"-";
-    const concMap:Record<string,string>={
-      spontaneo:"Spontaneo",fivet:"FIVET",icsi:"ICSI",
-      iui:"IUI/Inseminazione",donazione_ovociti:"Donazione ovociti",altra:"Altra",
+    const fumo = obs.fumaInGravidanza ? (fumaMap[obs.fumaInGravidanza] ?? obs.fumaInGravidanza)
+      : obs.pacchettiSigaretteAlGiorno ? `${obs.pacchettiSigaretteAlGiorno} pacc./gg` : "-";
+    const folico = obs.assunzioneAcidoFolico === "si" ? "Si'" : obs.assunzioneAcidoFolico === "no" ? "No" : "-";
+    const concMap: Record<string, string> = {
+      spontaneo: "Spontaneo", fivet: "FIVET", icsi: "ICSI",
+      iui: "IUI/Inseminazione", donazione_ovociti: "Donazione ovociti", altra: "Altra",
     };
-    const concep=obs.modalitaConcepimento?(concMap[obs.modalitaConcepimento]??obs.modalitaConcepimento):"-";
-    const partiV=obs.partiPrecSpontanei!=null||obs.partiPrecCesarei!=null
-      ?`${obs.partiPrec} (${obs.partiPrecSpontanei??0} PS, ${obs.partiPrecCesarei??0} TC)`:String(obs.partiPrec);
-    const abortiV=obs.abortiPrecSpontanei!=null||obs.ivgPrec!=null
-      ?`${obs.abortiPrec} (${obs.abortiPrecSpontanei??0} AS, ${obs.ivgPrec??0} IVG)`:String(obs.abortiPrec);
+    const concep = obs.modalitaConcepimento ? (concMap[obs.modalitaConcepimento] ?? obs.modalitaConcepimento) : "-";
+    const partiV = obs.partiPrecSpontanei != null || obs.partiPrecCesarei != null
+      ? `${obs.partiPrec} (${obs.partiPrecSpontanei ?? 0} PS, ${obs.partiPrecCesarei ?? 0} TC)` : String(obs.partiPrec);
+    const abortiV = obs.abortiPrecSpontanei != null || obs.ivgPrec != null
+      ? `${obs.abortiPrec} (${obs.abortiPrecSpontanei ?? 0} AS, ${obs.ivgPrec ?? 0} IVG)` : String(obs.abortiPrec);
 
     // ── SEZIONE 1 — Datazione e gravidanza (4 col × 45mm = 180mm) ────────────
-    y=this.heading(doc,y,"Datazione e gravidanza");
-    y=this.table(doc,y,[
-      {header:"Ultima Mestruazione",    w:38},
-      {header:"Modalita' Concepimento", w:44},
-      {header:"Settimane Gestazione",   w:40},
-      {header:"Data Presunta Parto",    w:58},
-    ],[[fd(obs.ultimaMestruazione), concep, v(obs.settimaneGestazione), fd(obs.dataPresunta)]],{rowH:8});
+    y = this.heading(doc, y, "Datazione e gravidanza");
+    y = this.table(doc, y, [
+      { header: "Ultima Mestruazione", w: 38 },
+      { header: "Modalita' Concepimento", w: 44 },
+      { header: "Settimane Gestazione", w: 40 },
+      { header: "Data Presunta Parto", w: 58 },
+    ], [[fd(obs.ultimaMestruazione), concep, v(obs.settimaneGestazione), fd(obs.dataPresunta)]], { rowH: 8 });
 
     // ── SEZIONE 2 — Storia ostetrica (3 col × 60mm = 180mm) ──────────────────
-    y=this.heading(doc,y,"Storia ostetrica");
-    y=this.table(doc,y,[
-      {header:"Gravidanze prec. (G)", w:60},
-      {header:"Parti prec. (P)",      w:60},
-      {header:"Aborti prec. (A)",     w:60},
-    ],[[String(obs.gravidanzePrec), partiV, abortiV]],{rowH:8});
+    y = this.heading(doc, y, "Storia ostetrica");
+    y = this.table(doc, y, [
+      { header: "Gravidanze prec. (G)", w: 60 },
+      { header: "Parti prec. (P)", w: 60 },
+      { header: "Aborti prec. (A)", w: 60 },
+    ], [[String(obs.gravidanzePrec), partiV, abortiV]], { rowH: 8 });
 
     // ── SEZIONE 3 — Parametri materni (4+4 col × 45mm = 180mm each row) ──────
-    y=this.heading(doc,y,"Parametri materni");
+    y = this.heading(doc, y, "Parametri materni");
     // Riga A: pesi + pressione
-    y=this.table(doc,y,[
-      {header:"Peso pre-gravidanza",  w:45},
-      {header:"Peso attuale",         w:45},
-      {header:"Incremento ponderale", w:45},
-      {header:"Pressione arteriosa",  w:45},
-    ],[[
-      obs.pesoPreGravidanza?`${obs.pesoPreGravidanza} kg`:"-",
-      obs.pesoAttuale?`${obs.pesoAttuale} kg`:"-",
+    y = this.table(doc, y, [
+      { header: "Peso pre-gravidanza", w: 45 },
+      { header: "Peso attuale", w: 45 },
+      { header: "Incremento ponderale", w: 45 },
+      { header: "Pressione arteriosa", w: 45 },
+    ], [[
+      obs.pesoPreGravidanza ? `${obs.pesoPreGravidanza} kg` : "-",
+      obs.pesoAttuale ? `${obs.pesoAttuale} kg` : "-",
       delta, v(obs.pressioneArteriosa),
-    ]],{rowH:8});
+    ]], { rowH: 8 });
     // Riga B: BMI + stile di vita
-    y=this.table(doc,y,[
-      {header:"BMI pre-gravidanza", w:45},
-      {header:"BMI attuale",        w:45},
-      {header:"Fumo in gravidanza", w:45},
-      {header:"Acido folico",       w:45},
-    ],[[bmiPre, bmiNow, fumo, folico]],{rowH:8});
+    y = this.table(doc, y, [
+      { header: "BMI pre-gravidanza", w: 45 },
+      { header: "BMI attuale", w: 45 },
+      { header: "Fumo in gravidanza", w: 45 },
+      { header: "Acido folico", w: 45 },
+    ], [[bmiPre, bmiNow, fumo, folico]], { rowH: 8 });
     // Riga C: battiti + movimenti (opzionale)
     if (obs.battitiFetali || obs.movimentiFetali) {
-      y=this.table(doc,y,[
-        {header:"Battiti fetali",   w:90},
-        {header:"Movimenti fetali", w:90},
-      ],[[obs.battitiFetali??"-", obs.movimentiFetali??"-"]],{rowH:8});
+      y = this.table(doc, y, [
+        { header: "Battiti fetali", w: 90 },
+        { header: "Movimenti fetali", w: 90 },
+      ], [[obs.battitiFetali ?? "-", obs.movimentiFetali ?? "-"]], { rowH: 8 });
     }
 
     // ── SEZIONE 4 — Biometria fetale con barre percentile inline ─────────────
@@ -1005,17 +1031,16 @@ export class PdfService {
     );
 
     // ── SEZIONI TESTO LIBERO ─────────────────────────────────────────────────
-    const SIEOG="Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
-    y=this.drawTextSection(doc,y,"Anamnesi",obs.prestazione);
-    y=this.drawTextSection(doc,y,"Dati clinici",obs.problemaClinico);
-    y=this.drawTextSection(doc,y,"Ecografia Office / Esame obiettivo",obs.esameObiettivo,SIEOG);
-    if(options?.includeEcografiaImages) y=await this.drawImages(doc,obs.ecografiaImmagini,y);
-    y=this.drawTextSection(doc,y,"Conclusioni e Terapia",obs.noteOstetriche);
+    const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
+    y = this.drawTextSection(doc, y, "Anamnesi", obs.prestazione);
+    y = this.drawTextSection(doc, y, "Dati clinici", obs.problemaClinico);
+    y = this.drawTextSection(doc, y, "Ecografia Office / Esame obiettivo", obs.esameObiettivo, SIEOG);
+    y = this.drawTextSection(doc, y, "Conclusioni e Terapia", obs.noteOstetriche);
 
-    // ── CURVE BIOMETRICHE (opzionale, in fondo) ──────────────────────────────
+    // ── CURVE BIOMETRICHE (opzionale) ─────────────────────────────────────────
     if (options?.includeFetalGrowthChart) {
       let pts = options.fetalGrowthDataPoints ? [...options.fetalGrowthDataPoints] : [];
-      
+
       // Se non ci sono punti storici forniti, proviamo a costruire un punto dalla visita corrente
       // oppure se l'array c'è, controlliamo se dobbiamo aggiungere la visita corrente (spesso gestito dal chiamante, ma per sicurezza)
       // Per semplicità, se la lista è vuota, usiamo la corrente.
@@ -1035,53 +1060,56 @@ export class PdfService {
       }
     }
 
-    try{this.drawFooter(doc,doctor,fo);return doc.output("blob") as Blob;}
-    finally{this.fCtx=null;}
+    // ── IMMAGINI ECOGRAFIA (ultima sezione) ───────────────────────────────────
+    if (options?.includeEcografiaImages) y = await this.drawImages(doc, obs.ecografiaImmagini, y);
+
+    try { this.drawFooter(doc, doctor, fo); return doc.output("blob") as Blob; }
+    finally { this.fCtx = null; }
   }
 
   // ─── RICHIESTA ESAME ──────────────────────────────────────────────────────
   static async generateRichiestaEsamePDF(
-    patient:Patient, richiesta:RichiestaEsameComplementare, doctor:Doctor|null
-  ):Promise<Blob>{
-    const doc=new jsPDF();
-    let y=this.drawHeader(doc,"RICHIESTA ESAME COMPLEMENTARE","Prescrizione esame",doctor,false);
-    y=this.drawPatientBlock(doc,patient,richiesta.dataRichiesta,y);
-    y+=4;
-    y=this.heading(doc,y,"Esame richiesto");
-    doc.setFont("helvetica","bold");doc.setFontSize(10);this.tc(doc,K0);
-    y=this.block(doc,richiesta.nome,ML+1,y,PW-2);
-    if(richiesta.note?.trim()){
-      y+=2;doc.setFont("helvetica","normal");doc.setFontSize(9.5);this.tc(doc,K30);
-      y=this.block(doc,richiesta.note,ML+1,y,PW-2);
+    patient: Patient, richiesta: RichiestaEsameComplementare, doctor: Doctor | null
+  ): Promise<Blob> {
+    const doc = new jsPDF();
+    let y = this.drawHeader(doc, "RICHIESTA ESAME COMPLEMENTARE", "Prescrizione esame", doctor, false);
+    y = this.drawPatientBlock(doc, patient, richiesta.dataRichiesta, y);
+    y += 4;
+    y = this.heading(doc, y, "Esame richiesto");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); this.tc(doc, K0);
+    y = this.block(doc, richiesta.nome, ML + 1, y, PW - 2);
+    if (richiesta.note?.trim()) {
+      y += 2; doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); this.tc(doc, K30);
+      y = this.block(doc, richiesta.note, ML + 1, y, PW - 2);
     }
-    y+=4;doc.setFont("helvetica","normal");doc.setFontSize(8);this.tc(doc,K140);
-    doc.text("Data richiesta: "+fd(richiesta.dataRichiesta),ML+1,y);
-    const prefs=await PreferenceService.getPreferences();
-    this.drawFooter(doc,doctor,{
-      showDoctorPhoneInPdf:prefs?.showDoctorPhoneInPdf as boolean|undefined,
-      showDoctorEmailInPdf:prefs?.showDoctorEmailInPdf as boolean|undefined,
+    y += 4; doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K140);
+    doc.text("Data richiesta: " + fd(richiesta.dataRichiesta), ML + 1, y);
+    const prefs = await PreferenceService.getPreferences();
+    this.drawFooter(doc, doctor, {
+      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
     });
     return doc.output("blob") as Blob;
   }
 
   // ─── CERTIFICATO ──────────────────────────────────────────────────────────
   static async generateCertificatoPDF(
-    patient:Patient, certificato:CertificatoPaziente, doctor:Doctor|null
-  ):Promise<Blob>{
-    const doc=new jsPDF();
-    const tipoL:Record<CertificatoPaziente["tipo"],string>={
-      assenza_lavoro:"Assenza da lavoro",idoneita:"Idoneita'",malattia:"Malattia",altro:"Altro",
+    patient: Patient, certificato: CertificatoPaziente, doctor: Doctor | null
+  ): Promise<Blob> {
+    const doc = new jsPDF();
+    const tipoL: Record<CertificatoPaziente["tipo"], string> = {
+      assenza_lavoro: "Assenza da lavoro", idoneita: "Idoneita'", malattia: "Malattia", altro: "Altro",
     };
-    let y=this.drawHeader(doc,"CERTIFICATO MEDICO",tipoL[certificato.tipo]||certificato.tipo,doctor,false);
-    y=this.drawPatientBlock(doc,patient,certificato.dataCertificato,y,"Data certificato");
-    y+=4;
-    y=this.heading(doc,y,"Testo del Certificato");
-    doc.setFont("helvetica","normal");doc.setFontSize(10);this.tc(doc,K30);
-    y=this.block(doc,certificato.descrizione||"",ML+1,y,PW-2);
-    const prefs=await PreferenceService.getPreferences();
-    this.drawFooter(doc,doctor,{
-      showDoctorPhoneInPdf:prefs?.showDoctorPhoneInPdf as boolean|undefined,
-      showDoctorEmailInPdf:prefs?.showDoctorEmailInPdf as boolean|undefined,
+    let y = this.drawHeader(doc, "CERTIFICATO MEDICO", tipoL[certificato.tipo] || certificato.tipo, doctor, false);
+    y = this.drawPatientBlock(doc, patient, certificato.dataCertificato, y, "Data certificato");
+    y += 4;
+    y = this.heading(doc, y, "Testo del Certificato");
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10); this.tc(doc, K30);
+    y = this.block(doc, certificato.descrizione || "", ML + 1, y, PW - 2);
+    const prefs = await PreferenceService.getPreferences();
+    this.drawFooter(doc, doctor, {
+      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
     });
     return doc.output("blob") as Blob;
   }
