@@ -372,7 +372,7 @@ export default function Dashboard() {
             <p className="text-sm text-default-500">
               {totalFiltered === 0
                 ? "Nessun paziente"
-                : `${totalFiltered} paziente${totalFiltered === 1 ? "" : "i"} — pagina ${currentPage} di ${totalPages}`}
+                : `${totalFiltered} ${totalFiltered === 1 ? "paziente" : "pazienti"} — pagina ${currentPage} di ${totalPages}`}
             </p>
             <div className="flex items-center gap-3">
               <span className="text-sm text-default-500">

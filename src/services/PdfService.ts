@@ -4,6 +4,7 @@ import {
   Visit,
   Doctor,
   RichiestaEsameComplementare,
+  CertificatoPaziente,
 } from "../types/Storage";
 import { DoctorService, PreferenceService } from "./OfflineServices";
 import { calcolaStimePesoFetale } from "../utils/fetalWeightUtils";
@@ -268,6 +269,7 @@ export class PdfService {
     patient: Patient,
     visitDate: string,
     y: number,
+    dateLabel = "DATA VISITA",
   ): number {
     // Enclosed Box with light background header - COMPACT
 
@@ -293,7 +295,7 @@ export class PdfService {
     );
     doc.text("DATI DEL PAZIENTE", MARGIN_L + 4, boxY + 4);
     doc.text(
-      "DATA VISITA: " + this.formatDate(visitDate),
+      dateLabel + ": " + this.formatDate(visitDate),
       MARGIN_R - 4,
       boxY + 4,
       { align: "right" },
@@ -906,19 +908,18 @@ export class PdfService {
         gyn.abortiSpontanei != null || gyn.ivg != null
           ? `${gyn.aborti} (${gyn.abortiSpontanei ?? 0} AS, ${gyn.ivg ?? 0} IVG)`
           : String(gyn.aborti);
-      y = this.drawGridRow(
-        doc,
-        [
-          { label: "GRAVIDANZE (G)", value: String(gyn.gravidanze) },
-          { label: "PARTI (P)", value: partiValue },
-          { label: "ABORTI (A)", value: abortiValue },
-          {
-            label: "ULTIMA MESTRUAZIONE",
-            value: this.formatDate(gyn.ultimaMestruazione),
-          },
-        ],
-        y,
-      );
+      const anamnesiGridItems: { label: string; value: string }[] = [
+        { label: "GRAVIDANZE (G)", value: String(gyn.gravidanze) },
+        { label: "PARTI (P)", value: partiValue },
+        { label: "ABORTI (A)", value: abortiValue },
+      ];
+      if (gyn.ultimaMestruazione?.trim()) {
+        anamnesiGridItems.push({
+          label: "ULTIMA MESTRUAZIONE",
+          value: this.formatDate(gyn.ultimaMestruazione),
+        });
+      }
+      y = this.drawGridRow(doc, anamnesiGridItems, y);
     }
 
     const SIEOG_NOTE =
@@ -1171,6 +1172,53 @@ export class PdfService {
     doc.setFontSize(9);
     doc.setTextColor(SECONDARY_COLOR[0], SECONDARY_COLOR[1], SECONDARY_COLOR[2]);
     doc.text("Data richiesta: " + this.formatDate(richiesta.dataRichiesta), MARGIN_L + 4, y);
+    const prefs = await PreferenceService.getPreferences();
+    this.drawFooter(doc, doctor, {
+      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
+    });
+    return doc.output("blob") as Blob;
+  }
+
+  /** PDF dedicato: certificato medico (assenza, idoneità, malattia, altro) */
+  static async generateCertificatoPDF(
+    patient: Patient,
+    certificato: CertificatoPaziente,
+    doctor: Doctor | null,
+  ): Promise<Blob> {
+    const doc = new jsPDF();
+    const tipoLabels: Record<CertificatoPaziente["tipo"], string> = {
+      assenza_lavoro: "Assenza da lavoro",
+      idoneita: "Idoneità",
+      malattia: "Malattia",
+      altro: "Altro",
+    };
+    const tipoLabel = tipoLabels[certificato.tipo] || certificato.tipo;
+    let y = this.drawHeader(
+      doc,
+      "CERTIFICATO MEDICO",
+      tipoLabel,
+      doctor,
+      false,
+    );
+    y = this.drawPatientBox(doc, patient, certificato.dataCertificato, y, "DATA CERTIFICATO");
+    y = this.pageBreak(doc, y, 25);
+    doc.setFillColor(ACCENT_COLOR[0], ACCENT_COLOR[1], ACCENT_COLOR[2]);
+    doc.rect(MARGIN_L, y, PAGE_W, 5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(PRIMARY_COLOR[0], PRIMARY_COLOR[1], PRIMARY_COLOR[2]);
+    doc.text(this.s("TESTO DEL CERTIFICATO"), MARGIN_L + 4, y + 3.5);
+    y += 10;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    const descLines = doc.splitTextToSize(this.s(certificato.descrizione || ""), PAGE_W - 8);
+    doc.text(descLines, MARGIN_L + 4, y);
+    y += descLines.length * LINE_H + 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(SECONDARY_COLOR[0], SECONDARY_COLOR[1], SECONDARY_COLOR[2]);
+    doc.text("Data certificato: " + this.formatDate(certificato.dataCertificato), MARGIN_L + 4, y);
     const prefs = await PreferenceService.getPreferences();
     this.drawFooter(doc, doctor, {
       showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,

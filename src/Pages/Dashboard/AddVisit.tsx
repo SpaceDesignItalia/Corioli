@@ -24,7 +24,7 @@ import {
   Chip,
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
-import { addDays, differenceInDays, parseISO, isValid } from "date-fns";
+import { addDays, differenceInDays, parseISO, isValid, format, subDays } from "date-fns";
 import {
   PatientService,
   VisitService,
@@ -235,6 +235,7 @@ const createDefaultOstetriciaData = () => ({
   noteOstetriche: "",
   prestazione: "",
   esameObiettivo: "",
+  crlMm: undefined as number | undefined,
   ecografiaImmagini: [] as string[],
   biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 },
 });
@@ -775,7 +776,7 @@ export default function AddVisit() {
     files: FileList | null,
   ) => {
     if (!files || files.length === 0) return;
-    const maxImages = 8;
+    const maxImages = 20;
     const maxFileSize = 7 * 1024 * 1024; // 7MB per immagine
 
     const currentImages =
@@ -1008,6 +1009,38 @@ export default function AddVisit() {
   const handleOstetriciaChange = (field: string, value: any) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
     setOstetriciaData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  /** Da CRL (mm) a età gestazionale: formula Robinson GA_days = 42 + 0.6*CRL_mm (valida per CRL ~5-84 mm). */
+  const handleCrlChange = (value: string) => {
+    const num = value.trim() === "" ? undefined : parseInt(value, 10);
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setOstetriciaData((prev) => {
+      const next = { ...prev, crlMm: num };
+      if (num == null || num < 3 || num > 100) return next;
+      const gaDays = 42 + 0.6 * num;
+      const weeks = Math.floor(gaDays / 7);
+      const days = Math.round(gaDays % 7);
+      const newSettimane = `${weeks}+${days}`;
+      const currentWeeksDec = parseGestationalWeeks(prev.settimaneGestazione ?? "");
+      const currentGaDays = currentWeeksDec != null ? currentWeeksDec * 7 : null;
+      const diffDays = currentGaDays != null ? Math.abs(gaDays - currentGaDays) : 999;
+      if (diffDays >= 1) {
+        next.settimaneGestazione = newSettimane;
+        const edd = subDays(new Date(), gaDays);
+        const dpp = addDays(edd, 280);
+        next.dataPresunta = format(dpp, "yyyy-MM-dd");
+        const oldSett = prev.settimaneGestazione || "—";
+        const oldDpp = prev.dataPresunta ? format(parseISO(prev.dataPresunta), "dd/MM/yyyy") : "—";
+        setTimeout(() => {
+          showToast(
+            `In base al CRL (${num} mm): settimane da ${oldSett} a ${newSettimane}; data presunta parto da ${oldDpp} a ${format(dpp, "dd/MM/yyyy")}.`,
+            "warning",
+          );
+        }, 0);
+      }
+      return next;
+    });
   };
 
   const handleBiometriaFetaleChange = (
@@ -1253,7 +1286,8 @@ export default function AddVisit() {
                       <Input
                         type="number"
                         label="Gravidanze"
-                        value={ginecologiaData.gravidanze.toString()}
+                        placeholder="0"
+                        value={ginecologiaData.gravidanze === 0 ? "" : String(ginecologiaData.gravidanze)}
                         onValueChange={(v) =>
                           handleGinecologiaChange(
                             "gravidanze",
@@ -1269,7 +1303,8 @@ export default function AddVisit() {
                       <Input
                         type="number"
                         label="Parti"
-                        value={ginecologiaData.parti.toString()}
+                        placeholder="0"
+                        value={ginecologiaData.parti === 0 ? "" : String(ginecologiaData.parti)}
                         onValueChange={(v) =>
                           handleGinecologiaChange("parti", parseInt(v) || 0)
                         }
@@ -1282,7 +1317,8 @@ export default function AddVisit() {
                       <Input
                         type="number"
                         label="Aborti"
-                        value={ginecologiaData.aborti.toString()}
+                        placeholder="0"
+                        value={ginecologiaData.aborti === 0 ? "" : String(ginecologiaData.aborti)}
                         onValueChange={(v) =>
                           handleGinecologiaChange("aborti", parseInt(v) || 0)
                         }
@@ -1306,7 +1342,8 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ginecologiaData.partiSpontanei ?? 0)}
+                          placeholder="0"
+                          value={(ginecologiaData.partiSpontanei ?? 0) === 0 ? "" : String(ginecologiaData.partiSpontanei ?? 0)}
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "partiSpontanei",
@@ -1321,7 +1358,8 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ginecologiaData.partiCesarei ?? 0)}
+                          placeholder="0"
+                          value={(ginecologiaData.partiCesarei ?? 0) === 0 ? "" : String(ginecologiaData.partiCesarei ?? 0)}
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "partiCesarei",
@@ -1336,7 +1374,8 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ginecologiaData.abortiSpontanei ?? 0)}
+                          placeholder="0"
+                          value={(ginecologiaData.abortiSpontanei ?? 0) === 0 ? "" : String(ginecologiaData.abortiSpontanei ?? 0)}
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "abortiSpontanei",
@@ -1351,7 +1390,8 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ginecologiaData.ivg ?? 0)}
+                          placeholder="0"
+                          value={(ginecologiaData.ivg ?? 0) === 0 ? "" : String(ginecologiaData.ivg ?? 0)}
                           onValueChange={(v) =>
                             handleGinecologiaChange("ivg", parseInt(v) || 0)
                           }
@@ -1364,12 +1404,12 @@ export default function AddVisit() {
 
                 <Card className="shadow-sm border border-default-200 bg-white">
                   <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                    Foto Ecografia
+                    Ecografia
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">
-                        {(ginecologiaData.ecografiaImmagini ?? []).length}/8
+                        {(ginecologiaData.ecografiaImmagini ?? []).length}/20
                         immagini
                       </span>
                     </div>
@@ -1522,6 +1562,7 @@ export default function AddVisit() {
                         }
                         variant="bordered"
                         minRows={5}
+                        placeholder="Esame bimanuale, speculum, ecografia TV office..."
                         classNames={{
                           input: "text-base leading-relaxed",
                           inputWrapper:
@@ -1632,12 +1673,12 @@ export default function AddVisit() {
 
                   <Card className="shadow-sm border border-default-200 bg-white">
                     <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                      Foto Ecografia
+                      Ecografia
                     </CardHeader>
                     <CardBody className="px-4 py-6 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">
-                          {(ginecologiaData.ecografiaImmagini ?? []).length}/8
+                          {(ginecologiaData.ecografiaImmagini ?? []).length}/20
                           immagini
                         </span>
                       </div>
@@ -1793,6 +1834,7 @@ export default function AddVisit() {
                           }
                           variant="bordered"
                           minRows={5}
+                          placeholder="Esame bimanuale, speculum, ecografia TV office..."
                           classNames={{
                             input: "text-base leading-relaxed",
                             inputWrapper:
@@ -2220,12 +2262,25 @@ export default function AddVisit() {
 
                 <Card className="shadow-sm border border-default-200 bg-white">
                   <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                    Foto Ecografia
+                    Ecografia
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-3">
+                    <Input
+                      type="number"
+                      label="CRL (mm)"
+                      placeholder="Lunghezza vertice-sacro"
+                      description="Se non concorde con le settimane, queste e la data presunta parto vengono aggiornate"
+                      value={ostetriciaData.crlMm != null && ostetriciaData.crlMm > 0 ? String(ostetriciaData.crlMm) : ""}
+                      onValueChange={handleCrlChange}
+                      variant="bordered"
+                      labelPlacement="outside"
+                      min={3}
+                      max={100}
+                      classNames={{ label: "pb-1" }}
+                    />
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">
-                        {(ostetriciaData.ecografiaImmagini ?? []).length}/8
+                        {(ostetriciaData.ecografiaImmagini ?? []).length}/20
                         immagini
                       </span>
                     </div>
@@ -2410,6 +2465,7 @@ export default function AddVisit() {
                         }
                         variant="bordered"
                         minRows={3}
+                        placeholder="Anamnesi ostetrica, motivo della visita, dati clinici..."
                         classNames={{
                           input: "text-base leading-relaxed",
                           inputWrapper:

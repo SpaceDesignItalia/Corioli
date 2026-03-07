@@ -419,6 +419,7 @@ const SettingsScreen = () => {
       ostetricia: "prestazione",
       terapie: "generale",
       esame_complementare: "nome",
+      certificato: "generale",
     };
     setCurrentTemplate({
       label: "",
@@ -2075,10 +2076,11 @@ const SettingsScreen = () => {
             <Tab key="ostetricia" title="Ostetricia" />
             <Tab key="terapie" title="Terapie" />
             <Tab key="esame_complementare" title="Esami" />
+            <Tab key="certificato" title="Certificati" />
           </Tabs>
 
           <p className="text-sm text-default-500 mb-3">
-            I modelli compaiono nei pulsanti &quot;Modello&quot; / &quot;Modelli Esame&quot; durante la compilazione. Il <strong>nome in menu</strong> è ciò che vedi quando cerchi; il <strong>contenuto inserito</strong> è il testo che va nel referto quando lo selezioni.
+            I modelli compaiono nei pulsanti &quot;Modello&quot; / &quot;Modelli Esame&quot; / &quot;Modelli Certificato&quot; durante la compilazione. Il <strong>nome in menu</strong> è ciò che vedi quando cerchi; il <strong>contenuto inserito</strong> è il testo che va nel referto quando lo selezioni.
           </p>
           <Table aria-label="Tabella Modelli">
             <TableHeader>
@@ -2101,7 +2103,9 @@ const SettingsScreen = () => {
                       <Chip size="sm" variant="flat" className="capitalize">
                         {template.section === "esameObiettivo"
                           ? "Esame Ob."
-                          : template.section}
+                          : template.section === "generale" && template.category === "certificato"
+                            ? "Testo"
+                            : template.section}
                       </Chip>
                     </TableCell>
                     <TableCell>
@@ -2340,6 +2344,9 @@ const SettingsScreen = () => {
                     >
                       Esami
                     </SelectItem>
+                    <SelectItem key="certificato" value="certificato">
+                      Certificati
+                    </SelectItem>
                   </Select>
                 ) : (
                   <div className="flex flex-col gap-1">
@@ -2349,7 +2356,9 @@ const SettingsScreen = () => {
                     <p className="text-default-700 font-medium capitalize">
                       {currentTemplate.category === "esame_complementare"
                         ? "Esami"
-                        : currentTemplate.category}
+                        : currentTemplate.category === "certificato"
+                          ? "Certificati"
+                          : currentTemplate.category}
                     </p>
                   </div>
                 )}
@@ -2364,6 +2373,8 @@ const SettingsScreen = () => {
                       section: Array.from(keys)[0] as any,
                     }))
                   }
+                  isDisabled={currentTemplate.category === "certificato"}
+                  description={currentTemplate.category === "certificato" ? "Per i certificati si usa sempre la sezione Testo." : undefined}
                 >
                   <SelectItem key="prestazione" value="prestazione">
                     Anamnesi / Prestazione
@@ -2375,7 +2386,7 @@ const SettingsScreen = () => {
                     Conclusioni
                   </SelectItem>
                   <SelectItem key="generale" value="generale">
-                    Generale
+                    {currentTemplate.category === "certificato" ? "Testo certificato" : "Generale"}
                   </SelectItem>
                   <SelectItem key="nome" value="nome">
                     Nome esame
@@ -2397,19 +2408,23 @@ const SettingsScreen = () => {
                 placeholder={
                   currentTemplate.category === "esame_complementare"
                     ? "Es. Emocromo con formula, Ecografia addome completo..."
-                    : "Testo che verrà inserito nel referto..."
+                    : currentTemplate.category === "certificato"
+                      ? "Testo del certificato (puoi usare ___ per campi da compilare)..."
+                      : "Testo che verrà inserito nel referto..."
                 }
                 value={currentTemplate.text}
                 onValueChange={(val) =>
                   setCurrentTemplate((prev) => ({ ...prev, text: val }))
                 }
                 minRows={
-                  currentTemplate.category === "esame_complementare" ? 2 : 5
+                  currentTemplate.category === "esame_complementare" ? 2 : currentTemplate.category === "certificato" ? 4 : 5
                 }
                 description={
                   currentTemplate.category === "esame_complementare"
                     ? "Nome dell'esame che compare nella richiesta quando lo selezioni"
-                    : "Testo che viene inserito nel referto quando selezioni questo modello"
+                    : currentTemplate.category === "certificato"
+                      ? "Testo che viene inserito nella descrizione del certificato quando selezioni questo modello"
+                      : "Testo che viene inserito nel referto quando selezioni questo modello"
                 }
                 spellCheck
               />

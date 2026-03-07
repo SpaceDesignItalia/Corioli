@@ -127,5 +127,27 @@ export const MedicalTemplates = {
     { label: "Dosaggi ormonali", text: "Dosaggi ormonali ginecologici", note: "FSH, LH, Estradiolo, Progesterone, Prolattina, TSH (in base al giorno del ciclo)." },
     { label: "Beta-hCG", text: "Dosaggio beta-hCG", note: "Escludere/accertare gravidanza quando clinicamente indicato." },
     { label: "Mammografia bilaterale", text: "Mammografia bilaterale", note: "Con ecografia mammaria integrativa se indicata." },
+  ],
+  certificati: [
+    {
+      label: "Assenza da lavoro (malattia)",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ è stata visitata in data odierna e necessita di astensione dal lavoro per motivi di salute per giorni ___, dal ___ al ___.\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Idoneità alla pratica sportiva",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___) è stata visitata in data odierna e risulta idonea alla pratica dell'attività sportiva non agonistica.\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Malattia (generico)",
+      text: "Si certifica che la paziente ___ è stata visitata in data odierna e necessita di riposo per ___ giorni a causa di ___.\n\nIl presente certificato è valido per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Gravidanza in corso (idoneità lavoro)",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___) è in stato di gravidanza fisiologica in corso (___ settimane) e risulta idonea allo svolgimento della propria attività lavorativa, salvo diversa indicazione in corso di gravidanza.\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Astensione gravidanza (art. 11 L. 151/2001)",
+      text: "Si certifica che la paziente ___ (CF ___) è in stato di gravidanza fisiologica. La lavoratrice è tenuta ad astenersi dal lavoro nei due mesi prima della data presunta del parto e nei tre mesi successivi (art. 11 L. 151/2001), salvo proroga.\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge."
+    }
   ]
 };

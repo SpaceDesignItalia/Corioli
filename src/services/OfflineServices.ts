@@ -1,5 +1,5 @@
 import { storageService } from './StorageServiceFallback';
-import { Patient, Visit, Doctor, Document, BackupImportMode, RichiestaEsameComplementare } from '../types/Storage';
+import { Patient, Visit, Doctor, Document, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente } from '../types/Storage';
 
 // Servizio per gestire i pazienti offline
 export class PatientService {
@@ -124,6 +124,34 @@ export class RichiestaEsameService {
 
   static async delete(id: string): Promise<void> {
     return await storageService.deleteRichiestaEsame(id);
+  }
+}
+
+// Certificati paziente (certificati medici: assenza, idoneità, malattia, altro)
+export class CertificatoService {
+  static async getByPatientId(patientId: string): Promise<CertificatoPaziente[]> {
+    return await storageService.getCertificatiByPatientId(patientId);
+  }
+
+  static async getById(id: string): Promise<CertificatoPaziente | null> {
+    return await storageService.getCertificatoById(id);
+  }
+
+  static async add(data: {
+    patientId: string;
+    tipo: CertificatoPaziente['tipo'];
+    dataCertificato: string;
+    descrizione: string;
+  }): Promise<CertificatoPaziente> {
+    return await storageService.addCertificato(data);
+  }
+
+  static async update(id: string, data: Partial<Pick<CertificatoPaziente, 'tipo' | 'dataCertificato' | 'descrizione'>>): Promise<CertificatoPaziente> {
+    return await storageService.updateCertificato(id, data);
+  }
+
+  static async delete(id: string): Promise<void> {
+    return await storageService.deleteCertificato(id);
   }
 }
 

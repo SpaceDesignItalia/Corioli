@@ -36,6 +36,18 @@ export interface RichiestaEsameComplementare {
   updatedAt: string;
 }
 
+/** Certificato medico rilasciato al paziente (assenze, idoneità, malattia, altro) */
+export interface CertificatoPaziente {
+  id: string;
+  patientId: string;
+  /** Tipo: assenza lavoro, idoneità, malattia, altro */
+  tipo: 'assenza_lavoro' | 'idoneita' | 'malattia' | 'altro';
+  dataCertificato: string; // ISO date
+  descrizione: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Visit {
   id: string;
   patientId: string;
@@ -112,6 +124,8 @@ export interface Visit {
     noteOstetriche: string;
     prestazione: string;
     esameObiettivo: string;
+    /** CRL in mm (lunghezza vertice-sacro). Se valorizzato e non concorde con settimane, queste vengono aggiornate. */
+    crlMm?: number;
     /** Data URL (base64) immagini ecografia */
     ecografiaImmagini?: string[];
     /** Biometria fetale per stima peso (mm). Usato per le 3 scale: Hadlock 4p, Shepard, Hadlock 3p */
@@ -169,7 +183,7 @@ export interface Document {
 
 export interface MedicalTemplate {
   id: string;
-  category: 'ginecologia' | 'ostetricia' | 'terapie' | 'esame_complementare';
+  category: 'ginecologia' | 'ostetricia' | 'terapie' | 'esame_complementare' | 'certificato';
   section: 'prestazione' | 'esameObiettivo' | 'conclusioni' | 'generale' | 'nome' | 'note';
   label: string;
   text: string;
@@ -181,6 +195,7 @@ export interface AppData {
   patients: Patient[];
   visits: Visit[];
   richiesteEsami?: RichiestaEsameComplementare[];
+  certificatiPaziente?: CertificatoPaziente[];
   doctor: Doctor;
   documents: Document[];
   templates?: MedicalTemplate[];
@@ -212,6 +227,13 @@ export interface StorageService {
   addRichiestaEsame(data: Omit<RichiestaEsameComplementare, 'id' | 'createdAt' | 'updatedAt'>): Promise<RichiestaEsameComplementare>;
   updateRichiestaEsame(id: string, data: Partial<RichiestaEsameComplementare>): Promise<RichiestaEsameComplementare>;
   deleteRichiestaEsame(id: string): Promise<void>;
+
+  // Certificati paziente
+  getCertificatiByPatientId(patientId: string): Promise<CertificatoPaziente[]>;
+  getCertificatoById(id: string): Promise<CertificatoPaziente | null>;
+  addCertificato(data: Omit<CertificatoPaziente, 'id' | 'createdAt' | 'updatedAt'>): Promise<CertificatoPaziente>;
+  updateCertificato(id: string, data: Partial<CertificatoPaziente>): Promise<CertificatoPaziente>;
+  deleteCertificato(id: string): Promise<void>;
 
   // Dottore
   getDoctor(): Promise<Doctor | null>;
