@@ -12,6 +12,10 @@ import {
 export interface FetalGrowthPoint {
   gaWeeks: number;
   pesoGrammi: number;
+  bpdMm?: number;
+  hcMm?: number;
+  acMm?: number;
+  flMm?: number;
 }
 
 /**
@@ -38,8 +42,20 @@ export function getFetalGrowthDataPointsFromVisits(
     const biometria = obs.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 };
     const stime = calcolaStimePesoFetale(biometria);
     const stima = stime[formula] ?? stime.hadlock4;
-    if (!stima?.calcolabile || stima.pesoGrammi == null) continue;
-    points.push({ gaWeeks: ga, pesoGrammi: stima.pesoGrammi });
+    // Anche se il peso non è calcolabile, potremmo voler mostrare le altre biometrie se presenti
+    const peso = (stima?.calcolabile && stima.pesoGrammi != null) ? stima.pesoGrammi : 0;
+    
+    // Se non c'è peso e nessuna biometria, saltiamo
+    if (peso <= 0 && !biometria.bpdMm && !biometria.hcMm && !biometria.acMm && !biometria.flMm) continue;
+
+    points.push({
+      gaWeeks: ga,
+      pesoGrammi: peso,
+      bpdMm: biometria.bpdMm > 0 ? biometria.bpdMm : undefined,
+      hcMm: biometria.hcMm > 0 ? biometria.hcMm : undefined,
+      acMm: biometria.acMm > 0 ? biometria.acMm : undefined,
+      flMm: biometria.flMm > 0 ? biometria.flMm : undefined,
+    });
   }
   return points;
 }
