@@ -24,6 +24,13 @@ import {
   Chip,
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
+
+/** Stile tipografia fissa per i Textarea del referto: evita che il testo cambi aspetto quando diventa molto lungo. */
+const REFERTO_TEXTAREA_CLASSES = {
+  input: "!text-base !leading-relaxed font-normal",
+  inputWrapper:
+    "group-hover:border-primary transition-colors bg-white",
+} as const;
 import { addDays, differenceInDays, parseISO, isValid, format, subDays } from "date-fns";
 import {
   PatientService,
@@ -1536,11 +1543,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1557,11 +1560,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="La paziente riferisce..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1594,11 +1593,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={5}
                         placeholder="Esame bimanuale, speculum, ecografia TV office..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1631,11 +1626,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Si consiglia..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
                   </CardBody>
@@ -1808,11 +1799,7 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                          classNames={{
-                            input: "text-base leading-relaxed",
-                            inputWrapper:
-                              "group-hover:border-primary transition-colors bg-white",
-                          }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -1829,11 +1816,7 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="La paziente riferisce..."
-                          classNames={{
-                            input: "text-base leading-relaxed",
-                            inputWrapper:
-                              "group-hover:border-primary transition-colors bg-white",
-                          }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -1866,11 +1849,7 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={5}
                           placeholder="Esame bimanuale, speculum, ecografia TV office..."
-                          classNames={{
-                            input: "text-base leading-relaxed",
-                            inputWrapper:
-                              "group-hover:border-primary transition-colors bg-white",
-                          }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -1903,11 +1882,7 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="Si consiglia..."
-                          classNames={{
-                            input: "text-base leading-relaxed",
-                            inputWrapper:
-                              "group-hover:border-primary transition-colors bg-white",
-                          }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
                     </CardBody>
@@ -2537,11 +2512,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Anamnesi ostetrica, motivo della visita, dati clinici..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2558,11 +2529,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Motivo della visita, sintomi riferiti..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2595,11 +2562,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={5}
                         placeholder="Biometria fetale, liquido amniotico..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2632,11 +2595,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Raccomandazioni e follow-up..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
                   </CardBody>

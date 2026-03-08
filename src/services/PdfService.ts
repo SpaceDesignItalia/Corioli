@@ -210,11 +210,25 @@ export class PdfService {
   }
 
   // ── multiline text block ─────────────────────────────────────────────────────
-  private static block(doc: jsPDF, text: string, x: number, y: number, maxW: number, lh = LH): number {
+  /** textStyle: ripristina font/size/colore prima di ogni riga (necessario dopo salto pagina, perché drawFooter cambia lo stile). */
+  private static block(
+    doc: jsPDF,
+    text: string,
+    x: number,
+    y: number,
+    maxW: number,
+    lh = LH,
+    textStyle?: { font?: "helvetica" | "times"; style?: "normal" | "bold" | "italic"; fontSize?: number; color?: readonly number[] },
+  ): number {
     if (!text?.trim()) return y;
     const lines: string[] = doc.splitTextToSize(san(text), maxW);
     for (const line of lines) {
       y = this.pb(doc, y, lh + 1);
+      if (textStyle) {
+        doc.setFont(textStyle.font ?? "helvetica", textStyle.style ?? "normal");
+        if (textStyle.fontSize != null) doc.setFontSize(textStyle.fontSize);
+        if (textStyle.color) this.tc(doc, textStyle.color);
+      }
       doc.text(line, x, y);
       y += lh;
     }
@@ -654,11 +668,15 @@ export class PdfService {
     doc.text(san(title), ML, y);
     this.rule(doc, y + 1.5, ML, MR, 0.25); y += 5.5;
     doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); this.tc(doc, K30);
-    y = this.block(doc, content, ML + 1, y, PW - 2, LH);
+    y = this.block(doc, content, ML + 1, y, PW - 2, LH, {
+      font: "helvetica", style: "normal", fontSize: 9.5, color: K30,
+    });
     if (note) {
       y += 1.5;
       doc.setFont("helvetica", "italic"); doc.setFontSize(7); this.tc(doc, K140);
-      y = this.block(doc, note, ML + 1, y, PW - 2, 3.8);
+      y = this.block(doc, note, ML + 1, y, PW - 2, 3.8, {
+        font: "helvetica", style: "italic", fontSize: 7, color: K140,
+      });
     }
     return y + 4;
   }
@@ -1122,10 +1140,14 @@ export class PdfService {
     y += 4;
     y = this.heading(doc, y, "Esame richiesto");
     doc.setFont("helvetica", "bold"); doc.setFontSize(10); this.tc(doc, K0);
-    y = this.block(doc, richiesta.nome, ML + 1, y, PW - 2);
+    y = this.block(doc, richiesta.nome, ML + 1, y, PW - 2, undefined, {
+      font: "helvetica", style: "bold", fontSize: 10, color: K0,
+    });
     if (richiesta.note?.trim()) {
       y += 2; doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); this.tc(doc, K30);
-      y = this.block(doc, richiesta.note, ML + 1, y, PW - 2);
+      y = this.block(doc, richiesta.note, ML + 1, y, PW - 2, undefined, {
+        font: "helvetica", style: "normal", fontSize: 9.5, color: K30,
+      });
     }
     y += 4; doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K140);
     doc.text("Data richiesta: " + fd(richiesta.dataRichiesta), ML + 1, y);
@@ -1150,7 +1172,9 @@ export class PdfService {
     y += 4;
     y = this.heading(doc, y, "Testo del Certificato");
     doc.setFont("helvetica", "normal"); doc.setFontSize(10); this.tc(doc, K30);
-    y = this.block(doc, certificato.descrizione || "", ML + 1, y, PW - 2);
+    y = this.block(doc, certificato.descrizione || "", ML + 1, y, PW - 2, undefined, {
+      font: "helvetica", style: "normal", fontSize: 10, color: K30,
+    });
     const prefs = await PreferenceService.getPreferences();
     this.drawFooter(doc, doctor, {
       showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
