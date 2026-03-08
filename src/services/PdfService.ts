@@ -191,6 +191,18 @@ function v(x: string | number | undefined | null, fb = "-"): string {
   return (x === undefined || x === null || String(x).trim() === "") ? fb : String(x);
 }
 
+/** True se il valore mostrato indica "campo non inserito": la riga non va stampata nel PDF. */
+function isInquadramentoValueEmpty(val: string): boolean {
+  if (!val || String(val).trim() === "") return true;
+  const s = String(val).trim();
+  if (s === "-") return true;
+  if (s === "0") return true;
+  if (s === "0 (0 PS, 0 TC)" || s === "0 (0 AS, 0 IVG)") return true;
+  if (s === "- / -" || s === "- / - kg") return true;
+  if (s === "- fumo, - acido folico") return true;
+  return false;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export class PdfService {
 
@@ -1017,25 +1029,19 @@ export class PdfService {
     const abortiV = obs.abortiPrecSpontanei != null || obs.ivgPrec != null
       ? `${obs.abortiPrec} (${obs.abortiPrecSpontanei ?? 0} AS, ${obs.ivgPrec ?? 0} IVG)` : String(obs.abortiPrec);
 
-    // ── INQUADRAMENTO OSTETRICO E MATERNO ─────────────────────────────────────────
-    y = this.heading(doc, y, "Inquadramento Ostetrico e Materno");
-    y = this.pb(doc, y, 40);
-
-    const colW = PW / 3;
-
-    // Configura i 3 blocchi di informazioni
+    // ── INQUADRAMENTO OSTETRICO E MATERNO (solo campi con valore) ─────────────────
     const dateInfo = [
       { label: "U.M.", value: fd(obs.ultimaMestruazione) },
       { label: "D.P.P.", value: fd(obs.dataPresunta) },
       { label: "Epoca", value: v(obs.settimaneGestazione) },
       { label: "Concepimento", value: concep },
-    ];
+    ].filter((item) => !isInquadramentoValueEmpty(item.value));
 
     const historyInfo = [
       { label: "Gravidanze (G)", value: String(obs.gravidanzePrec) },
       { label: "Parti (P)", value: partiV },
       { label: "Aborti (A)", value: abortiV },
-    ];
+    ].filter((item) => !isInquadramentoValueEmpty(item.value));
 
     const materniInfo = [
       { label: "Pesi (Pre/Att)", value: `${obs.pesoPreGravidanza || '-'} / ${obs.pesoAttuale || '-'} kg` },
@@ -1043,45 +1049,51 @@ export class PdfService {
       { label: "BMI (Pre/Att)", value: `${bmiPre} / ${bmiNow}` },
       { label: "PA", value: v(obs.pressioneArteriosa) },
       { label: "Stile di vita", value: `${fumo} fumo, ${folico} acido folico` },
-    ];
+    ].filter((item) => !isInquadramentoValueEmpty(item.value));
 
     const allBlocks = [dateInfo, historyInfo, materniInfo];
-    let maxY = y;
+    const hasAnyInquadramento = dateInfo.length > 0 || historyInfo.length > 0 || materniInfo.length > 0;
 
-    // Disegna l'intestazione dei 3 sotto-blocchi per renderli subito distinguibili
-    const subHeaders = ["Datazione", "Storia Ostetrica", "Parametri Materni"];
-    doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K100);
-    this.dc(doc, K200); doc.setLineWidth(0.2);
+    if (hasAnyInquadramento) {
+      y = this.heading(doc, y, "Inquadramento Ostetrico e Materno");
+      y = this.pb(doc, y, 40);
 
-    for (let c = 0; c < 3; c++) {
-      const cx = ML + c * colW;
+      const colW = PW / 3;
+      let maxY = y;
 
-      // Sotto-titolo grigio
-      this.fc(doc, K240);
-      doc.rect(cx, y, colW - 2, 6, "F");
-      this.tc(doc, K30);
-      doc.text(subHeaders[c], cx + 2, y + 4);
+      const subHeaders = ["Datazione", "Storia Ostetrica", "Parametri Materni"];
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K100);
+      this.dc(doc, K200); doc.setLineWidth(0.2);
 
-      let cy = y + 8;
-      doc.setFontSize(8);
+      for (let c = 0; c < 3; c++) {
+        const cx = ML + c * colW;
 
-      for (const item of allBlocks[c]) {
-        if (!item) continue;
-        doc.setFont("helvetica", "bold"); this.tc(doc, K80);
-        const lbl = san(item.label) + ": ";
-        doc.text(lbl, cx, cy);
+        this.fc(doc, K240);
+        doc.rect(cx, y, colW - 2, 6, "F");
+        this.tc(doc, K30);
+        doc.text(subHeaders[c], cx + 2, y + 4);
 
-        doc.setFont("helvetica", "normal"); this.tc(doc, K0);
-        const vlines = doc.splitTextToSize(san(item.value), colW - doc.getTextWidth(lbl) - 3);
-        for (const line of vlines) {
-          doc.text(line, cx + doc.getTextWidth(lbl), cy);
-          cy += LH;
+        let cy = y + 8;
+        doc.setFontSize(8);
+
+        for (const item of allBlocks[c]) {
+          if (!item) continue;
+          doc.setFont("helvetica", "bold"); this.tc(doc, K80);
+          const lbl = san(item.label) + ": ";
+          doc.text(lbl, cx, cy);
+
+          doc.setFont("helvetica", "normal"); this.tc(doc, K0);
+          const vlines = doc.splitTextToSize(san(item.value), colW - doc.getTextWidth(lbl) - 3);
+          for (const line of vlines) {
+            doc.text(line, cx + doc.getTextWidth(lbl), cy);
+            cy += LH;
+          }
         }
+        maxY = Math.max(maxY, cy);
       }
-      maxY = Math.max(maxY, cy);
-    }
 
-    y = maxY + 2;
+      y = maxY + 2;
+    }
 
     // ── SEZIONE 4 — Biometria fetale con barre percentile inline ─────────────
     y = this.drawBiometriaTable(

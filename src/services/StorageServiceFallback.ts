@@ -446,7 +446,7 @@ class LocalStorageFallbackService implements StorageService {
 
       // Certificati
       if (MedicalTemplates.certificati) {
-        MedicalTemplates.certificati.forEach(t => defaultTemplates.push({ id: generateId(), category: 'certificato', section: 'generale', label: t.label, text: t.text, isDefault: true }));
+        MedicalTemplates.certificati.forEach(t => defaultTemplates.push({ id: generateId(), category: 'certificato', section: 'generale', label: t.label, text: t.text, note: (t as { note?: string }).note, isDefault: true }));
       }
 
       await this.saveToStorage('templates', defaultTemplates);
@@ -461,6 +461,7 @@ class LocalStorageFallbackService implements StorageService {
         section: 'generale' as const,
         label: t.label,
         text: t.text,
+        note: (t as { note?: string }).note,
         isDefault: true,
       }));
       templates.push(...certDefaults);
