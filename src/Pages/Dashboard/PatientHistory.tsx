@@ -70,7 +70,7 @@ import {
   getCentileForWeight,
   getCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
-import { getFetalGrowthDataPointsFromVisits } from "../../utils/fetalGrowthChartUtils";
+import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -337,14 +337,15 @@ export default function PatientHistory() {
                 includeFetalGrowthChart: true,
                 fetalGrowthDataPoints:
                   selectedVisit.tipo === "ostetrica"
-                    ? getFetalGrowthDataPointsFromVisits(
-                        visits.filter(
+                    ? (() => {
+                        const fino = visits.filter(
                           (v) =>
                             v.tipo === "ostetrica" &&
-                            v.dataVisita <= selectedVisit.dataVisita,
-                        ),
-                        fetalFormulaPref,
-                      )
+                            new Date(v.dataVisita).getTime() <= new Date(selectedVisit.dataVisita).getTime(),
+                        );
+                        const stessaGravidanza = getVisitsOfSamePregnancy(fino, selectedVisit);
+                        return getFetalGrowthDataPointsFromVisits(stessaGravidanza, fetalFormulaPref);
+                      })()
                     : undefined,
               });
         if (blob && !revoked) {
@@ -398,14 +399,15 @@ export default function PatientHistory() {
                 includeFetalGrowthChart: true,
                 fetalGrowthDataPoints:
                   selectedVisit.tipo === "ostetrica"
-                    ? getFetalGrowthDataPointsFromVisits(
-                        visits.filter(
+                    ? (() => {
+                        const fino = visits.filter(
                           (v) =>
                             v.tipo === "ostetrica" &&
-                            v.dataVisita <= selectedVisit.dataVisita,
-                        ),
-                        fetalFormulaPref,
-                      )
+                            new Date(v.dataVisita).getTime() <= new Date(selectedVisit.dataVisita).getTime(),
+                        );
+                        const stessaGravidanza = getVisitsOfSamePregnancy(fino, selectedVisit);
+                        return getFetalGrowthDataPointsFromVisits(stessaGravidanza, fetalFormulaPref);
+                      })()
                     : undefined,
               });
         if (blob && !revoked) {
@@ -668,6 +670,15 @@ export default function PatientHistory() {
       altro: "Altro",
     };
     return labels[tipo];
+  };
+
+  /** Ricava il tipo certificato dal label/note del modello (per aggiornare il Select quando si applica un modello) */
+  const getCertificatoTipoFromTemplate = (t: MedicalTemplate): CertificatoPaziente["tipo"] => {
+    const raw = `${t.label ?? ""} ${t.note ?? ""}`.toLowerCase();
+    if (raw.includes("idoneit")) return "idoneita";
+    if (raw.includes("assenza") || raw.includes("astensione")) return "assenza_lavoro";
+    if (raw.includes("malattia")) return "malattia";
+    return "altro";
   };
 
   const handleOpenNuovoCertificato = () => {
@@ -1110,11 +1121,13 @@ export default function PatientHistory() {
     if (!patient) return;
     let fetalGrowthDataPoints: { gaWeeks: number; pesoGrammi: number }[] | undefined;
     if (visit.tipo === "ostetrica" && includeFetalGrowthChart) {
+      const visitTime = new Date(visit.dataVisita).getTime();
       const fino = visits.filter(
-        (v) => v.tipo === "ostetrica" && v.dataVisita <= visit.dataVisita,
+        (v) => v.tipo === "ostetrica" && new Date(v.dataVisita).getTime() <= visitTime,
       );
+      const stessaGravidanza = getVisitsOfSamePregnancy(fino, visit);
       fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(
-        fino,
+        stessaGravidanza,
         fetalFormulaPref,
       );
     } else {
@@ -2428,7 +2441,10 @@ export default function PatientHistory() {
                     aria-label="Modelli Certificato"
                     onAction={(key) => {
                       const t = certTemplates.find((x) => x.id === key);
-                      if (t) setCertDescrizione(t.text);
+                      if (t) {
+                        setCertDescrizione(t.text);
+                        setCertTipo(getCertificatoTipoFromTemplate(t));
+                      }
                     }}
                     className="max-h-[300px] overflow-y-auto"
                   >

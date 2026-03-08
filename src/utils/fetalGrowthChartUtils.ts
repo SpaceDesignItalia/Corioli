@@ -1,6 +1,8 @@
 /**
  * Utility per costruire i punti (GA, peso) da usare nel grafico crescita fetale
  * a partire da più visite ostetriche (es. per mostrare l'andamento nel tempo).
+ * Le visite sono filtrate per "stessa gravidanza" (stessa LMP) così grafici e tabelle
+ * si resettano quando inizia una nuova gravidanza.
  */
 import type { Visit } from "../types/Storage";
 import { calcolaStimePesoFetale } from "./fetalWeightUtils";
@@ -8,6 +10,34 @@ import {
   parseGestationalWeeks,
   FETAL_GROWTH_WEEK_RANGE,
 } from "./fetalGrowthCentiles";
+
+/** Normalizza ultima mestruazione a YYYY-MM-DD per confronto (stessa gravidanza = stessa LMP). */
+export function normalizeLMP(lmp: string | undefined): string {
+  if (!lmp || !lmp.trim()) return "";
+  const d = new Date(lmp.trim());
+  if (isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Restituisce solo le visite che appartengono alla stessa gravidanza della visita di riferimento
+ * (stessa ultima mestruazione). Così le curve e le tabelle non mischiano gravidanze diverse.
+ */
+export function getVisitsOfSamePregnancy(
+  visits: Visit[],
+  referenceVisit: Visit,
+): Visit[] {
+  const refLMP = referenceVisit.ostetricia?.ultimaMestruazione;
+  const key = normalizeLMP(refLMP);
+  if (!key) return visits; // nessuna LMP di riferimento: non filtrare (comportamento precedente)
+  return visits.filter((v) => {
+    if (v.tipo !== "ostetrica" || !v.ostetricia) return false;
+    return normalizeLMP(v.ostetricia.ultimaMestruazione) === key;
+  });
+}
 
 export interface FetalGrowthPoint {
   gaWeeks: number;

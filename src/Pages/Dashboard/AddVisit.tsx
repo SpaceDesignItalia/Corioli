@@ -45,7 +45,7 @@ import {
   getCentileForWeight,
   getCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
-import { getFetalGrowthDataPointsFromVisits } from "../../utils/fetalGrowthChartUtils";
+import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 import {
   ArrowLeft,
   Printer,
@@ -956,7 +956,12 @@ export default function AddVisit() {
     let fetalGrowthDataPoints: { gaWeeks: number; pesoGrammi: number }[] | undefined;
     if (visitData.tipo === "ostetrica" && includeFetalGrowthChart) {
       const allVisits = await VisitService.getVisitsByPatientId(patient.id);
-      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(allVisits, fetalFormula);
+      // Solo visite fino a questa (inclusa) e stessa gravidanza (stessa LMP): tabelle/grafici si resettano per nuova gravidanza
+      const fino = allVisits.filter(
+        (v) => v.tipo === "ostetrica" && new Date(v.dataVisita).getTime() <= new Date(currentVisit.dataVisita).getTime(),
+      );
+      const stessaGravidanza = getVisitsOfSamePregnancy(fino, currentVisit);
+      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(stessaGravidanza, fetalFormula);
     } else {
       fetalGrowthDataPoints = undefined;
     }

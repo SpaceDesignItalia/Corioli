@@ -26,7 +26,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useToast } from "../../contexts/ToastContext";
 import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
-import { getFetalGrowthDataPointsFromVisits } from "../../utils/fetalGrowthChartUtils";
+import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -156,15 +156,16 @@ export default function Visite() {
       try {
         const fetalGrowthDataPoints =
           selectedVisit.tipo === "ostetrica"
-            ? getFetalGrowthDataPointsFromVisits(
-                visits.filter(
+            ? (() => {
+                const fino = visits.filter(
                   (v) =>
                     v.patientId === selectedVisit.patientId &&
                     v.tipo === "ostetrica" &&
-                    v.dataVisita <= selectedVisit.dataVisita,
-                ),
-                fetalFormula,
-              )
+                    new Date(v.dataVisita).getTime() <= new Date(selectedVisit.dataVisita).getTime(),
+                );
+                const stessaGravidanza = getVisitsOfSamePregnancy(fino, selectedVisit);
+                return getFetalGrowthDataPointsFromVisits(stessaGravidanza, fetalFormula);
+              })()
             : undefined;
         const blob = isGyn
           ? await PdfService.generateGynecologicalPDF(patientForPreview, selectedVisit, { includeEcografiaImages: true })
@@ -326,9 +327,10 @@ export default function Visite() {
     let fetalGrowthDataPoints: { gaWeeks: number; pesoGrammi: number }[] | undefined;
     if (visit.tipo === "ostetrica" && includeFetalGrowthChart) {
       const fino = visits.filter(
-        (v) => v.patientId === visit.patientId && v.tipo === "ostetrica" && v.dataVisita <= visit.dataVisita,
+        (v) => v.patientId === visit.patientId && v.tipo === "ostetrica" && new Date(v.dataVisita).getTime() <= new Date(visit.dataVisita).getTime(),
       );
-      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(fino, fetalFormula);
+      const stessaGravidanza = getVisitsOfSamePregnancy(fino, visit);
+      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(stessaGravidanza, fetalFormula);
     } else {
       fetalGrowthDataPoints = undefined;
     }

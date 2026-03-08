@@ -1083,8 +1083,6 @@ export class PdfService {
       let pts = options.fetalGrowthDataPoints ? [...options.fetalGrowthDataPoints] : [];
 
       // Se non ci sono punti storici forniti, proviamo a costruire un punto dalla visita corrente
-      // oppure se l'array c'è, controlliamo se dobbiamo aggiungere la visita corrente (spesso gestito dal chiamante, ma per sicurezza)
-      // Per semplicità, se la lista è vuota, usiamo la corrente.
       if (pts.length === 0 && ga != null && ga >= 14 && ga <= 40) {
         pts.push({
           gaWeeks: ga,
@@ -1094,6 +1092,12 @@ export class PdfService {
           acMm: bio.acMm > 0 ? bio.acMm : undefined,
           flMm: bio.flMm > 0 ? bio.flMm : undefined,
         });
+      }
+
+      // Mostra solo lo storico fino a questa visita: punti con GA <= visita corrente (nessun punto "futuro")
+      if (ga != null && pts.length > 0) {
+        const gaMax = ga + 0.5; // tolleranza stessa settimana
+        pts = pts.filter((p) => p.gaWeeks <= gaMax).sort((a, b) => a.gaWeeks - b.gaWeeks);
       }
 
       if (pts.length > 0) {
