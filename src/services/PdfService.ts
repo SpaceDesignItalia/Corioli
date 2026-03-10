@@ -647,9 +647,14 @@ export class PdfService {
       const lbl = san(item.label) + ": ";
       doc.text(lbl, ML, ly);
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K0);
-      const vlines = doc.splitTextToSize(san(item.value), halfW - doc.getTextWidth(lbl));
-      doc.text(vlines[0] ?? '', ML + doc.getTextWidth(lbl), ly); ly += LH;
-      for (let i = 1; i < vlines.length; i++) { doc.text(vlines[i], ML + doc.getTextWidth(lbl), ly); ly += LH; }
+      const lblWidth = doc.getTextWidth(lbl);
+      const valueX = ML + lblWidth + 1; // piccolo margine tra titolo e valore
+      const vlines = doc.splitTextToSize(san(item.value), halfW - lblWidth - 3);
+      doc.text(vlines[0] ?? "", valueX, ly); ly += LH;
+      for (let i = 1; i < vlines.length; i++) {
+        doc.text(vlines[i], valueX, ly);
+        ly += LH;
+      }
     }
     for (const item of right) {
       if (!item.value || item.value === "-") continue;
@@ -659,7 +664,10 @@ export class PdfService {
       const lbl = san(item.label) + ": ";
       doc.text(lbl, rx, ry);
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K0);
-      doc.text(san(item.value), rx + doc.getTextWidth(lbl), ry); ry += LH;
+      const lblWidth = doc.getTextWidth(lbl);
+      const valueX = rx + lblWidth + 1; // piccolo margine tra titolo e valore
+      doc.text(san(item.value), valueX, ry);
+      ry += LH;
     }
 
     y = Math.max(ly, ry) + 2;
@@ -1083,9 +1091,11 @@ export class PdfService {
           doc.text(lbl, cx, cy);
 
           doc.setFont("helvetica", "normal"); this.tc(doc, K0);
-          const vlines = doc.splitTextToSize(san(item.value), colW - doc.getTextWidth(lbl) - 3);
+          const lblWidth = doc.getTextWidth(lbl);
+          const valueX = cx + lblWidth + 1; // piccolo margine tra titolo e valore
+          const vlines = doc.splitTextToSize(san(item.value), colW - lblWidth - 4);
           for (const line of vlines) {
-            doc.text(line, cx + doc.getTextWidth(lbl), cy);
+            doc.text(line, valueX, cy);
             cy += LH;
           }
         }

@@ -79,6 +79,13 @@ import { getDoctorProfileIncompleteMessage, isDoctorProfileComplete } from "../.
 const SIEOG_NOTE =
   "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di ciò si informa la persona assistita.";
 
+function getNotaBenePreview(text: string, maxChars: number = 120): string {
+  const trimmed = text.trim().replace(/\s+/g, " ");
+  if (!trimmed) return "";
+  if (trimmed.length <= maxChars) return trimmed;
+  return trimmed.slice(0, maxChars) + "…";
+}
+
 function formatPdfDate(dateString: string): string {
   if (!dateString) return "N/D";
   const d = new Date(dateString);
@@ -178,6 +185,7 @@ export default function PatientHistory() {
   const [pendingPrintIncludeImages, setPendingPrintIncludeImages] = useState<boolean>(false);
   const [fetalFormulaPref, setFetalFormulaPref] = useState("hadlock4");
   const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
+  const [pendingPdfAction, setPendingPdfAction] = useState<"print" | "download" | null>(null);
   /** URL del PDF generato per l’anteprima (stesso contenuto della stampa). Revocare in cleanup. */
   const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState<string | null>(null);
   const [previewPdfLoading, setPreviewPdfLoading] = useState(false);
@@ -1038,43 +1046,40 @@ export default function PatientHistory() {
 
   const handleGeneratePdfFromPreview = async (visit: Visit) => {
     if (!patient) return;
-    setPdfLoading(true);
-    try {
-      let blob: Blob | null = null;
-      let filename = "";
-      if (
-        visit.tipo === "ginecologica" ||
-        visit.tipo === "ginecologica_pediatrica"
-      ) {
-        const b = await PdfService.generateGynecologicalPDF(patient, visit);
-        if (b) blob = b;
-        filename = `Ginecologia_${patient.cognome}_${visit.dataVisita}.pdf`;
-        showToast("PDF ginecologico generato.");
-      } else if (visit.tipo === "ostetrica") {
-        const b = await PdfService.generateObstetricPDF(patient, visit);
-        if (b) blob = b;
-        filename = `Ostetricia_${patient.cognome}_${visit.dataVisita}.pdf`;
-        showToast("PDF ostetrico generato.");
-      } else {
-        showToast(
-          "Generazione PDF disponibile solo per visite ginecologiche e ostetriche.",
-          "info",
-        );
-      }
-      if (blob && filename) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch (err) {
-      console.error("Errore generazione PDF da anteprima:", err);
-      showToast("Errore durante la generazione del PDF.", "error");
-    } finally {
-      setPdfLoading(false);
+    if (
+      visit.tipo !== "ginecologica" &&
+      visit.tipo !== "ginecologica_pediatrica" &&
+      visit.tipo !== "ostetrica"
+    ) {
+      showToast(
+        "Generazione PDF disponibile solo per visite ginecologiche e ostetriche.",
+        "info",
+      );
+      return;
     }
+
+    const imageCount =
+      visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica"
+        ? (visit.ginecologia?.ecografiaImmagini?.length ?? 0)
+        : (visit.ostetricia?.ecografiaImmagini?.length ?? 0);
+
+    if (imageCount > 0) {
+      setIncludeImagesCount(imageCount);
+      setPendingPrintVisit(visit);
+      setPendingPdfAction("download");
+      setIsIncludeImagesModalOpen(true);
+      return;
+    }
+
+    if (visit.tipo === "ostetrica") {
+      setPendingPrintVisit(visit);
+      setPendingPrintIncludeImages(false);
+      setPendingPdfAction("download");
+      setIsIncludeFetalGrowthChartModalOpen(true);
+      return;
+    }
+
+    await runDownloadPdf(visit, false);
   };
 
   const handlePrintPdf = async (visit: Visit) => {
@@ -1099,6 +1104,7 @@ export default function PatientHistory() {
     if (imageCount > 0) {
       setIncludeImagesCount(imageCount);
       setPendingPrintVisit(visit);
+      setPendingPdfAction("print");
       setIsIncludeImagesModalOpen(true);
       return;
     }
@@ -1106,11 +1112,77 @@ export default function PatientHistory() {
     if (visit.tipo === "ostetrica") {
       setPendingPrintVisit(visit);
       setPendingPrintIncludeImages(false);
+      setPendingPdfAction("print");
       setIsIncludeFetalGrowthChartModalOpen(true);
       return;
     }
 
     await runPrintPdf(visit, false);
+  };
+
+  const runDownloadPdf = async (
+    visit: Visit,
+    includeEcografiaImages: boolean,
+    includeFetalGrowthChart?: boolean,
+  ) => {
+    if (!patient) return;
+    let fetalGrowthDataPoints:
+      | { gaWeeks: number; pesoGrammi: number }[]
+      | undefined;
+    if (visit.tipo === "ostetrica" && includeFetalGrowthChart) {
+      const visitTime = new Date(visit.dataVisita).getTime();
+      const fino = visits.filter(
+        (v) => v.tipo === "ostetrica" && new Date(v.dataVisita).getTime() <= visitTime,
+      );
+      const stessaGravidanza = getVisitsOfSamePregnancy(fino, visit);
+      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(
+        stessaGravidanza,
+        fetalFormulaPref,
+      );
+    } else {
+      fetalGrowthDataPoints = undefined;
+    }
+
+    setPdfLoading(true);
+    try {
+      let blob: Blob | null = null;
+      let filename = "";
+
+      if (
+        visit.tipo === "ginecologica" ||
+        visit.tipo === "ginecologica_pediatrica"
+      ) {
+        const b = await PdfService.generateGynecologicalPDF(patient, visit, {
+          includeEcografiaImages,
+        });
+        if (b) blob = b;
+        filename = `Ginecologia_${patient.cognome}_${visit.dataVisita}.pdf`;
+        showToast("PDF ginecologico generato.");
+      } else if (visit.tipo === "ostetrica") {
+        const b = await PdfService.generateObstetricPDF(patient, visit, {
+          includeEcografiaImages,
+          includeFetalGrowthChart: includeFetalGrowthChart ?? false,
+          fetalGrowthDataPoints,
+        });
+        if (b) blob = b;
+        filename = `Ostetricia_${patient.cognome}_${visit.dataVisita}.pdf`;
+        showToast("PDF ostetrico generato.");
+      }
+
+      if (blob && filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error("Errore generazione PDF da anteprima:", err);
+      showToast("Errore durante la generazione del PDF.", "error");
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   const runPrintPdf = async (
@@ -1191,23 +1263,35 @@ export default function PatientHistory() {
 
   const handleIncludeImagesChoice = (include: boolean) => {
     const visit = pendingPrintVisit;
+    const action = pendingPdfAction;
     setIsIncludeImagesModalOpen(false);
-    if (!visit) return;
+    if (!visit || !action) return;
     if (visit.tipo === "ostetrica") {
       setPendingPrintIncludeImages(include);
       setIsIncludeFetalGrowthChartModalOpen(true);
       return;
     }
     setPendingPrintVisit(null);
-    runPrintPdf(visit, include);
+    setPendingPdfAction(null);
+    if (action === "print") {
+      runPrintPdf(visit, include);
+    } else {
+      runDownloadPdf(visit, include);
+    }
   };
 
   const handleIncludeFetalGrowthChartChoice = async (include: boolean) => {
     const visit = pendingPrintVisit;
+    const action = pendingPdfAction;
     setIsIncludeFetalGrowthChartModalOpen(false);
     setPendingPrintVisit(null);
-    if (!visit) return;
-    await runPrintPdf(visit, pendingPrintIncludeImages, include);
+    setPendingPdfAction(null);
+    if (!visit || !action) return;
+    if (action === "print") {
+      await runPrintPdf(visit, pendingPrintIncludeImages, include);
+    } else {
+      await runDownloadPdf(visit, pendingPrintIncludeImages, include);
+    }
   };
 
   if (loading) {
@@ -1299,6 +1383,14 @@ export default function PatientHistory() {
                     {patient.email && <span>✉️ {patient.email}</span>}
                   </div>
                 )}
+                {patient.allergie && patient.allergie.trim() !== "" && (
+                  <div className="text-sm text-danger-500 pt-1 flex items-start gap-1">
+                    <span>⚠️</span>
+                    <span className="whitespace-pre-line">
+                      Allergie: {patient.allergie}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1333,11 +1425,19 @@ export default function PatientHistory() {
           className="flex items-center gap-2 w-full min-w-0 py-2 px-3 text-left"
         >
           <StickyNote size={14} className="text-default-400 shrink-0" />
-          <span className="text-xs text-default-500 truncate flex-1 min-w-0">
+          <span
+            className="text-xs text-default-500 flex-1 min-w-0"
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
             {!notaBeneLocal.trim() && !isNotaBeneOpen
               ? "Nota bene (amica, prezzi, familiarità…)"
               : notaBeneLocal.trim()
-                ? notaBeneLocal.trim().replace(/\s+/g, " ").slice(0, 60) + (notaBeneLocal.trim().length > 60 ? "…" : "")
+                ? getNotaBenePreview(notaBeneLocal)
                 : "Nota bene"}
           </span>
           <span className="text-default-400 shrink-0">
