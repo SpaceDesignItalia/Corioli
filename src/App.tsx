@@ -17,6 +17,7 @@ const Visite = lazy(() => import("./Pages/Dashboard/Visite"));
 const Settings = lazy(() => import("./Pages/Dashboard/Settings"));
 const Help = lazy(() => import("./Pages/Dashboard/Help"));
 const PatientHistory = lazy(() => import("./Pages/Dashboard/PatientHistory"));
+const PatientFiles = lazy(() => import("./Pages/Dashboard/PatientFiles"));
 const BlockedPage = lazy(() => import("./Pages/Blocked"));
 
 const BLOCKED_STORAGE_KEY = "blocked_users";
@@ -97,6 +98,7 @@ const App: React.FC = () => {
                   <Route element={<Documents />} path="/documents" />
                   <Route element={<Settings />} path="/settings" />
                   <Route element={<PatientHistory />} path="/patient-history/:patientId" />
+                  <Route element={<PatientFiles />} path="/patient-history/:patientId/files" />
                   <Route element={<Help />} path="/help" />
                 </Routes>
               </DesktopShell>

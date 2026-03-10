@@ -285,6 +285,7 @@ export class DocumentService {
   static async addDocument(documentData: {
     title: string;
     description?: string;
+    patientId?: string;
     fileName: string;
     fileSize: number;
     mimeType: string;

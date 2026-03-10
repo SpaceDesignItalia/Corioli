@@ -180,6 +180,10 @@ function fd(d: string): string {
   const dt = new Date(d);
   return isNaN(dt.getTime()) ? "-" : dt.toLocaleDateString("it-IT");
 }
+function fmt2(x: number | null | undefined): string {
+  if (x === null || x === undefined || !isFinite(x)) return "-";
+  return x.toFixed(2).replace(".", ",");
+}
 function calcAge(dob: string): string {
   if (!dob) return "";
   const b = new Date(dob); if (isNaN(b.getTime())) return "";
@@ -1110,6 +1114,78 @@ export class PdfService {
       doc, y, ga,
       bio.bpdMm, bio.hcMm, bio.acMm, bio.flMm, efwGrams,
     );
+
+    // ── SEZIONE 5 — Flussimetria Doppler arteria ombelicale (se presente) ────
+    const dop = obs.flussimetriaOmbelicale;
+    if (dop && dop.psv != null && dop.edv != null && dop.velocitaMedia != null && dop.velocitaMedia !== 0) {
+      const psv = Number(dop.psv);
+      const edv = Number(dop.edv);
+      const meanV = Number(dop.velocitaMedia);
+      if (isFinite(psv) && isFinite(edv) && isFinite(meanV) && meanV !== 0) {
+        const pi = (psv - edv) / meanV;
+        const ri = psv !== 0 ? (psv - edv) / psv : NaN;
+        const sd = edv !== 0 ? psv / edv : NaN;
+        const edfLabel =
+          edv > 0 ? "positivo" : edv === 0 ? "assente" : "invertito";
+
+        y = this.pb(doc, y, 10);
+        y = this.heading(doc, y, "Flussimetria Doppler - Cordone ombelicale");
+        y = this.pb(doc, y, 6);
+
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); this.tc(doc, K30);
+        doc.text(`Arteria ombelicale: EDF ${edfLabel}`, ML, y);
+        y += 6;
+
+        // Riga con PI, RI, S/D
+        const baseX = ML;
+        const colW = 50;
+        const lineY = y;
+        doc.setFontSize(9);
+        doc.text(`PI ${fmt2(pi)}`, baseX, lineY);
+        doc.text(`IR ${fmt2(ri)}`, baseX + colW, lineY);
+        if (isFinite(sd)) {
+          doc.text(`S/D ${fmt2(sd)}`, baseX + colW * 2, lineY);
+        }
+        y += 5;
+
+        // Percentili testuali, se forniti
+        const piPct = dop.piPercentile;
+        const riPct = dop.riPercentile;
+        if (piPct != null || riPct != null) {
+          const pctLineY = y;
+          if (piPct != null) {
+            const txt = `${Math.round(piPct)}° percentile (PI)`;
+            doc.text(txt, baseX, pctLineY);
+          }
+          if (riPct != null) {
+            const txt = `${Math.round(riPct)}° percentile (IR)`;
+            doc.text(txt, baseX + colW * 2, pctLineY);
+          }
+          y += 5;
+
+          // Indicatore grafico percentile semplice (0–100)
+          const barX = ML;
+          const barY = y;
+          const barW = 80;
+          const barH = 3;
+          doc.setLineWidth(0.2);
+          this.dc(doc, K200);
+          doc.rect(barX, barY, barW, barH, "S");
+          const drawMarker = (pct: number | null | undefined, offsetY: number, color: number[]) => {
+            if (pct == null || !isFinite(pct)) return;
+            const clamped = Math.max(0, Math.min(100, pct));
+            const x = barX + (clamped / 100) * barW;
+            this.dc(doc, color);
+            doc.setLineWidth(0.4);
+            doc.line(x, barY - offsetY, x, barY + barH + offsetY);
+          };
+          // Marker verde per PI, arancione per RI
+          drawMarker(piPct, 0.8, [46, 204, 113]);   // green-ish
+          drawMarker(riPct, 0.8, [243, 156, 18]);   // orange-ish
+          y += 8;
+        }
+      }
+    }
 
     // ── SEZIONI TESTO LIBERO ─────────────────────────────────────────────────
     const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";

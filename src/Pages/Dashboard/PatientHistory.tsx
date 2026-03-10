@@ -1397,6 +1397,16 @@ export default function PatientHistory() {
             {/* Azioni Rapide */}
             <div className="flex flex-row md:flex-col gap-2 w-full md:w-auto mt-4 md:mt-0">
               <Button
+                color="secondary"
+                variant="flat"
+                size="sm"
+                onPress={() => navigate(`/patient-history/${patient.id}/files`)}
+                startContent={<FileTextIcon size={16} />}
+                className="justify-start md:w-40"
+              >
+                File
+              </Button>
+              <Button
                 color="primary"
                 variant="flat"
                 size="sm"

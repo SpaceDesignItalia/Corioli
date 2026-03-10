@@ -135,6 +135,19 @@ export interface Visit {
       acMm: number;
       flMm: number;
     };
+    /** Flussimetria Doppler arteria ombelicale */
+    flussimetriaOmbelicale?: {
+      /** Peak systolic velocity */
+      psv?: number;
+      /** End diastolic velocity */
+      edv?: number;
+      /** Velocità media del flusso */
+      velocitaMedia?: number;
+      /** Percentile del PI, se disponibile (0-100) */
+      piPercentile?: number;
+      /** Percentile dell'IR, se disponibile (0-100) */
+      riPercentile?: number;
+    };
   };
   createdAt: string;
   updatedAt: string;
@@ -169,6 +182,8 @@ export interface Document {
   id: string;
   title: string;
   description?: string;
+  /** Se valorizzato, documento associato a uno specifico paziente */
+  patientId?: string;
   fileName: string;
   fileSize: number;
   mimeType: string;
