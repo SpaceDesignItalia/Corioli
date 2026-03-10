@@ -50,8 +50,11 @@ import {
 import {
   parseGestationalWeeks,
   getCentileForWeight,
-  getCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
+import {
+  getUmbilicalPiPercentile,
+  getUmbilicalRiPercentile,
+} from "../../utils/flussimetriaUtils";
 import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 import {
   ArrowLeft,
@@ -74,6 +77,27 @@ import {
   getDoctorProfileIncompleteMessage,
   isDoctorProfileComplete,
 } from "../../utils/doctorProfile";
+
+/** Barra grafica percentile (5°–95°): linea con rombo alla posizione del percentile */
+function PercentileBar({ percentile }: { percentile: number | null }) {
+  if (percentile == null) return <span className="text-default-400 text-xs">—</span>;
+  const clamped = Math.max(5, Math.min(95, percentile));
+  const leftPct = ((clamped - 5) / 90) * 100;
+  return (
+    <div className="inline-flex items-center gap-2">
+      <div className="relative w-20 h-4 flex items-center shrink-0">
+        <div className="absolute left-0 right-0 top-1/2 -translate-y-px h-px bg-default-300" />
+        <div className="absolute left-0 top-0 w-px h-3 bg-default-400 rounded-px" style={{ top: "2px" }} />
+        <div className="absolute right-0 top-0 w-px h-3 bg-default-400 rounded-px" style={{ top: "2px" }} />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-default-600 border border-default-500 shrink-0"
+          style={{ left: `calc(${leftPct}% - 4px)` }}
+        />
+      </div>
+      <span className="text-xs text-default-600 tabular-nums">{Math.round(percentile)}°</span>
+    </div>
+  );
+}
 
 /** Controlli anamnesi ginecologica */
 function ginecologiaAnamnesiErrors(g: {
@@ -247,11 +271,14 @@ const createDefaultOstetriciaData = () => ({
   biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 },
   flussimetriaOmbelicale: undefined as
     | {
+        pi?: number;
+        ri?: number;
+        edf?: "positivo" | "assente" | "invertito";
+        piPercentile?: number;
+        riPercentile?: number;
         psv?: number;
         edv?: number;
         velocitaMedia?: number;
-        piPercentile?: number;
-        riPercentile?: number;
       }
     | undefined,
 });
@@ -629,7 +656,19 @@ export default function AddVisit() {
           visitData.tipo === "ginecologica_pediatrica"
             ? ginecologiaData
             : undefined,
-        ostetricia: visitData.tipo === "ostetrica" ? ostetriciaData : undefined,
+        ostetricia:
+          visitData.tipo === "ostetrica"
+            ? {
+                ...ostetriciaData,
+                flussimetriaOmbelicale: ostetriciaData.flussimetriaOmbelicale
+                  ? {
+                      ...ostetriciaData.flussimetriaOmbelicale,
+                      piPercentile: flussimetriaCalcoli?.piPercentile ?? ostetriciaData.flussimetriaOmbelicale.piPercentile,
+                      riPercentile: flussimetriaCalcoli?.riPercentile ?? ostetriciaData.flussimetriaOmbelicale.riPercentile,
+                    }
+                  : undefined,
+              }
+            : undefined,
       };
 
       if (isEditMode && existingVisit) {
@@ -949,7 +988,19 @@ export default function AddVisit() {
         visitData.tipo === "ginecologica_pediatrica"
           ? ginecologiaData
           : undefined,
-      ostetricia: visitData.tipo === "ostetrica" ? ostetriciaData : undefined,
+      ostetricia:
+        visitData.tipo === "ostetrica"
+          ? {
+              ...ostetriciaData,
+              flussimetriaOmbelicale: ostetriciaData.flussimetriaOmbelicale
+                ? {
+                    ...ostetriciaData.flussimetriaOmbelicale,
+                    piPercentile: flussimetriaCalcoli?.piPercentile ?? ostetriciaData.flussimetriaOmbelicale.piPercentile,
+                    riPercentile: flussimetriaCalcoli?.riPercentile ?? ostetriciaData.flussimetriaOmbelicale.riPercentile,
+                  }
+                : undefined,
+            }
+          : undefined,
       createdAt: existingVisit?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -1106,7 +1157,7 @@ export default function AddVisit() {
   };
 
   const handleFlussimetriaOmbelicaleChange = (
-    field: "psv" | "edv" | "velocitaMedia" | "piPercentile" | "riPercentile",
+    field: "pi" | "ri",
     value: number | undefined,
   ) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
@@ -1121,19 +1172,36 @@ export default function AddVisit() {
 
   const flussimetriaCalcoli = useMemo(() => {
     const f = ostetriciaData.flussimetriaOmbelicale;
+    const ga = parseGestationalWeeks(ostetriciaData.settimaneGestazione ?? "");
+
+    // Inserimento diretto PI, IR (flusso principale)
+    if (f?.pi != null && f?.ri != null) {
+      const pi = Number(f.pi);
+      const ri = Number(f.ri);
+      if (!Number.isFinite(pi) || !Number.isFinite(ri)) return null;
+      const piPercentile = ga != null ? getUmbilicalPiPercentile(pi, ga) : null;
+      const riPercentile = ga != null ? getUmbilicalRiPercentile(ri, ga) : null;
+      return { pi, ri, piPercentile, riPercentile };
+    }
+
+    // Retrocompatibilità: da PSV, EDV, velocità media
     const psv = f?.psv != null ? Number(f.psv) : NaN;
     const edv = f?.edv != null ? Number(f.edv) : NaN;
     const vm = f?.velocitaMedia != null ? Number(f.velocitaMedia) : 0;
     if (!isFinite(psv) || !isFinite(edv) || vm === 0) return null;
     const pi = (psv - edv) / vm;
     const ri = psv !== 0 ? (psv - edv) / psv : NaN;
-    const sd = edv !== 0 ? psv / edv : NaN;
-    const edf = edv > 0 ? "positivo" : edv === 0 ? "assente" : "invertito";
-    return { pi, ri, sd, edf };
+    const edf = edv > 0 ? "positivo" as const : edv === 0 ? "assente" as const : "invertito" as const;
+    const piPercentile = ga != null ? getUmbilicalPiPercentile(pi, ga) : null;
+    const riPercentile = ga != null ? getUmbilicalRiPercentile(ri, ga) : null;
+    return { pi, ri, piPercentile, riPercentile };
   }, [
+    ostetriciaData.flussimetriaOmbelicale?.pi,
+    ostetriciaData.flussimetriaOmbelicale?.ri,
     ostetriciaData.flussimetriaOmbelicale?.psv,
     ostetriciaData.flussimetriaOmbelicale?.edv,
     ostetriciaData.flussimetriaOmbelicale?.velocitaMedia,
+    ostetriciaData.settimaneGestazione,
   ]);
 
   const scalePesoFetale = useMemo(() => {
@@ -2471,7 +2539,7 @@ export default function AddVisit() {
                           )
                         </span>
                       </p>
-                      <div className="text-right">
+                      <div className="text-right flex flex-col items-end gap-1">
                         {(() => {
                           const result =
                             scalePesoFetale[
@@ -2488,27 +2556,12 @@ export default function AddVisit() {
                               ga != null
                                 ? getCentileForWeight(result.pesoGrammi, ga)
                                 : null;
-                            const centileStr = getCentileLabel(centile);
                             return (
-                              <div>
+                              <div className="flex flex-col items-end gap-1">
                                 <p className="text-xl font-bold text-primary">
                                   {result.pesoGrammi} g
                                 </p>
-                                {centileStr && (
-                                  <p className="text-sm text-default-500 mt-0.5">
-                                    {centileStr} centile
-                                    {ga != null && (
-                                      <span className="text-default-400">
-                                        {" "}
-                                        (per{" "}
-                                        {
-                                          ostetriciaData.settimaneGestazione
-                                        }{" "}
-                                        sett.)
-                                      </span>
-                                    )}
-                                  </p>
-                                )}
+                                <PercentileBar percentile={centile} />
                               </div>
                             );
                           }
@@ -2523,143 +2576,78 @@ export default function AddVisit() {
                   </CardBody>
                 </Card>
 
-                {/* Flussimetria Doppler arteria ombelicale */}
+                {/* Flussimetria Doppler arteria ombelicale: input PI, IR, EDF; GA da Settimane di gestazione */}
                 <Card className="shadow-sm border border-default-200 bg-white">
                   <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
                     Flussimetria cordone ombelicale
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-4">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <Input
                         type="number"
-                        label="PSV (cm/s)"
+                        label="PI (Pulsatility Index)"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        placeholder="Peak systolic velocity"
+                        placeholder="es. 0,88"
+                        step={0.01}
                         value={
-                          ostetriciaData.flussimetriaOmbelicale?.psv != null
-                            ? String(ostetriciaData.flussimetriaOmbelicale.psv)
+                          ostetriciaData.flussimetriaOmbelicale?.pi != null
+                            ? String(ostetriciaData.flussimetriaOmbelicale.pi)
                             : ""
                         }
                         onValueChange={(v) =>
                           handleFlussimetriaOmbelicaleChange(
-                            "psv",
-                            v === "" ? undefined : parseFloat(v) || undefined,
+                            "pi",
+                            v === "" ? undefined : parseFloat(v.replace(",", ".")) || undefined,
                           )
                         }
                         classNames={{ label: "pb-1" }}
                       />
                       <Input
                         type="number"
-                        label="EDV (cm/s)"
+                        label="IR (Indice di resistenza)"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        placeholder="End diastolic velocity"
+                        placeholder="es. 0,58"
+                        step={0.01}
                         value={
-                          ostetriciaData.flussimetriaOmbelicale?.edv != null
-                            ? String(ostetriciaData.flussimetriaOmbelicale.edv)
+                          ostetriciaData.flussimetriaOmbelicale?.ri != null
+                            ? String(ostetriciaData.flussimetriaOmbelicale.ri)
                             : ""
                         }
                         onValueChange={(v) =>
                           handleFlussimetriaOmbelicaleChange(
-                            "edv",
-                            v === "" ? undefined : parseFloat(v) || undefined,
-                          )
-                        }
-                        classNames={{ label: "pb-1" }}
-                      />
-                      <Input
-                        type="number"
-                        label="Velocità media (cm/s)"
-                        size="sm"
-                        variant="bordered"
-                        labelPlacement="outside"
-                        value={
-                          ostetriciaData.flussimetriaOmbelicale?.velocitaMedia != null
-                            ? String(ostetriciaData.flussimetriaOmbelicale.velocitaMedia)
-                            : ""
-                        }
-                        onValueChange={(v) =>
-                          handleFlussimetriaOmbelicaleChange(
-                            "velocitaMedia",
-                            v === "" ? undefined : parseFloat(v) || undefined,
-                          )
-                        }
-                        classNames={{ label: "pb-1" }}
-                      />
-                      <Input
-                        type="number"
-                        label="Percentile PI (0-100)"
-                        size="sm"
-                        variant="bordered"
-                        labelPlacement="outside"
-                        min={0}
-                        max={100}
-                        value={
-                          ostetriciaData.flussimetriaOmbelicale?.piPercentile != null
-                            ? String(ostetriciaData.flussimetriaOmbelicale.piPercentile)
-                            : ""
-                        }
-                        onValueChange={(v) =>
-                          handleFlussimetriaOmbelicaleChange(
-                            "piPercentile",
-                            v === "" ? undefined : parseFloat(v) || undefined,
-                          )
-                        }
-                        classNames={{ label: "pb-1" }}
-                      />
-                      <Input
-                        type="number"
-                        label="Percentile IR (0-100)"
-                        size="sm"
-                        variant="bordered"
-                        labelPlacement="outside"
-                        min={0}
-                        max={100}
-                        value={
-                          ostetriciaData.flussimetriaOmbelicale?.riPercentile != null
-                            ? String(ostetriciaData.flussimetriaOmbelicale.riPercentile)
-                            : ""
-                        }
-                        onValueChange={(v) =>
-                          handleFlussimetriaOmbelicaleChange(
-                            "riPercentile",
-                            v === "" ? undefined : parseFloat(v) || undefined,
+                            "ri",
+                            v === "" ? undefined : parseFloat(v.replace(",", ".")) || undefined,
                           )
                         }
                         classNames={{ label: "pb-1" }}
                       />
                     </div>
-                    {flussimetriaCalcoli && (
-                      <div className="bg-default-50 rounded-xl p-4 text-sm">
-                        <p className="font-semibold text-gray-700 mb-2">
-                          Arteria ombelicale: EDF {flussimetriaCalcoli.edf}
-                        </p>
-                        <p className="text-gray-600">
-                          PI {flussimetriaCalcoli.pi.toFixed(2).replace(".", ",")}{" "}
-                          {ostetriciaData.flussimetriaOmbelicale?.piPercentile != null && (
-                            <span className="text-default-500">
-                              ({Math.round(ostetriciaData.flussimetriaOmbelicale.piPercentile)}° percentile)
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-gray-600">
-                          IR {flussimetriaCalcoli.ri.toFixed(2).replace(".", ",")}{" "}
-                          {ostetriciaData.flussimetriaOmbelicale?.riPercentile != null && (
-                            <span className="text-default-500">
-                              ({Math.round(ostetriciaData.flussimetriaOmbelicale.riPercentile)}° percentile)
-                            </span>
-                          )}
-                        </p>
-                        {Number.isFinite(flussimetriaCalcoli.sd) && (
-                          <p className="text-gray-600">
-                            S/D {flussimetriaCalcoli.sd!.toFixed(2).replace(".", ",")}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    {flussimetriaCalcoli && (() => {
+                      const piPct = flussimetriaCalcoli.piPercentile ?? ostetriciaData.flussimetriaOmbelicale?.piPercentile;
+                      const riPct = flussimetriaCalcoli.riPercentile ?? ostetriciaData.flussimetriaOmbelicale?.riPercentile;
+                      const fmt = (v: number) => v.toFixed(2).replace(".", ",");
+                      return (
+                        <div className="bg-default-50 rounded-xl p-4 text-sm space-y-3">
+                          <p className="font-semibold text-gray-700">Arteria ombelicale</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-gray-700 min-w-[1.5rem]">PI</span>
+                              <span className="font-mono text-default-700">{fmt(flussimetriaCalcoli.pi)}</span>
+                              <PercentileBar percentile={piPct} />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-gray-700 min-w-[1.5rem]">IR</span>
+                              <span className="font-mono text-default-700">{fmt(flussimetriaCalcoli.ri)}</span>
+                              <PercentileBar percentile={riPct} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </CardBody>
                 </Card>
 

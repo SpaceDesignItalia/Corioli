@@ -135,18 +135,22 @@ export interface Visit {
       acMm: number;
       flMm: number;
     };
-    /** Flussimetria Doppler arteria ombelicale */
+    /** Flussimetria Doppler arteria ombelicale. Inserire PI, IR, EDF (GA da Settimane di gestazione). */
     flussimetriaOmbelicale?: {
-      /** Peak systolic velocity */
-      psv?: number;
-      /** End diastolic velocity */
-      edv?: number;
-      /** Velocità media del flusso */
-      velocitaMedia?: number;
-      /** Percentile del PI, se disponibile (0-100) */
+      /** Pulsatility Index (inserimento diretto) */
+      pi?: number;
+      /** Indice di resistenza (inserimento diretto) */
+      ri?: number;
+      /** End diastolic flow: positivo / assente / invertito */
+      edf?: "positivo" | "assente" | "invertito";
+      /** Percentile del PI (calcolato) */
       piPercentile?: number;
-      /** Percentile dell'IR, se disponibile (0-100) */
+      /** Percentile dell'IR (calcolato) */
       riPercentile?: number;
+      /** Retrocompatibilità: velocità per calcolo PI/RI da dati grezzi */
+      psv?: number;
+      edv?: number;
+      velocitaMedia?: number;
     };
   };
   createdAt: string;

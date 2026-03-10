@@ -14,6 +14,10 @@ import {
   getWeightPercentiles,
   parseGestationalWeeks,
 } from "../utils/fetalGrowthCentiles";
+import {
+  getUmbilicalPiRef,
+  getUmbilicalRiRef,
+} from "../utils/flussimetriaUtils";
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 const ML = 15;
@@ -1117,73 +1121,64 @@ export class PdfService {
 
     // ── SEZIONE 5 — Flussimetria Doppler arteria ombelicale (se presente) ────
     const dop = obs.flussimetriaOmbelicale;
-    if (dop && dop.psv != null && dop.edv != null && dop.velocitaMedia != null && dop.velocitaMedia !== 0) {
-      const psv = Number(dop.psv);
-      const edv = Number(dop.edv);
-      const meanV = Number(dop.velocitaMedia);
-      if (isFinite(psv) && isFinite(edv) && isFinite(meanV) && meanV !== 0) {
-        const pi = (psv - edv) / meanV;
-        const ri = psv !== 0 ? (psv - edv) / psv : NaN;
-        const sd = edv !== 0 ? psv / edv : NaN;
-        const edfLabel =
-          edv > 0 ? "positivo" : edv === 0 ? "assente" : "invertito";
+    const hasDirect = dop && dop.pi != null && dop.ri != null;
+    const hasRaw = dop && dop.psv != null && dop.edv != null && dop.velocitaMedia != null && dop.velocitaMedia !== 0;
+    if (dop && (hasDirect || hasRaw)) {
+      let pi: number;
+      let ri: number;
+      if (hasDirect) {
+        pi = Number(dop.pi);
+        ri = Number(dop.ri);
+      } else {
+        const psv = Number(dop.psv);
+        const edv = Number(dop.edv);
+        const meanV = Number(dop.velocitaMedia);
+        if (!isFinite(psv) || !isFinite(edv) || !isFinite(meanV) || meanV === 0) {
+          pi = NaN;
+          ri = NaN;
+        } else {
+          pi = (psv - edv) / meanV;
+          ri = psv !== 0 ? (psv - edv) / psv : NaN;
+        }
+      }
+      if (Number.isFinite(pi) && Number.isFinite(ri)) {
+        const FL_ROW_H = 8;
+        const FL_PAD = 1.8;
+        const FL_BLOCK_W = PW / 2;  // PI e IR affiancati
+        const FL_COL_A = 28;   // label
+        const FL_COL_B = 18;   // valore
+        const FL_COL_C = FL_BLOCK_W - FL_COL_A - FL_COL_B;  // barra
 
         y = this.pb(doc, y, 10);
-        y = this.heading(doc, y, "Flussimetria Doppler - Cordone ombelicale");
-        y = this.pb(doc, y, 6);
+        // Intestazione tabella (stile Calcolo del peso fetale)
+        this.fc(doc, K235); doc.rect(ML, y, PW, FL_ROW_H, "F");
+        this.dc(doc, K200); doc.setLineWidth(0.2); doc.rect(ML, y, PW, FL_ROW_H, "S");
+        doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); this.tc(doc, K30);
+        doc.text("Flussimetria Doppler - Cordone ombelicale", ML + FL_PAD, y + FL_ROW_H / 2 + 0.5, { baseline: "middle" });
+        this.dc(doc, K200); doc.setLineWidth(0.2);
+        doc.line(ML + FL_BLOCK_W, y, ML + FL_BLOCK_W, y + FL_ROW_H);
+        y += FL_ROW_H;
 
-        doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); this.tc(doc, K30);
-        doc.text(`Arteria ombelicale: EDF ${edfLabel}`, ML, y);
-        y += 6;
-
-        // Riga con PI, RI, S/D
-        const baseX = ML;
-        const colW = 50;
-        const lineY = y;
-        doc.setFontSize(9);
-        doc.text(`PI ${fmt2(pi)}`, baseX, lineY);
-        doc.text(`IR ${fmt2(ri)}`, baseX + colW, lineY);
-        if (isFinite(sd)) {
-          doc.text(`S/D ${fmt2(sd)}`, baseX + colW * 2, lineY);
-        }
-        y += 5;
-
-        // Percentili testuali, se forniti
-        const piPct = dop.piPercentile;
-        const riPct = dop.riPercentile;
-        if (piPct != null || riPct != null) {
-          const pctLineY = y;
-          if (piPct != null) {
-            const txt = `${Math.round(piPct)}° percentile (PI)`;
-            doc.text(txt, baseX, pctLineY);
+        // Una sola riga: PI a sinistra, IR a destra
+        y = this.pb(doc, y, FL_ROW_H + 2);
+        [ { label: "PI", val: pi, getRef: () => ga != null ? getUmbilicalPiRef(ga) : null },
+          { label: "IR", val: ri, getRef: () => ga != null ? getUmbilicalRiRef(ga) : null },
+        ].forEach((item, side) => {
+          const bx = ML + side * FL_BLOCK_W;
+          this.dc(doc, K200); doc.setLineWidth(0.15); doc.rect(bx, y, FL_BLOCK_W, FL_ROW_H, "S");
+          doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K30);
+          doc.text(item.label, bx + FL_PAD, y + FL_ROW_H / 2 + 0.5, { baseline: "middle" });
+          this.dc(doc, K200); doc.setLineWidth(0.15);
+          doc.line(bx + FL_COL_A, y, bx + FL_COL_A, y + FL_ROW_H);
+          doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K30);
+          doc.text(fmt2(item.val), bx + FL_COL_A + FL_PAD, y + FL_ROW_H / 2 + 0.5, { baseline: "middle" });
+          doc.line(bx + FL_COL_A + FL_COL_B, y, bx + FL_COL_A + FL_COL_B, y + FL_ROW_H);
+          const ref = item.getRef();
+          if (ref) {
+            this.drawPercentileBar(doc, bx + FL_COL_A + FL_COL_B, y + FL_ROW_H / 2, FL_COL_C, ref.p5, ref.p50, ref.p95, item.val);
           }
-          if (riPct != null) {
-            const txt = `${Math.round(riPct)}° percentile (IR)`;
-            doc.text(txt, baseX + colW * 2, pctLineY);
-          }
-          y += 5;
-
-          // Indicatore grafico percentile semplice (0–100)
-          const barX = ML;
-          const barY = y;
-          const barW = 80;
-          const barH = 3;
-          doc.setLineWidth(0.2);
-          this.dc(doc, K200);
-          doc.rect(barX, barY, barW, barH, "S");
-          const drawMarker = (pct: number | null | undefined, offsetY: number, color: number[]) => {
-            if (pct == null || !isFinite(pct)) return;
-            const clamped = Math.max(0, Math.min(100, pct));
-            const x = barX + (clamped / 100) * barW;
-            this.dc(doc, color);
-            doc.setLineWidth(0.4);
-            doc.line(x, barY - offsetY, x, barY + barH + offsetY);
-          };
-          // Marker verde per PI, arancione per RI
-          drawMarker(piPct, 0.8, [46, 204, 113]);   // green-ish
-          drawMarker(riPct, 0.8, [243, 156, 18]);   // orange-ish
-          y += 8;
-        }
+        });
+        y += FL_ROW_H + 3 + 3;  // spazio in più prima del titolo Anamnesi
       }
     }
 
