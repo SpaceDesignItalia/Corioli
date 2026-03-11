@@ -11,13 +11,14 @@ import {
   Tooltip,
   Avatar,
   Button,
+  Spinner,
 } from "@nextui-org/react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { AcmeIcon } from "./sidebar/AcmeIcon";
 import { DoctorService } from "../services/OfflineServices";
 import { Download, MapPin, RefreshCw } from "lucide-react";
 import { storageService } from "../services/StorageServiceFallback";
-import { Doctor } from "../types/Storage";
+import { sendHeartbeat } from "../services/HeartbeatService";
 import axios from "axios";
 
 const menuItems = [
@@ -38,6 +39,8 @@ export default function AppNavbar() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateDownloading, setUpdateDownloading] = useState(false);
 
   const loadDoctor = async () => {
     try {
@@ -54,7 +57,7 @@ export default function AppNavbar() {
   };
 
   const BLOCKED_STORAGE_KEY = "blocked_users";
-  const ONE_HOUR_MS = 5 * 60 * 1000; // 5 minutes
+  const ONE_HOUR_MS = 60 * 1000; // 1 minute
 
   useEffect(() => {
     loadDoctor();
@@ -83,7 +86,7 @@ export default function AppNavbar() {
         }
 
         if (doctor) {
-          const { blocked, reason } = await sendOnlineStatus(doctor);
+          const { blocked, reason } = await sendHeartbeat(doctor, "corioli");
           if (blocked === null) return;
           const payload = {
             blocked: blocked,
@@ -103,33 +106,6 @@ export default function AppNavbar() {
     };
     void checkFeature();
   }, [navigate]);
-
-  const sendOnlineStatus = async (
-    doctor: Doctor,
-  ): Promise<{ blocked: boolean | null; reason: string | null }> => {
-    try {
-      const result = await axios.post(
-        `${import.meta.env.VITE_API_URL}/clients/heartbeat`,
-        {
-          id: doctor.id,
-          nome: doctor.nome,
-          cognome: doctor.cognome,
-          email: doctor.email,
-          numero_telefono: doctor.telefono,
-          specializzazione: doctor.specializzazione,
-          tipo: "ginecologia",
-        },
-      );
-      return {
-        blocked: Boolean(result.data.blocked),
-        reason:
-          typeof result.data.reason === "string" ? result.data.reason : null,
-      };
-    } catch (e) {
-      console.error("sendOnlineStatus:", e);
-      return { blocked: null, reason: null };
-    }
-  };
 
   useEffect(() => {
     const onDoctorUpdated = () => loadDoctor();
@@ -153,6 +129,7 @@ export default function AppNavbar() {
             cb: (info: { version?: string }) => void,
           ) => void;
           onUpdaterNotAvailable?: (cb: () => void) => void;
+          onUpdaterProgress?: (cb: (p: { percent?: number }) => void) => void;
           onUpdaterDownloaded?: (cb: () => void) => void;
         };
       }
@@ -161,31 +138,76 @@ export default function AppNavbar() {
     if (!api) return;
 
     api.onUpdaterChecking?.(() => {
+      setUpdateChecking(true);
       setUpdateAvailable(null);
       setUpdateDownloaded(false);
+      setUpdateDownloading(false);
     });
     api.onUpdaterAvailable?.((info) => {
+      setUpdateChecking(false);
       setUpdateAvailable(info?.version || "Nuova versione");
       setUpdateDownloaded(false);
+      setUpdateDownloading(true);
     });
     api.onUpdaterNotAvailable?.(() => {
+      setUpdateChecking(false);
       setUpdateAvailable(null);
       setUpdateDownloaded(false);
+      setUpdateDownloading(false);
+    });
+    api.onUpdaterProgress?.(() => {
+      setUpdateDownloading(true);
     });
     api.onUpdaterDownloaded?.(() => {
+      setUpdateDownloading(false);
       setUpdateDownloaded(true);
       setUpdateAvailable(null);
     });
 
-    // Controllo automatico all'apertura dell'app.
-    api
-      .updaterCheck?.()
-      .then((result) => {
-        if (result?.version) setUpdateAvailable(result.version);
-      })
-      .catch(() => {
-        // ignore
-      });
+    const checkUpdateIfAllowed = async () => {
+      try {
+        setUpdateChecking(true);
+        const doctor = await DoctorService.getDoctor();
+        const clientId = doctor?.id?.trim();
+        if (!clientId) {
+          setUpdateChecking(false);
+          return;
+        }
+
+        const appVersion = await (
+          (window as unknown as { electronAPI?: { getAppVersion?: () => Promise<string> } })
+            .electronAPI?.getAppVersion?.() ?? Promise.resolve("0.0.0")
+        );
+
+        const access = await axios.get<{ shouldUpdate: boolean; allowed: boolean }>(
+          `${import.meta.env.VITE_API_URL}/updates/check-access`,
+          {
+            params: {
+              app: "corioli",
+              clientId,
+              currentVersion: appVersion,
+            },
+          },
+        );
+
+        if (!access.data.allowed || !access.data.shouldUpdate) {
+          setUpdateAvailable(null);
+          setUpdateDownloaded(false);
+          setUpdateChecking(false);
+          return;
+        }
+
+        const result = await api.updaterCheck?.();
+        if (result?.version) {
+          setUpdateAvailable(result.version);
+        }
+        setUpdateChecking(false);
+      } catch {
+        setUpdateChecking(false);
+      }
+    };
+
+    void checkUpdateIfAllowed();
   }, []);
 
   const handleReloadApp = () => {
@@ -265,7 +287,27 @@ export default function AppNavbar() {
           </Tooltip>
         </NavbarItem>
 
-        {(updateAvailable || updateDownloaded) && (
+        {updateChecking && (
+          <NavbarItem className="hidden md:flex">
+            <Tooltip content="Controllo aggiornamenti in corso">
+              <span className="flex items-center gap-1.5 text-default-500 text-sm">
+                <Spinner size="sm" color="primary" />
+                Controllo aggiornamenti...
+              </span>
+            </Tooltip>
+          </NavbarItem>
+        )}
+        {updateDownloading && (
+          <NavbarItem className="hidden md:flex">
+            <Tooltip content="Download aggiornamento in corso">
+              <span className="flex items-center gap-1.5 text-primary text-sm">
+                <Spinner size="sm" color="primary" />
+                Download in corso...
+              </span>
+            </Tooltip>
+          </NavbarItem>
+        )}
+        {(updateAvailable || updateDownloaded) && !updateDownloading && (
           <NavbarItem className="hidden md:flex">
             {updateDownloaded ? (
               <Tooltip content="Installa l'aggiornamento e riavvia">
@@ -349,7 +391,23 @@ export default function AppNavbar() {
             <span>Ricarica app</span>
           </button>
         </NavbarMenuItem>
-        {(updateAvailable || updateDownloaded) && (
+        {updateChecking && (
+          <NavbarMenuItem className="pb-3 border-b border-default-100">
+            <span className="flex items-center gap-2 text-default-500 text-sm">
+              <Spinner size="sm" color="primary" />
+              Controllo aggiornamenti...
+            </span>
+          </NavbarMenuItem>
+        )}
+        {updateDownloading && (
+          <NavbarMenuItem className="pb-3 border-b border-default-100">
+            <span className="flex items-center gap-2 text-primary text-sm">
+              <Spinner size="sm" color="primary" />
+              Download in corso...
+            </span>
+          </NavbarMenuItem>
+        )}
+        {(updateAvailable || updateDownloaded) && !updateDownloading && (
           <NavbarMenuItem className="pb-3 border-b border-default-100">
             {updateDownloaded ? (
               <button

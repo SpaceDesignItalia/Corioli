@@ -27,6 +27,7 @@ import {
   ModalFooter,
   useDisclosure,
   Progress,
+  Spinner,
 } from "@nextui-org/react";
 import {
   User,
@@ -56,6 +57,7 @@ import {
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
 import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
+import axios from "axios";
 
 const SettingsScreen = () => {
   // ... state declarations ...
@@ -157,10 +159,14 @@ const SettingsScreen = () => {
   >({});
 
   const [appVersion, setAppVersion] = useState<string>("");
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" && navigator.onLine);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [updateDownloading, setUpdateDownloading] = useState(false);
+  const [updateDownloadPercent, setUpdateDownloadPercent] = useState(0);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateBoxVisible, setUpdateBoxVisible] = useState(false);
 
   const handleNotificationsToggle = () => {
     setNotificationsEnabled(!notificationsEnabled);
@@ -249,6 +255,35 @@ const SettingsScreen = () => {
     loadTemplates();
   }, []);
 
+  const checkUpdateAccess = async (): Promise<boolean> => {
+    try {
+      const doctor = await DoctorService.getDoctor();
+      const clientId = doctor?.id?.trim();
+      if (!clientId) return false;
+
+      const api = (window as unknown as {
+        electronAPI?: { getAppVersion?: () => Promise<string> };
+      }).electronAPI;
+      const currentVersion =
+        (await api?.getAppVersion?.()) || appVersion || "0.0.0";
+
+      const access = await axios.get<{ allowed: boolean; shouldUpdate: boolean }>(
+        `${import.meta.env.VITE_API_URL}/updates/check-access`,
+        {
+          params: {
+            app: "corioli",
+            clientId,
+            currentVersion,
+          },
+        },
+      );
+
+      return Boolean(access.data?.allowed);
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
     const loadCounts = async () => {
       try {
@@ -271,6 +306,17 @@ const SettingsScreen = () => {
   }, []);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     const api = (window as unknown as {
       electronAPI?: {
         getAppVersion?: () => Promise<string>;
@@ -285,13 +331,37 @@ const SettingsScreen = () => {
         removeAllListeners?: (channel: string) => void;
       };
     }).electronAPI;
-    if (!api?.getAppVersion) return;
-    api.getAppVersion().then((v) => setAppVersion(v || ""));
-    api.onUpdaterChecking?.(() => { setUpdateError(null); setUpdateChecking(true); });
-    api.onUpdaterAvailable?.((info) => { setUpdateChecking(false); setUpdateAvailable(info?.version ?? "Nuova versione"); });
-    api.onUpdaterNotAvailable?.(() => { setUpdateChecking(false); setUpdateAvailable(null); setUpdateError(null); });
-    api.onUpdaterDownloaded?.(() => { setUpdateDownloaded(true); });
-    api.onUpdaterError?.((msg) => { setUpdateChecking(false); setUpdateError(msg); });
+    if (api?.getAppVersion) {
+      api.getAppVersion().then((v) => setAppVersion(v || ""));
+    } else if (typeof import.meta.env.VITE_APP_VERSION === "string") {
+      setAppVersion(import.meta.env.VITE_APP_VERSION);
+    }
+    void checkUpdateAccess().then((allowed) => {
+      setUpdateBoxVisible(allowed);
+      if (!allowed) {
+        setUpdateAvailable(null);
+        setUpdateDownloaded(false);
+        setUpdateError(null);
+      }
+    });
+    api.onUpdaterChecking?.(() => { setUpdateError(null); setUpdateChecking(true); setUpdateDownloading(false); });
+    api.onUpdaterAvailable?.((info) => {
+      setUpdateChecking(false);
+      setUpdateAvailable(info?.version ?? "Nuova versione");
+      setUpdateDownloading(true);
+      setUpdateDownloadPercent(0);
+    });
+    api.onUpdaterNotAvailable?.(() => { setUpdateChecking(false); setUpdateAvailable(null); setUpdateError(null); setUpdateDownloading(false); });
+    api.onUpdaterProgress?.((p: { percent?: number }) => {
+      setUpdateDownloading(true);
+      setUpdateDownloadPercent(typeof p?.percent === "number" ? Math.round(p.percent) : 0);
+    });
+    api.onUpdaterDownloaded?.(() => {
+      setUpdateDownloading(false);
+      setUpdateDownloadPercent(0);
+      setUpdateDownloaded(true);
+    });
+    api.onUpdaterError?.((msg) => { setUpdateChecking(false); setUpdateDownloading(false); setUpdateError(msg); });
     return () => {
       api.removeAllListeners?.("updater:checking");
       api.removeAllListeners?.("updater:available");
@@ -305,9 +375,14 @@ const SettingsScreen = () => {
   const handleCheckForUpdates = async () => {
     const api = (window as unknown as { electronAPI?: { updaterCheck?: () => Promise<{ version?: string; noUpdate?: boolean; error?: string }> } }).electronAPI;
     if (!api?.updaterCheck) return;
+    const allowed = await checkUpdateAccess();
+    setUpdateBoxVisible(allowed);
+    if (!allowed) return;
     setUpdateError(null);
     setUpdateAvailable(null);
     setUpdateDownloaded(false);
+    setUpdateDownloading(false);
+    setUpdateDownloadPercent(0);
     setUpdateChecking(true);
     try {
       const result = await api.updaterCheck();
@@ -344,6 +419,7 @@ const SettingsScreen = () => {
       ostetricia: "prestazione",
       terapie: "generale",
       esame_complementare: "nome",
+      certificato: "generale",
     };
     setCurrentTemplate({
       label: "",
@@ -1232,12 +1308,24 @@ const SettingsScreen = () => {
         </Card>
       )}
 
-      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
+      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && updateBoxVisible && (
         <Card className="shadow-sm border border-default-200">
           <CardBody className="py-2 px-4">
             <div className="flex items-center justify-between w-full gap-3">
               <div className="flex items-center gap-2 flex-shrink-0">
                 <h2 className="text-base font-semibold text-gray-900">Aggiornamenti</h2>
+                {updateChecking && (
+                  <span className="flex items-center gap-1.5 text-sm text-default-500">
+                    <Spinner size="sm" color="primary" />
+                    Controllo in corso...
+                  </span>
+                )}
+                {updateDownloading && (
+                  <span className="flex items-center gap-1.5 text-sm text-primary">
+                    <Spinner size="sm" color="primary" />
+                    Download in corso...
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 ml-auto overflow-x-auto whitespace-nowrap">
                 {appVersion && (
@@ -1251,11 +1339,12 @@ const SettingsScreen = () => {
                   color="primary"
                   onPress={handleCheckForUpdates}
                   isLoading={updateChecking}
+                  isDisabled={updateDownloading}
                   startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
                 >
                   Controlla
                 </Button>
-                {updateAvailable && !updateDownloaded && (
+                {updateAvailable && !updateDownloaded && !updateDownloading && (
                   <Chip color="primary" variant="flat">
                     Disponibile: {updateAvailable}
                   </Chip>
@@ -1287,6 +1376,20 @@ const SettingsScreen = () => {
                 </a>
               </div>
             </div>
+            {updateDownloading && (
+              <div className="mt-2 w-full">
+                <Progress
+                  size="sm"
+                  value={updateDownloadPercent}
+                  color="primary"
+                  className="max-w-full"
+                  aria-label="Progresso download aggiornamento"
+                />
+                <p className="text-xs text-default-500 mt-1">
+                  {updateDownloadPercent}% scaricato
+                </p>
+              </div>
+            )}
           </CardBody>
         </Card>
       )}
@@ -1973,10 +2076,11 @@ const SettingsScreen = () => {
             <Tab key="ostetricia" title="Ostetricia" />
             <Tab key="terapie" title="Terapie" />
             <Tab key="esame_complementare" title="Esami" />
+            <Tab key="certificato" title="Certificati" />
           </Tabs>
 
           <p className="text-sm text-default-500 mb-3">
-            I modelli compaiono nei pulsanti &quot;Modello&quot; / &quot;Modelli Esame&quot; durante la compilazione. Il <strong>nome in menu</strong> è ciò che vedi quando cerchi; il <strong>contenuto inserito</strong> è il testo che va nel referto quando lo selezioni.
+            I modelli compaiono nei pulsanti &quot;Modello&quot; / &quot;Modelli Esame&quot; / &quot;Modelli Certificato&quot; durante la compilazione. Il <strong>nome in menu</strong> è ciò che vedi quando cerchi; il <strong>contenuto inserito</strong> è il testo che va nel referto quando lo selezioni.
           </p>
           <Table aria-label="Tabella Modelli">
             <TableHeader>
@@ -1999,7 +2103,9 @@ const SettingsScreen = () => {
                       <Chip size="sm" variant="flat" className="capitalize">
                         {template.section === "esameObiettivo"
                           ? "Esame Ob."
-                          : template.section}
+                          : template.section === "generale" && template.category === "certificato"
+                            ? "Testo"
+                            : template.section}
                       </Chip>
                     </TableCell>
                     <TableCell>
@@ -2045,10 +2151,10 @@ const SettingsScreen = () => {
         <CardBody>
           <div className="text-center space-y-2">
             <h3 className="font-semibold text-gray-900">Corioli Desktop</h3>
-            <div className="flex justify-center gap-4 text-sm text-gray-600">
-              <span>Versione 1.0.0</span>
+            <div className="flex justify-center gap-4 text-sm text-gray-600 flex-wrap">
+              <span>Versione {appVersion || "—"}</span>
               <span>•</span>
-              <span>Modalità Offline</span>
+              <span>{isOnline ? "Modalità Online" : "Modalità Offline"}</span>
               <span>•</span>
               <span>Dati Locali</span>
             </div>
@@ -2238,6 +2344,9 @@ const SettingsScreen = () => {
                     >
                       Esami
                     </SelectItem>
+                    <SelectItem key="certificato" value="certificato">
+                      Certificati
+                    </SelectItem>
                   </Select>
                 ) : (
                   <div className="flex flex-col gap-1">
@@ -2247,7 +2356,9 @@ const SettingsScreen = () => {
                     <p className="text-default-700 font-medium capitalize">
                       {currentTemplate.category === "esame_complementare"
                         ? "Esami"
-                        : currentTemplate.category}
+                        : currentTemplate.category === "certificato"
+                          ? "Certificati"
+                          : currentTemplate.category}
                     </p>
                   </div>
                 )}
@@ -2262,6 +2373,8 @@ const SettingsScreen = () => {
                       section: Array.from(keys)[0] as any,
                     }))
                   }
+                  isDisabled={currentTemplate.category === "certificato"}
+                  description={currentTemplate.category === "certificato" ? "Per i certificati si usa sempre la sezione Testo." : undefined}
                 >
                   <SelectItem key="prestazione" value="prestazione">
                     Anamnesi / Prestazione
@@ -2273,7 +2386,7 @@ const SettingsScreen = () => {
                     Conclusioni
                   </SelectItem>
                   <SelectItem key="generale" value="generale">
-                    Generale
+                    {currentTemplate.category === "certificato" ? "Testo certificato" : "Generale"}
                   </SelectItem>
                   <SelectItem key="nome" value="nome">
                     Nome esame
@@ -2295,19 +2408,23 @@ const SettingsScreen = () => {
                 placeholder={
                   currentTemplate.category === "esame_complementare"
                     ? "Es. Emocromo con formula, Ecografia addome completo..."
-                    : "Testo che verrà inserito nel referto..."
+                    : currentTemplate.category === "certificato"
+                      ? "Testo del certificato (puoi usare ___ per campi da compilare)..."
+                      : "Testo che verrà inserito nel referto..."
                 }
                 value={currentTemplate.text}
                 onValueChange={(val) =>
                   setCurrentTemplate((prev) => ({ ...prev, text: val }))
                 }
                 minRows={
-                  currentTemplate.category === "esame_complementare" ? 2 : 5
+                  currentTemplate.category === "esame_complementare" ? 2 : currentTemplate.category === "certificato" ? 4 : 5
                 }
                 description={
                   currentTemplate.category === "esame_complementare"
                     ? "Nome dell'esame che compare nella richiesta quando lo selezioni"
-                    : "Testo che viene inserito nel referto quando selezioni questo modello"
+                    : currentTemplate.category === "certificato"
+                      ? "Testo che viene inserito nella descrizione del certificato quando selezioni questo modello"
+                      : "Testo che viene inserito nel referto quando selezioni questo modello"
                 }
                 spellCheck
               />

@@ -24,7 +24,14 @@ import {
   Chip,
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
-import { addDays, differenceInDays, parseISO, isValid } from "date-fns";
+
+/** Stile tipografia fissa per i Textarea del referto: evita che il testo cambi aspetto quando diventa molto lungo. */
+const REFERTO_TEXTAREA_CLASSES = {
+  input: "!text-base !leading-relaxed font-normal",
+  inputWrapper:
+    "group-hover:border-primary transition-colors bg-white",
+} as const;
+import { addDays, differenceInDays, parseISO, isValid, format, subDays } from "date-fns";
 import {
   PatientService,
   VisitService,
@@ -43,8 +50,12 @@ import {
 import {
   parseGestationalWeeks,
   getCentileForWeight,
-  getCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
+import {
+  getUmbilicalPiPercentile,
+  getUmbilicalRiPercentile,
+} from "../../utils/flussimetriaUtils";
+import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 import {
   ArrowLeft,
   Printer,
@@ -56,6 +67,8 @@ import {
   Trash2,
   Copy,
   X,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -64,6 +77,27 @@ import {
   getDoctorProfileIncompleteMessage,
   isDoctorProfileComplete,
 } from "../../utils/doctorProfile";
+
+/** Barra grafica percentile (5°–95°): linea con rombo alla posizione del percentile */
+function PercentileBar({ percentile }: { percentile: number | null }) {
+  if (percentile == null) return <span className="text-default-400 text-xs">—</span>;
+  const clamped = Math.max(5, Math.min(95, percentile));
+  const leftPct = ((clamped - 5) / 90) * 100;
+  return (
+    <div className="inline-flex items-center gap-2">
+      <div className="relative w-20 h-4 flex items-center shrink-0">
+        <div className="absolute left-0 right-0 top-1/2 -translate-y-px h-px bg-default-300" />
+        <div className="absolute left-0 top-0 w-px h-3 bg-default-400 rounded-px" style={{ top: "2px" }} />
+        <div className="absolute right-0 top-0 w-px h-3 bg-default-400 rounded-px" style={{ top: "2px" }} />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-default-600 border border-default-500 shrink-0"
+          style={{ left: `calc(${leftPct}% - 4px)` }}
+        />
+      </div>
+      <span className="text-xs text-default-600 tabular-nums">{Math.round(percentile)}°</span>
+    </div>
+  );
+}
 
 /** Controlli anamnesi ginecologica */
 function ginecologiaAnamnesiErrors(g: {
@@ -209,6 +243,7 @@ const createDefaultOstetriciaData = () => ({
   settimaneGestazione: "",
   ultimaMestruazione: "",
   dataPresunta: "",
+  modalitaConcepimento: "",
   problemaClinico: "",
   gravidanzePrec: 0,
   partiPrec: 0,
@@ -220,6 +255,9 @@ const createDefaultOstetriciaData = () => ({
   pesoPreGravidanza: 0,
   pesoAttuale: 0,
   pressioneArteriosa: "",
+  fumaInGravidanza: "",
+  pacchettiSigaretteAlGiorno: 0,
+  assunzioneAcidoFolico: "",
   altezzaUterina: "",
   battitiFetali: "",
   movimentiFetali: "",
@@ -228,8 +266,21 @@ const createDefaultOstetriciaData = () => ({
   noteOstetriche: "",
   prestazione: "",
   esameObiettivo: "",
+  crlMm: undefined as number | undefined,
   ecografiaImmagini: [] as string[],
   biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 },
+  flussimetriaOmbelicale: undefined as
+    | {
+        pi?: number;
+        ri?: number;
+        edf?: "positivo" | "assente" | "invertito";
+        piPercentile?: number;
+        riPercentile?: number;
+        psv?: number;
+        edv?: number;
+        velocitaMedia?: number;
+      }
+    | undefined,
 });
 
 export default function AddVisit() {
@@ -251,10 +302,15 @@ export default function AddVisit() {
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] =
     useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
+  const [isIncludeFetalGrowthChartModalOpen, setIsIncludeFetalGrowthChartModalOpen] =
+    useState(false);
   const [copiedPreviousType, setCopiedPreviousType] = useState<
     "ginecologica" | "ginecologica_pediatrica" | "ostetrica" | null
   >(null);
   const includeImagesResolverRef = useRef<((value: boolean) => void) | null>(
+    null,
+  );
+  const includeFetalGrowthChartResolverRef = useRef<((value: boolean) => void) | null>(
     null,
   );
   const initialLoadDone = useRef(false);
@@ -348,12 +404,17 @@ export default function AddVisit() {
                 partiPrecCesarei: visit.ostetricia?.partiPrecCesarei ?? 0,
                 abortiPrecSpontanei: visit.ostetricia?.abortiPrecSpontanei ?? 0,
                 ivgPrec: visit.ostetricia?.ivgPrec ?? 0,
+                fumaInGravidanza: visit.ostetricia?.fumaInGravidanza ?? "",
+                pacchettiSigaretteAlGiorno: visit.ostetricia?.pacchettiSigaretteAlGiorno ?? 0,
+                assunzioneAcidoFolico: visit.ostetricia?.assunzioneAcidoFolico ?? "",
+                modalitaConcepimento: visit.ostetricia?.modalitaConcepimento ?? "",
                 biometriaFetale: visit.ostetricia?.biometriaFetale ?? {
                   bpdMm: 0,
                   hcMm: 0,
                   acMm: 0,
                   flMm: 0,
                 },
+                flussimetriaOmbelicale: visit.ostetricia?.flussimetriaOmbelicale,
               }));
             } else if (visit.tipo === "ostetrica") {
               // Visita importata da CSV o salvata solo con campi piatti
@@ -494,25 +555,48 @@ export default function AddVisit() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fullscreenImage]);
 
-  // Calcolo automatico gravidanza
-  useEffect(() => {
-    if (ostetriciaData.ultimaMestruazione && visitData.tipo === "ostetrica") {
-      const lmp = parseISO(ostetriciaData.ultimaMestruazione);
-      if (isValid(lmp)) {
-        const dpp = addDays(lmp, 280);
-        const today = new Date();
-        const diffDays = differenceInDays(today, lmp);
-        const weeks = Math.floor(diffDays / 7);
-        const days = diffDays % 7;
+  const [suggestions, setSuggestions] = useState<{
+    gestazione?: string;
+    dpp?: string;
+  }>({});
 
-        setOstetriciaData((prev) => ({
-          ...prev,
-          dataPresunta: dpp.toISOString().slice(0, 10),
-          settimaneGestazione: `${weeks}+${days}`,
-        }));
+  // Calcolo suggerimenti gravidanza
+  useEffect(() => {
+    if (visitData.tipo !== "ostetrica") {
+      setSuggestions({});
+      return;
+    }
+
+    const newState: { gestazione?: string; dpp?: string } = {};
+    const lmp = parseISO(ostetriciaData.ultimaMestruazione || "");
+    const visitDate = parseISO(visitData.dataVisita);
+
+    if (isValid(lmp)) {
+      // DPP
+      const dppDate = addDays(lmp, 280);
+      const dppStr = format(dppDate, "yyyy-MM-dd");
+      if (dppStr !== ostetriciaData.dataPresunta) {
+        newState.dpp = dppStr;
+      }
+
+      // Settimane
+      if (isValid(visitDate)) {
+        const diffDays = differenceInDays(visitDate, lmp);
+        if (diffDays > 0 && diffDays < 300) { // sanity check
+          const weeks = Math.floor(diffDays / 7);
+          const days = diffDays % 7;
+          const gestStr = `${weeks}+${days}`;
+          if (gestStr !== ostetriciaData.settimaneGestazione) {
+            newState.gestazione = gestStr;
+          }
+        }
       }
     }
-  }, [ostetriciaData.ultimaMestruazione, visitData.tipo]);
+    setSuggestions(newState);
+  }, [ostetriciaData.ultimaMestruazione, visitData.dataVisita, ostetriciaData.dataPresunta, ostetriciaData.settimaneGestazione, visitData.tipo]);
+
+  // Calcolo automatico gravidanza spostato negli handler onChange per evitare sovrascritture indesiderate al mount.
+
 
   const handleTemplateSelect = (
     category: "ginecologia" | "ostetrica",
@@ -572,7 +656,19 @@ export default function AddVisit() {
           visitData.tipo === "ginecologica_pediatrica"
             ? ginecologiaData
             : undefined,
-        ostetricia: visitData.tipo === "ostetrica" ? ostetriciaData : undefined,
+        ostetricia:
+          visitData.tipo === "ostetrica"
+            ? {
+                ...ostetriciaData,
+                flussimetriaOmbelicale: ostetriciaData.flussimetriaOmbelicale
+                  ? {
+                      ...ostetriciaData.flussimetriaOmbelicale,
+                      piPercentile: flussimetriaCalcoli?.piPercentile ?? ostetriciaData.flussimetriaOmbelicale.piPercentile,
+                      riPercentile: flussimetriaCalcoli?.riPercentile ?? ostetriciaData.flussimetriaOmbelicale.riPercentile,
+                    }
+                  : undefined,
+              }
+            : undefined,
       };
 
       if (isEditMode && existingVisit) {
@@ -714,6 +810,9 @@ export default function AddVisit() {
             acMm: 0,
             flMm: 0,
           },
+          // Non copiare peso attuale e pressione: vanno inseriti per la visita corrente
+          pesoAttuale: 0,
+          pressioneArteriosa: "",
         }));
       } else {
         setOstetriciaData((prev) => ({
@@ -756,7 +855,7 @@ export default function AddVisit() {
     files: FileList | null,
   ) => {
     if (!files || files.length === 0) return;
-    const maxImages = 8;
+    const maxImages = 20;
     const maxFileSize = 7 * 1024 * 1024; // 7MB per immagine
 
     const currentImages =
@@ -843,6 +942,19 @@ export default function AddVisit() {
     includeImagesResolverRef.current = null;
   };
 
+  const askIncludeFetalGrowthChart = (): Promise<boolean> => {
+    setIsIncludeFetalGrowthChartModalOpen(true);
+    return new Promise((resolve) => {
+      includeFetalGrowthChartResolverRef.current = resolve;
+    });
+  };
+
+  const resolveIncludeFetalGrowthChart = (include: boolean) => {
+    setIsIncludeFetalGrowthChartModalOpen(false);
+    includeFetalGrowthChartResolverRef.current?.(include);
+    includeFetalGrowthChartResolverRef.current = null;
+  };
+
   const handlePrintPdf = async () => {
     if (!patient) return;
     if (
@@ -876,7 +988,19 @@ export default function AddVisit() {
         visitData.tipo === "ginecologica_pediatrica"
           ? ginecologiaData
           : undefined,
-      ostetricia: visitData.tipo === "ostetrica" ? ostetriciaData : undefined,
+      ostetricia:
+        visitData.tipo === "ostetrica"
+          ? {
+              ...ostetriciaData,
+              flussimetriaOmbelicale: ostetriciaData.flussimetriaOmbelicale
+                ? {
+                    ...ostetriciaData.flussimetriaOmbelicale,
+                    piPercentile: flussimetriaCalcoli?.piPercentile ?? ostetriciaData.flussimetriaOmbelicale.piPercentile,
+                    riPercentile: flussimetriaCalcoli?.riPercentile ?? ostetriciaData.flussimetriaOmbelicale.riPercentile,
+                  }
+                : undefined,
+            }
+          : undefined,
       createdAt: existingVisit?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -892,6 +1016,24 @@ export default function AddVisit() {
       includeEcografiaImages = await askIncludeEcografiaImages(imageCount);
     }
 
+    let includeFetalGrowthChart = false;
+    if (visitData.tipo === "ostetrica") {
+      includeFetalGrowthChart = await askIncludeFetalGrowthChart();
+    }
+
+    let fetalGrowthDataPoints: { gaWeeks: number; pesoGrammi: number }[] | undefined;
+    if (visitData.tipo === "ostetrica" && includeFetalGrowthChart) {
+      const allVisits = await VisitService.getVisitsByPatientId(patient.id);
+      // Solo visite fino a questa (inclusa) e stessa gravidanza (stessa LMP): tabelle/grafici si resettano per nuova gravidanza
+      const fino = allVisits.filter(
+        (v) => v.tipo === "ostetrica" && new Date(v.dataVisita).getTime() <= new Date(currentVisit.dataVisita).getTime(),
+      );
+      const stessaGravidanza = getVisitsOfSamePregnancy(fino, currentVisit);
+      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(stessaGravidanza, fetalFormula);
+    } else {
+      fetalGrowthDataPoints = undefined;
+    }
+
     setPdfLoading(true);
     try {
       const blob =
@@ -902,6 +1044,8 @@ export default function AddVisit() {
             })
           : await PdfService.generateObstetricPDF(patient, currentVisit, {
               includeEcografiaImages,
+              includeFetalGrowthChart,
+              fetalGrowthDataPoints,
             });
       if (!blob) {
         showToast("Impossibile generare il PDF per la stampa.", "error");
@@ -963,6 +1107,41 @@ export default function AddVisit() {
     setOstetriciaData((prev) => ({ ...prev, [field]: value }));
   };
 
+  /** Da CRL (mm) a età gestazionale: formula Robinson GA_days = 42 + 0.6*CRL_mm (valida per CRL ~5-84 mm). */
+  const handleCrlChange = (value: string) => {
+    const num = value.trim() === "" ? undefined : parseInt(value, 10);
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setOstetriciaData((prev) => {
+      const next = { ...prev, crlMm: num };
+      if (num == null || num < 3 || num > 100) return next;
+      const gaDays = 42 + 0.6 * num;
+      const weeks = Math.floor(gaDays / 7);
+      const days = Math.round(gaDays % 7);
+      const newSettimane = `${weeks}+${days}`;
+      const currentWeeksDec = parseGestationalWeeks(prev.settimaneGestazione ?? "");
+      const currentGaDays = currentWeeksDec != null ? currentWeeksDec * 7 : null;
+      const diffDays = currentGaDays != null ? Math.abs(gaDays - currentGaDays) : 999;
+      if (diffDays >= 1) {
+        next.settimaneGestazione = newSettimane;
+        const visitDate = parseISO(visitData.dataVisita);
+        if (isValid(visitDate)) {
+          const edd = subDays(visitDate, gaDays);
+          const dpp = addDays(edd, 280);
+          next.dataPresunta = format(dpp, "yyyy-MM-dd");
+        }
+        const oldSett = prev.settimaneGestazione || "—";
+        const oldDpp = prev.dataPresunta ? format(parseISO(prev.dataPresunta), "dd/MM/yyyy") : "—";
+        setTimeout(() => {
+          showToast(
+            `In base al CRL (${num} mm): settimane da ${oldSett} a ${newSettimane}; data presunta parto da ${oldDpp} a ${next.dataPresunta ? format(parseISO(next.dataPresunta), "dd/MM/yyyy") : "—"}.`,
+            "warning",
+          );
+        }, 0);
+      }
+      return next;
+    });
+  };
+
   const handleBiometriaFetaleChange = (
     field: "bpdMm" | "hcMm" | "acMm" | "flMm",
     value: number,
@@ -976,6 +1155,54 @@ export default function AddVisit() {
       },
     }));
   };
+
+  const handleFlussimetriaOmbelicaleChange = (
+    field: "pi" | "ri",
+    value: number | undefined,
+  ) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setOstetriciaData((prev) => ({
+      ...prev,
+      flussimetriaOmbelicale: {
+        ...(prev.flussimetriaOmbelicale ?? {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const flussimetriaCalcoli = useMemo(() => {
+    const f = ostetriciaData.flussimetriaOmbelicale;
+    const ga = parseGestationalWeeks(ostetriciaData.settimaneGestazione ?? "");
+
+    // Inserimento diretto PI, IR (flusso principale)
+    if (f?.pi != null && f?.ri != null) {
+      const pi = Number(f.pi);
+      const ri = Number(f.ri);
+      if (!Number.isFinite(pi) || !Number.isFinite(ri)) return null;
+      const piPercentile = ga != null ? getUmbilicalPiPercentile(pi, ga) : null;
+      const riPercentile = ga != null ? getUmbilicalRiPercentile(ri, ga) : null;
+      return { pi, ri, piPercentile, riPercentile };
+    }
+
+    // Retrocompatibilità: da PSV, EDV, velocità media
+    const psv = f?.psv != null ? Number(f.psv) : NaN;
+    const edv = f?.edv != null ? Number(f.edv) : NaN;
+    const vm = f?.velocitaMedia != null ? Number(f.velocitaMedia) : 0;
+    if (!isFinite(psv) || !isFinite(edv) || vm === 0) return null;
+    const pi = (psv - edv) / vm;
+    const ri = psv !== 0 ? (psv - edv) / psv : NaN;
+    const edf = edv > 0 ? "positivo" as const : edv === 0 ? "assente" as const : "invertito" as const;
+    const piPercentile = ga != null ? getUmbilicalPiPercentile(pi, ga) : null;
+    const riPercentile = ga != null ? getUmbilicalRiPercentile(ri, ga) : null;
+    return { pi, ri, piPercentile, riPercentile };
+  }, [
+    ostetriciaData.flussimetriaOmbelicale?.pi,
+    ostetriciaData.flussimetriaOmbelicale?.ri,
+    ostetriciaData.flussimetriaOmbelicale?.psv,
+    ostetriciaData.flussimetriaOmbelicale?.edv,
+    ostetriciaData.flussimetriaOmbelicale?.velocitaMedia,
+    ostetriciaData.settimaneGestazione,
+  ]);
 
   const scalePesoFetale = useMemo(() => {
     const b = ostetriciaData.biometriaFetale ?? {
@@ -1206,7 +1433,8 @@ export default function AddVisit() {
                       <Input
                         type="number"
                         label="Gravidanze"
-                        value={ginecologiaData.gravidanze.toString()}
+                        placeholder="0"
+                        value={ginecologiaData.gravidanze === 0 ? "" : String(ginecologiaData.gravidanze)}
                         onValueChange={(v) =>
                           handleGinecologiaChange(
                             "gravidanze",
@@ -1222,7 +1450,8 @@ export default function AddVisit() {
                       <Input
                         type="number"
                         label="Parti"
-                        value={ginecologiaData.parti.toString()}
+                        placeholder="0"
+                        value={ginecologiaData.parti === 0 ? "" : String(ginecologiaData.parti)}
                         onValueChange={(v) =>
                           handleGinecologiaChange("parti", parseInt(v) || 0)
                         }
@@ -1235,7 +1464,8 @@ export default function AddVisit() {
                       <Input
                         type="number"
                         label="Aborti"
-                        value={ginecologiaData.aborti.toString()}
+                        placeholder="0"
+                        value={ginecologiaData.aborti === 0 ? "" : String(ginecologiaData.aborti)}
                         onValueChange={(v) =>
                           handleGinecologiaChange("aborti", parseInt(v) || 0)
                         }
@@ -1259,7 +1489,8 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ginecologiaData.partiSpontanei ?? 0)}
+                          placeholder="0"
+                          value={(ginecologiaData.partiSpontanei ?? 0) === 0 ? "" : String(ginecologiaData.partiSpontanei ?? 0)}
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "partiSpontanei",
@@ -1274,7 +1505,8 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ginecologiaData.partiCesarei ?? 0)}
+                          placeholder="0"
+                          value={(ginecologiaData.partiCesarei ?? 0) === 0 ? "" : String(ginecologiaData.partiCesarei ?? 0)}
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "partiCesarei",
@@ -1289,7 +1521,8 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ginecologiaData.abortiSpontanei ?? 0)}
+                          placeholder="0"
+                          value={(ginecologiaData.abortiSpontanei ?? 0) === 0 ? "" : String(ginecologiaData.abortiSpontanei ?? 0)}
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "abortiSpontanei",
@@ -1304,7 +1537,8 @@ export default function AddVisit() {
                           size="sm"
                           variant="bordered"
                           labelPlacement="outside"
-                          value={String(ginecologiaData.ivg ?? 0)}
+                          placeholder="0"
+                          value={(ginecologiaData.ivg ?? 0) === 0 ? "" : String(ginecologiaData.ivg ?? 0)}
                           onValueChange={(v) =>
                             handleGinecologiaChange("ivg", parseInt(v) || 0)
                           }
@@ -1317,12 +1551,12 @@ export default function AddVisit() {
 
                 <Card className="shadow-sm border border-default-200 bg-white">
                   <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                    Foto Ecografia
+                    Ecografia
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">
-                        {(ginecologiaData.ecografiaImmagini ?? []).length}/8
+                        {(ginecologiaData.ecografiaImmagini ?? []).length}/20
                         immagini
                       </span>
                     </div>
@@ -1418,11 +1652,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1439,11 +1669,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="La paziente riferisce..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1475,11 +1701,8 @@ export default function AddVisit() {
                         }
                         variant="bordered"
                         minRows={5}
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        placeholder="Esame bimanuale, speculum, ecografia TV office..."
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1512,11 +1735,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Si consiglia..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
                   </CardBody>
@@ -1585,12 +1804,12 @@ export default function AddVisit() {
 
                   <Card className="shadow-sm border border-default-200 bg-white">
                     <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                      Foto Ecografia
+                      Ecografia
                     </CardHeader>
                     <CardBody className="px-4 py-6 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">
-                          {(ginecologiaData.ecografiaImmagini ?? []).length}/8
+                          {(ginecologiaData.ecografiaImmagini ?? []).length}/20
                           immagini
                         </span>
                       </div>
@@ -1689,11 +1908,7 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                          classNames={{
-                            input: "text-base leading-relaxed",
-                            inputWrapper:
-                              "group-hover:border-primary transition-colors bg-white",
-                          }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -1710,11 +1925,7 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="La paziente riferisce..."
-                          classNames={{
-                            input: "text-base leading-relaxed",
-                            inputWrapper:
-                              "group-hover:border-primary transition-colors bg-white",
-                          }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -1746,11 +1957,8 @@ export default function AddVisit() {
                           }
                           variant="bordered"
                           minRows={5}
-                          classNames={{
-                            input: "text-base leading-relaxed",
-                            inputWrapper:
-                              "group-hover:border-primary transition-colors bg-white",
-                          }}
+                          placeholder="Esame bimanuale, speculum, ecografia TV office..."
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -1783,11 +1991,7 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="Si consiglia..."
-                          classNames={{
-                            input: "text-base leading-relaxed",
-                            inputWrapper:
-                              "group-hover:border-primary transition-colors bg-white",
-                          }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
                     </CardBody>
@@ -1807,18 +2011,38 @@ export default function AddVisit() {
                     Dati Gravidanza Attuale
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-10">
-                    <Input
-                      type="text"
-                      label="Settimane di Gestazione"
-                      value={ostetriciaData.settimaneGestazione}
-                      onValueChange={(value) =>
-                        handleOstetriciaChange("settimaneGestazione", value)
-                      }
-                      variant="bordered"
-                      labelPlacement="outside"
-                      placeholder="es. 22+3"
-                      classNames={{ input: "text-base", label: "pb-1" }}
-                    />
+                    <div className="relative">
+                      <Input
+                        type="text"
+                        label="Settimane di Gestazione"
+                        value={ostetriciaData.settimaneGestazione}
+                        onValueChange={(value) =>
+                          handleOstetriciaChange("settimaneGestazione", value)
+                        }
+                        variant="bordered"
+                        labelPlacement="outside"
+                        placeholder="es. 22+3"
+                        classNames={{ input: "text-base", label: "pb-1" }}
+                      />
+                      {suggestions.gestazione && (
+                        <div className="absolute right-0 -top-1 z-10">
+                          <Chip
+                            size="sm"
+                            color="primary"
+                            variant="flat"
+                            className="cursor-pointer hover:bg-primary/20 h-6 px-1"
+                            onClick={() =>
+                              handleOstetriciaChange(
+                                "settimaneGestazione",
+                                suggestions.gestazione,
+                              )
+                            }
+                          >
+                            Suggerito: {suggestions.gestazione}
+                          </Chip>
+                        </div>
+                      )}
+                    </div>
                     <Input
                       type="date"
                       label="Ultima Mestruazione"
@@ -1830,49 +2054,147 @@ export default function AddVisit() {
                       labelPlacement="outside"
                       classNames={{ input: "text-base", label: "pb-1" }}
                     />
-                    <Input
-                      type="date"
-                      label="Data Presunta Parto"
-                      value={ostetriciaData.dataPresunta}
-                      onValueChange={(value) =>
-                        handleOstetriciaChange("dataPresunta", value)
-                      }
+                    <div className="relative">
+                      <Input
+                        type="date"
+                        label="Data Presunta Parto"
+                        value={ostetriciaData.dataPresunta}
+                        onValueChange={(value) =>
+                          handleOstetriciaChange("dataPresunta", value)
+                        }
+                        variant="bordered"
+                        labelPlacement="outside"
+                        classNames={{ input: "text-base", label: "pb-1" }}
+                      />
+                      {suggestions.dpp && (
+                        <div className="absolute right-0 -top-1 z-10">
+                          <Chip
+                            size="sm"
+                            color="primary"
+                            variant="flat"
+                            className="cursor-pointer hover:bg-primary/20 h-6 px-1"
+                            onClick={() =>
+                              handleOstetriciaChange("dataPresunta", suggestions.dpp)
+                            }
+                          >
+                            Suggerito: {format(
+                              parseISO(suggestions.dpp),
+                              "dd/MM/yyyy",
+                            )}
+                          </Chip>
+                        </div>
+                      )}
+                    </div>
+                    <Select
+                      label="Modalità di concepimento"
+                      placeholder="Seleziona"
                       variant="bordered"
                       labelPlacement="outside"
-                      classNames={{ input: "text-base", label: "pb-1" }}
-                    />
+                      selectedKeys={
+                        ostetriciaData.modalitaConcepimento
+                          ? [ostetriciaData.modalitaConcepimento]
+                          : []
+                      }
+                      onSelectionChange={(keys) =>
+                        handleOstetriciaChange(
+                          "modalitaConcepimento",
+                          (Array.from(keys)[0] as string) ?? "",
+                        )
+                      }
+                      classNames={{ label: "pb-1" }}
+                    >
+                      <SelectItem key="spontaneo" value="spontaneo">
+                        Spontaneo
+                      </SelectItem>
+                      <SelectItem key="fivet" value="fivet">
+                        FIVET
+                      </SelectItem>
+                      <SelectItem key="icsi" value="icsi">
+                        ICSI
+                      </SelectItem>
+                      <SelectItem key="iui" value="iui">
+                        IUI / Inseminazione
+                      </SelectItem>
+                      <SelectItem key="donazione_ovociti" value="donazione_ovociti">
+                        Donazione ovociti
+                      </SelectItem>
+                      <SelectItem key="altra" value="altra">
+                        Altra
+                      </SelectItem>
+                    </Select>
 
                     <Divider className="my-2" />
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col sm:flex-row items-end gap-3 w-full">
                       <Input
-                        label="Peso Pre (kg)"
+                        label="Peso Pre gravidanza (kg)"
                         type="number"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        value={ostetriciaData.pesoPreGravidanza.toString()}
+                        value={ostetriciaData.pesoPreGravidanza === 0 ? "" : ostetriciaData.pesoPreGravidanza.toString()}
                         onValueChange={(v) =>
                           handleOstetriciaChange(
                             "pesoPreGravidanza",
-                            parseFloat(v) || 0,
+                            v === "" ? 0 : parseFloat(v) || 0,
                           )
                         }
+                        placeholder="0"
+                        className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
+                      
+                      {/* Indicatore aumento peso + BMI (compatto e discreto) */}
+                      {ostetriciaData.pesoPreGravidanza > 0 && ostetriciaData.pesoAttuale > 0 && (
+                        <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
+                          {(() => {
+                             const diff = ostetriciaData.pesoAttuale - ostetriciaData.pesoPreGravidanza;
+                             const isNegative = diff < 0;
+                             const colorClass = isNegative ? "text-success-600 bg-success-50/80 border-success-200" : "text-primary-600 bg-primary-50/80 border-primary-200";
+                             const hasAltezza = patient?.altezza != null && patient.altezza > 0;
+                             const h = hasAltezza ? patient!.altezza / 100 : 0;
+                             const bmiPartenza =
+                               hasAltezza && ostetriciaData.pesoPreGravidanza > 0
+                                 ? (ostetriciaData.pesoPreGravidanza / (h * h)).toFixed(1)
+                                 : null;
+                             const bmiAttuale =
+                               hasAltezza && ostetriciaData.pesoAttuale > 0
+                                 ? (ostetriciaData.pesoAttuale / (h * h)).toFixed(1)
+                                 : null;
+                             return (
+                               <div className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 ${colorClass}`}>
+                                 <div className="flex items-center gap-1 text-xs font-semibold">
+                                   {diff >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                                   <span>{Math.abs(diff).toFixed(1)} kg</span>
+                                 </div>
+                                 {(bmiPartenza != null || bmiAttuale != null) && (
+                                   <div className="text-[10px] font-medium opacity-85 leading-tight">
+                                     {bmiPartenza != null && <span>part. {bmiPartenza}</span>}
+                                     {bmiPartenza != null && bmiAttuale != null && " · "}
+                                     {bmiAttuale != null && <span>BMI {bmiAttuale}</span>}
+                                   </div>
+                                 )}
+                               </div>
+                             );
+                          })()}
+                        </div>
+                      )}
+
                       <Input
                         label="Peso Attuale (kg)"
                         type="number"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        value={ostetriciaData.pesoAttuale.toString()}
+                        value={ostetriciaData.pesoAttuale === 0 ? "" : ostetriciaData.pesoAttuale.toString()}
                         onValueChange={(v) =>
                           handleOstetriciaChange(
                             "pesoAttuale",
-                            parseFloat(v) || 0,
+                            v === "" ? 0 : parseFloat(v) || 0,
                           )
                         }
+                        placeholder="0"
+                        className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
                     </div>
@@ -1888,6 +2210,75 @@ export default function AddVisit() {
                       }
                       classNames={{ label: "pb-1" }}
                     />
+                    <div className="grid grid-cols-2 gap-3">
+                      <Select
+                        label="Fuma in gravidanza"
+                        placeholder="Seleziona"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        selectedKeys={
+                          ostetriciaData.fumaInGravidanza
+                            ? [ostetriciaData.fumaInGravidanza]
+                            : []
+                        }
+                        onSelectionChange={(keys) =>
+                          handleOstetriciaChange(
+                            "fumaInGravidanza",
+                            (Array.from(keys)[0] as string) ?? "",
+                          )
+                        }
+                        classNames={{ label: "pb-1" }}
+                      >
+                        <SelectItem key="no" value="no">
+                          No (non fumatrice)
+                        </SelectItem>
+                        <SelectItem key="meno_1" value="meno_1">
+                          Meno di 1 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="1" value="1">
+                          1 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="2" value="2">
+                          2 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="3" value="3">
+                          3 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="4" value="4">
+                          4 pacc./giorno
+                        </SelectItem>
+                        <SelectItem key="5_plus" value="5_plus">
+                          5+ pacc./giorno
+                        </SelectItem>
+                      </Select>
+                      <Select
+                        label="Assunzione acido folico"
+                        placeholder="Seleziona"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        selectedKeys={
+                          ostetriciaData.assunzioneAcidoFolico
+                            ? [ostetriciaData.assunzioneAcidoFolico]
+                            : []
+                        }
+                        onSelectionChange={(keys) =>
+                          handleOstetriciaChange(
+                            "assunzioneAcidoFolico",
+                            (Array.from(keys)[0] as string) ?? "",
+                          )
+                        }
+                        classNames={{ label: "pb-1" }}
+                      >
+                        <SelectItem key="si" value="si">
+                          Sì
+                        </SelectItem>
+                        <SelectItem key="no" value="no">
+                          No
+                        </SelectItem>
+                      </Select>
+                    </div>
                   </CardBody>
                 </Card>
 
@@ -2026,12 +2417,25 @@ export default function AddVisit() {
 
                 <Card className="shadow-sm border border-default-200 bg-white">
                   <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
-                    Foto Ecografia
+                    Ecografia
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-3">
+                    <Input
+                      type="number"
+                      label="CRL (mm)"
+                      placeholder="Lunghezza vertice-sacro"
+                      description="Se non concorde con le settimane, queste e la data presunta parto vengono aggiornate"
+                      value={ostetriciaData.crlMm != null && ostetriciaData.crlMm > 0 ? String(ostetriciaData.crlMm) : ""}
+                      onValueChange={handleCrlChange}
+                      variant="bordered"
+                      labelPlacement="outside"
+                      min={3}
+                      max={100}
+                      classNames={{ label: "pb-1" }}
+                    />
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">
-                        {(ostetriciaData.ecografiaImmagini ?? []).length}/8
+                        {(ostetriciaData.ecografiaImmagini ?? []).length}/20
                         immagini
                       </span>
                     </div>
@@ -2135,7 +2539,7 @@ export default function AddVisit() {
                           )
                         </span>
                       </p>
-                      <div className="text-right">
+                      <div className="text-right flex flex-col items-end gap-1">
                         {(() => {
                           const result =
                             scalePesoFetale[
@@ -2152,27 +2556,12 @@ export default function AddVisit() {
                               ga != null
                                 ? getCentileForWeight(result.pesoGrammi, ga)
                                 : null;
-                            const centileStr = getCentileLabel(centile);
                             return (
-                              <div>
+                              <div className="flex flex-col items-end gap-1">
                                 <p className="text-xl font-bold text-primary">
                                   {result.pesoGrammi} g
                                 </p>
-                                {centileStr && (
-                                  <p className="text-sm text-default-500 mt-0.5">
-                                    {centileStr} centile
-                                    {ga != null && (
-                                      <span className="text-default-400">
-                                        {" "}
-                                        (per{" "}
-                                        {
-                                          ostetriciaData.settimaneGestazione
-                                        }{" "}
-                                        sett.)
-                                      </span>
-                                    )}
-                                  </p>
-                                )}
+                                <PercentileBar percentile={centile} />
                               </div>
                             );
                           }
@@ -2184,6 +2573,81 @@ export default function AddVisit() {
                         })()}
                       </div>
                     </div>
+                  </CardBody>
+                </Card>
+
+                {/* Flussimetria Doppler arteria ombelicale: input PI, IR, EDF; GA da Settimane di gestazione */}
+                <Card className="shadow-sm border border-default-200 bg-white">
+                  <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
+                    Flussimetria cordone ombelicale
+                  </CardHeader>
+                  <CardBody className="px-4 py-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        type="number"
+                        label="PI (Pulsatility Index)"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        placeholder="es. 0,88"
+                        step={0.01}
+                        value={
+                          ostetriciaData.flussimetriaOmbelicale?.pi != null
+                            ? String(ostetriciaData.flussimetriaOmbelicale.pi)
+                            : ""
+                        }
+                        onValueChange={(v) =>
+                          handleFlussimetriaOmbelicaleChange(
+                            "pi",
+                            v === "" ? undefined : parseFloat(v.replace(",", ".")) || undefined,
+                          )
+                        }
+                        classNames={{ label: "pb-1" }}
+                      />
+                      <Input
+                        type="number"
+                        label="IR (Indice di resistenza)"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        placeholder="es. 0,58"
+                        step={0.01}
+                        value={
+                          ostetriciaData.flussimetriaOmbelicale?.ri != null
+                            ? String(ostetriciaData.flussimetriaOmbelicale.ri)
+                            : ""
+                        }
+                        onValueChange={(v) =>
+                          handleFlussimetriaOmbelicaleChange(
+                            "ri",
+                            v === "" ? undefined : parseFloat(v.replace(",", ".")) || undefined,
+                          )
+                        }
+                        classNames={{ label: "pb-1" }}
+                      />
+                    </div>
+                    {flussimetriaCalcoli && (() => {
+                      const piPct = flussimetriaCalcoli.piPercentile ?? ostetriciaData.flussimetriaOmbelicale?.piPercentile;
+                      const riPct = flussimetriaCalcoli.riPercentile ?? ostetriciaData.flussimetriaOmbelicale?.riPercentile;
+                      const fmt = (v: number) => v.toFixed(2).replace(".", ",");
+                      return (
+                        <div className="bg-default-50 rounded-xl p-4 text-sm space-y-3">
+                          <p className="font-semibold text-gray-700">Arteria ombelicale</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-gray-700 min-w-[1.5rem]">PI</span>
+                              <span className="font-mono text-default-700">{fmt(flussimetriaCalcoli.pi)}</span>
+                              <PercentileBar percentile={piPct} />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-gray-700 min-w-[1.5rem]">IR</span>
+                              <span className="font-mono text-default-700">{fmt(flussimetriaCalcoli.ri)}</span>
+                              <PercentileBar percentile={riPct} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </CardBody>
                 </Card>
 
@@ -2216,11 +2680,8 @@ export default function AddVisit() {
                         }
                         variant="bordered"
                         minRows={3}
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        placeholder="Anamnesi ostetrica, motivo della visita, dati clinici..."
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2237,11 +2698,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Motivo della visita, sintomi riferiti..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2274,11 +2731,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={5}
                         placeholder="Biometria fetale, liquido amniotico..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2311,11 +2764,7 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Raccomandazioni e follow-up..."
-                        classNames={{
-                          input: "text-base leading-relaxed",
-                          inputWrapper:
-                            "group-hover:border-primary transition-colors bg-white",
-                        }}
+                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
                   </CardBody>
@@ -2424,6 +2873,36 @@ export default function AddVisit() {
               onPress={() => resolveIncludeEcografiaImages(true)}
             >
               Si, includi immagini
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isIncludeFetalGrowthChartModalOpen}
+        onClose={() => resolveIncludeFetalGrowthChart(false)}
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>Includere grafico crescita fetale?</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-gray-600">
+              Vuoi inserire nel PDF il grafico dei centili di crescita fetale
+              (peso stimato vs epoca gestazionale)?
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="light"
+              onPress={() => resolveIncludeFetalGrowthChart(false)}
+            >
+              No, genera senza grafico
+            </Button>
+            <Button
+              color="primary"
+              onPress={() => resolveIncludeFetalGrowthChart(true)}
+            >
+              Sì, includi grafico
             </Button>
           </ModalFooter>
         </ModalContent>

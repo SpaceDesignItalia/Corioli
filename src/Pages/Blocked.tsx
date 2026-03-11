@@ -4,11 +4,10 @@ import { Card, CardBody, CardHeader, Button } from "@nextui-org/react";
 import { ShieldAlert, Mail, Phone, RefreshCw } from "lucide-react";
 import { DoctorService } from "../services/OfflineServices";
 import { storageService } from "../services/StorageServiceFallback";
-import { Doctor } from "../types/Storage";
-import axios from "axios";
+import { sendHeartbeat } from "../services/HeartbeatService";
 
-const SUPPORT_EMAIL = "support@corioli.app";
-const SUPPORT_PHONE = "+39 02 1234567";
+const SUPPORT_EMAIL = "pablobertot@gmail.com";
+const SUPPORT_PHONE = "+39 3938001284";
 const BLOCKED_STORAGE_KEY = "blocked_users";
 
 export default function Blocked() {
@@ -24,8 +23,8 @@ export default function Blocked() {
       if (!id) return;
 
       if (doctor) {
-        const { blocked, reason } = await sendOnlineStatus(doctor);
-        if (!blocked) {
+        const { blocked, reason } = await sendHeartbeat(doctor, "corioli");
+        if (blocked === false) {
           const payload = {
             blocked: false,
             checkedAt: new Date().toISOString(),
@@ -35,61 +34,20 @@ export default function Blocked() {
             JSON.stringify(payload),
           );
           navigate("/", { replace: true });
-        } else {
+        } else if (blocked === true) {
           setReason(reason ?? null);
+        } else {
+          const raw = await storageService.getPreference(BLOCKED_STORAGE_KEY);
+          if (raw) {
+            const data = JSON.parse(raw) as { reason?: string | null };
+            setReason(data.reason ?? null);
+          }
         }
       }
     } catch (e) {
       console.error("Blocked handleAggiorna:", e);
     } finally {
       setUpdating(false);
-    }
-  };
-
-  const sendOnlineStatus = async (
-    doctor: Doctor,
-  ): Promise<{ blocked: boolean; reason: string | null }> => {
-    try {
-      const result = await axios.post(
-        `${import.meta.env.VITE_API_URL}/clients/heartbeat`,
-        {
-          id: doctor.id,
-          nome: doctor.nome,
-          cognome: doctor.cognome,
-          email: doctor.email,
-          numero_telefono: doctor.telefono,
-          specializzazione: doctor.specializzazione,
-          tipo: "ginecologia",
-        },
-      );
-
-      return {
-        blocked: Boolean(result.data.blocked),
-        reason:
-          typeof result.data.reason === "string" ? result.data.reason : null,
-      };
-    } catch (e) {
-      console.error("sendOnlineStatus:", e);
-      // In caso di errore (offline, server non raggiungibile, ecc.)
-      // provo a recuperare l'ultimo stato salvato localmente
-      try {
-        const raw = await storageService.getPreference(BLOCKED_STORAGE_KEY);
-        if (raw) {
-          const data = JSON.parse(raw) as {
-            blocked?: boolean;
-            reason?: string | null;
-          };
-          return {
-            blocked: data.blocked ?? true,
-            reason: data.reason ?? null,
-          };
-        }
-      } catch (parseError) {
-        console.error("Errore lettura stato bloccato da storage:", parseError);
-      }
-
-      // Se non ho nessun dato salvato, considero l'utente ancora bloccato
-      return { blocked: true, reason: null };
     }
   };
 

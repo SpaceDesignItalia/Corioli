@@ -14,6 +14,13 @@ export interface Patient {
   indirizzo?: string;
   telefono?: string;
   email?: string;
+  /** Campi clinici opzionali nel profilo */
+  gruppoSanguigno?: string;
+  allergie?: string;
+  altezza?: number; // in cm
+  peso?: number; // in kg (utile per BMI iniziale)
+  /** Note rapide del medico (visibili in scheda paziente, modificabili al volo) */
+  notaBene?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -25,6 +32,18 @@ export interface RichiestaEsameComplementare {
   nome: string;
   note?: string;
   dataRichiesta: string; // ISO date
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Certificato medico rilasciato al paziente (assenze, idoneità, malattia, altro) */
+export interface CertificatoPaziente {
+  id: string;
+  patientId: string;
+  /** Tipo: assenza lavoro, idoneità, malattia, altro */
+  tipo: 'assenza_lavoro' | 'idoneita' | 'malattia' | 'altro';
+  dataCertificato: string; // ISO date
+  descrizione: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +95,8 @@ export interface Visit {
     settimaneGestazione: string;
     ultimaMestruazione: string;
     dataPresunta: string;
+    /** Modalità di concepimento: spontaneo, FIVET, ICSI, IUI, donazione ovociti, altra */
+    modalitaConcepimento?: string;
     problemaClinico: string;
     gravidanzePrec: number;
     partiPrec: number;
@@ -89,6 +110,12 @@ export interface Visit {
     pesoPreGravidanza: number;
     pesoAttuale: number;
     pressioneArteriosa: string;
+    /** Fuma in gravidanza: "si" | "no" */
+    fumaInGravidanza?: string;
+    /** Pacchetti di sigarette al giorno (se fumatrice) */
+    pacchettiSigaretteAlGiorno?: number;
+    /** Assunzione acido folico: "si" | "no" */
+    assunzioneAcidoFolico?: string;
     altezzaUterina: string;
     battitiFetali: string;
     movimentiFetali: string;
@@ -97,6 +124,8 @@ export interface Visit {
     noteOstetriche: string;
     prestazione: string;
     esameObiettivo: string;
+    /** CRL in mm (lunghezza vertice-sacro). Se valorizzato e non concorde con settimane, queste vengono aggiornate. */
+    crlMm?: number;
     /** Data URL (base64) immagini ecografia */
     ecografiaImmagini?: string[];
     /** Biometria fetale per stima peso (mm). Usato per le 3 scale: Hadlock 4p, Shepard, Hadlock 3p */
@@ -105,6 +134,23 @@ export interface Visit {
       hcMm: number;
       acMm: number;
       flMm: number;
+    };
+    /** Flussimetria Doppler arteria ombelicale. Inserire PI, IR, EDF (GA da Settimane di gestazione). */
+    flussimetriaOmbelicale?: {
+      /** Pulsatility Index (inserimento diretto) */
+      pi?: number;
+      /** Indice di resistenza (inserimento diretto) */
+      ri?: number;
+      /** End diastolic flow: positivo / assente / invertito */
+      edf?: "positivo" | "assente" | "invertito";
+      /** Percentile del PI (calcolato) */
+      piPercentile?: number;
+      /** Percentile dell'IR (calcolato) */
+      riPercentile?: number;
+      /** Retrocompatibilità: velocità per calcolo PI/RI da dati grezzi */
+      psv?: number;
+      edv?: number;
+      velocitaMedia?: number;
     };
   };
   createdAt: string;
@@ -140,6 +186,8 @@ export interface Document {
   id: string;
   title: string;
   description?: string;
+  /** Se valorizzato, documento associato a uno specifico paziente */
+  patientId?: string;
   fileName: string;
   fileSize: number;
   mimeType: string;
@@ -154,7 +202,7 @@ export interface Document {
 
 export interface MedicalTemplate {
   id: string;
-  category: 'ginecologia' | 'ostetricia' | 'terapie' | 'esame_complementare';
+  category: 'ginecologia' | 'ostetricia' | 'terapie' | 'esame_complementare' | 'certificato';
   section: 'prestazione' | 'esameObiettivo' | 'conclusioni' | 'generale' | 'nome' | 'note';
   label: string;
   text: string;
@@ -166,6 +214,7 @@ export interface AppData {
   patients: Patient[];
   visits: Visit[];
   richiesteEsami?: RichiestaEsameComplementare[];
+  certificatiPaziente?: CertificatoPaziente[];
   doctor: Doctor;
   documents: Document[];
   templates?: MedicalTemplate[];
@@ -197,6 +246,13 @@ export interface StorageService {
   addRichiestaEsame(data: Omit<RichiestaEsameComplementare, 'id' | 'createdAt' | 'updatedAt'>): Promise<RichiestaEsameComplementare>;
   updateRichiestaEsame(id: string, data: Partial<RichiestaEsameComplementare>): Promise<RichiestaEsameComplementare>;
   deleteRichiestaEsame(id: string): Promise<void>;
+
+  // Certificati paziente
+  getCertificatiByPatientId(patientId: string): Promise<CertificatoPaziente[]>;
+  getCertificatoById(id: string): Promise<CertificatoPaziente | null>;
+  addCertificato(data: Omit<CertificatoPaziente, 'id' | 'createdAt' | 'updatedAt'>): Promise<CertificatoPaziente>;
+  updateCertificato(id: string, data: Partial<CertificatoPaziente>): Promise<CertificatoPaziente>;
+  deleteCertificato(id: string): Promise<void>;
 
   // Dottore
   getDoctor(): Promise<Doctor | null>;

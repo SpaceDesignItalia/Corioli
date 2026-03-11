@@ -127,5 +127,62 @@ export const MedicalTemplates = {
     { label: "Dosaggi ormonali", text: "Dosaggi ormonali ginecologici", note: "FSH, LH, Estradiolo, Progesterone, Prolattina, TSH (in base al giorno del ciclo)." },
     { label: "Beta-hCG", text: "Dosaggio beta-hCG", note: "Escludere/accertare gravidanza quando clinicamente indicato." },
     { label: "Mammografia bilaterale", text: "Mammografia bilaterale", note: "Con ecografia mammaria integrativa se indicata." },
+  ],
+  certificati: [
+    {
+      label: "Idoneità sportiva ginecologica",
+      note: "Per sport femminili, obbligatoria in alcuni contesti.",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___, CF ___) è stata visitata in data odierna e risulta idonea alla pratica dell'attività sportiva (sport femminili) dal punto di vista ginecologico.\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Gravidanza — idoneità lavoro / esonero",
+      note: "Attesta settimane, data presunta parto, idoneità al lavoro o esonero da mansioni a rischio.",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___, CF ___) è in stato di gravidanza fisiologica in corso (___ settimane di gestazione, DPP ___). La paziente risulta idonea allo svolgimento della propria attività lavorativa / è esonerata da mansioni a rischio (barrare il non necessario).\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Allattamento",
+      note: "Attesta allattamento in corso (per permessi lavorativi).",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___, CF ___) è stata visitata in data odierna e risulta in periodo di allattamento in corso.\n\nSi rilascia il presente certificato per i permessi lavorativi previsti dalla normativa vigente."
+    },
+    {
+      label: "Interruzione volontaria di gravidanza (IVG)",
+      note: "Certificazione medica obbligatoria per legge 194/78, con i 7 giorni di riflessione.",
+      text: "Certificato ai sensi della L. 194/78.\n\nLa sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___, CF ___) è stata visitata in data odierna. È stato rilasciato attestato di gravidanza con indicazione di richiesta di interruzione volontaria di gravidanza. Si attestano i 7 giorni di riflessione previsti dalla legge.\n\nData rilascio attestato: ___.\n\nSi rilascia il presente certificato per gli adempimenti di legge."
+    },
+    {
+      label: "Assenza da lavoro — visita o procedura",
+      note: "Per visita/procedura (colposcopia, isteroscopia, ecc.).",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___) è stata visitata in data odierna e ha eseguito ___ (visita specialistica ginecologica / colposcopia / isteroscopia / altra procedura: specificare). Per tale motivo la paziente si è assentata dal lavoro in data odierna.\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Visita specialistica — attestato di presenza",
+      note: "Generico attestato di presenza alla visita.",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___) si è presentata in data odierna presso questo ambulatorio per visita specialistica ginecologica.\n\nSi rilascia il presente attestato per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Post-intervento / convalescenza",
+      note: "Dopo laparoscopia, isteroscopia operativa, ecc.",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___) è stata sottoposta a ___ (laparoscopia / isteroscopia operativa / altra procedura: specificare) in data ___. La paziente è in periodo di convalescenza e necessita di astensione dal lavoro per ___ giorni, dal ___ al ___.\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge."
+    },
+    {
+      label: "Menopausa",
+      note: "Attesta stato di menopausa (per pensione anticipata, pratiche assicurative).",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___, CF ___) è stata visitata in data odierna. In base alla documentazione e alla valutazione clinica, la paziente risulta in stato di menopausa (naturale / chirurgica: specificare).\n\nSi rilascia il presente certificato per gli usi consentiti dalla legge (pensione anticipata, pratiche assicurative, ecc.)."
+    },
+    {
+      label: "Stato di gravidanza — pratiche amministrative",
+      note: "Comuni richieste di enti/datori di lavoro.",
+      text: "La sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___, CF ___) è in stato di gravidanza fisiologica in corso (___ settimane, data presunta del parto ___).\n\nSi rilascia il presente certificato per le pratiche amministrative richieste."
+    },
+    {
+      label: "Incompatibilità mansione in gravidanza",
+      note: "Per il datore di lavoro, art. 17 D.Lgs 151/2001.",
+      text: "Certificato ai sensi dell'art. 17 del D.Lgs 151/2001.\n\nLa sottoscritta Dott. ___ attesta che la paziente ___ (nata il ___, CF ___) è in stato di gravidanza (___ settimane) e che la mansione svolta risulta incompatibile con lo stato di gravidanza / comporta rischi per la salute della lavoratrice o del nascituro (specificare).\n\nSi rilascia il presente certificato per gli adempimenti nei confronti del datore di lavoro."
+    },
+    {
+      label: "Esito colposcopia / PAP — lettera per MMG",
+      note: "Lettera referto per il Medico di Medicina Generale.",
+      text: "Lettera di comunicazione esito per MMG.\n\nPaziente: ___ (nata il ___).\n\nIn data ___ la paziente è stata sottoposta a ___ (colposcopia / Pap test / HPV test: specificare). Esito: ___.\n\nSi invia comunicazione per continuità assistenziale.\n\nDistinti saluti."
+    }
   ]
 };

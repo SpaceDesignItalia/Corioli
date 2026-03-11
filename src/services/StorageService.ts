@@ -1,8 +1,8 @@
-import { StorageService, Patient, Visit, Doctor, AppData, BackupImportMode, RichiestaEsameComplementare } from '../types/Storage';
+import { StorageService, Patient, Visit, Doctor, AppData, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente } from '../types/Storage';
 
 class LocalStorageService implements StorageService {
   private dbName = 'AppDottoriDB';
-  private version = 2;
+  private version = 3;
   private db: IDBDatabase | null = null;
 
   private async initDB(): Promise<IDBDatabase> {
@@ -49,6 +49,12 @@ class LocalStorageService implements StorageService {
         if (!db.objectStoreNames.contains('richieste_esami')) {
           const reStore = db.createObjectStore('richieste_esami', { keyPath: 'id' });
           reStore.createIndex('patientId', 'patientId');
+        }
+
+        // Store per certificati paziente
+        if (!db.objectStoreNames.contains('certificati_paziente')) {
+          const certStore = db.createObjectStore('certificati_paziente', { keyPath: 'id' });
+          certStore.createIndex('patientId', 'patientId');
         }
       };
     });
@@ -185,6 +191,10 @@ class LocalStorageService implements StorageService {
     for (const r of richieste) {
       await this.deleteRichiestaEsame(r.id);
     }
+    const certificati = await this.getCertificatiByPatientId(id);
+    for (const c of certificati) {
+      await this.deleteCertificato(c.id);
+    }
 
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(['patients'], 'readwrite');
@@ -268,6 +278,81 @@ class LocalStorageService implements StorageService {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(['richieste_esami'], 'readwrite');
       const store = transaction.objectStore('richieste_esami');
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Certificati paziente
+  async getCertificatiByPatientId(patientId: string): Promise<CertificatoPaziente[]> {
+    const db = await this.initDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['certificati_paziente'], 'readonly');
+      const store = transaction.objectStore('certificati_paziente');
+      const index = store.index('patientId');
+      const request = index.getAll(patientId);
+      request.onsuccess = () => {
+        const list = (request.result || []).sort((a: CertificatoPaziente, b: CertificatoPaziente) =>
+          new Date(b.dataCertificato).getTime() - new Date(a.dataCertificato).getTime());
+        resolve(list);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getCertificatoById(id: string): Promise<CertificatoPaziente | null> {
+    const db = await this.initDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['certificati_paziente'], 'readonly');
+      const store = transaction.objectStore('certificati_paziente');
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async addCertificato(data: Omit<CertificatoPaziente, 'id' | 'createdAt' | 'updatedAt'>): Promise<CertificatoPaziente> {
+    const db = await this.initDB();
+    const cert: CertificatoPaziente = {
+      ...data,
+      id: this.generateId(),
+      createdAt: this.getCurrentTimestamp(),
+      updatedAt: this.getCurrentTimestamp(),
+    };
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['certificati_paziente'], 'readwrite');
+      const store = transaction.objectStore('certificati_paziente');
+      const request = store.add(cert);
+      request.onsuccess = () => resolve(cert);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async updateCertificato(id: string, data: Partial<CertificatoPaziente>): Promise<CertificatoPaziente> {
+    const existing = await this.getCertificatoById(id);
+    if (!existing) throw new Error('Certificato non trovato');
+    const updated: CertificatoPaziente = {
+      ...existing,
+      ...data,
+      id,
+      updatedAt: this.getCurrentTimestamp(),
+    };
+    const db = await this.initDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['certificati_paziente'], 'readwrite');
+      const store = transaction.objectStore('certificati_paziente');
+      const request = store.put(updated);
+      request.onsuccess = () => resolve(updated);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deleteCertificato(id: string): Promise<void> {
+    const db = await this.initDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['certificati_paziente'], 'readwrite');
+      const store = transaction.objectStore('certificati_paziente');
       const request = store.delete(id);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);

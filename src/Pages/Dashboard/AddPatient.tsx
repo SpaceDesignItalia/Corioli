@@ -9,7 +9,8 @@ import {
   CardHeader,
   Divider,
   Spinner,
-  Chip
+  Chip,
+  Textarea,
 } from "@nextui-org/react";
 import { ChangeEvent, useState, useEffect, useRef } from "react";
 import { I18nProvider } from "@react-aria/i18n";
@@ -33,6 +34,9 @@ interface RegisterData {
   cf: string;
   gender: string;
   address: string;
+  bloodType: string;
+  allergies: string;
+  height: string;
 }
 
 export default function AddPatient() {
@@ -46,6 +50,9 @@ export default function AddPatient() {
     cf: "",
     gender: "F",
     address: "",
+    bloodType: "",
+    allergies: "",
+    height: "",
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -90,7 +97,10 @@ export default function AddPatient() {
           birthplace: patient.luogoNascita,
           cf: patient.codiceFiscale || "",
           gender: patient.sesso,
-          address: patient.indirizzo || ""
+          address: patient.indirizzo || "",
+          bloodType: patient.gruppoSanguigno || "",
+          allergies: patient.allergie || "",
+          height: patient.altezza != null ? String(patient.altezza) : "",
         });
       } else {
         setError("Paziente non trovato");
@@ -120,7 +130,10 @@ export default function AddPatient() {
           birthplace: patient.luogoNascita,
           cf: patient.codiceFiscale || "",
           gender: patient.sesso,
-          address: patient.indirizzo || ""
+          address: patient.indirizzo || "",
+          bloodType: patient.gruppoSanguigno || "",
+          allergies: patient.allergie || "",
+          height: patient.altezza != null ? String(patient.altezza) : "",
         });
       } else {
         setError("Paziente non trovato");
@@ -195,6 +208,9 @@ export default function AddPatient() {
         email: registerData.email.trim() || undefined,
         telefono: registerData.phone.trim() || undefined,
         indirizzo: registerData.address.trim() || undefined,
+        gruppoSanguigno: registerData.bloodType || undefined,
+        allergie: registerData.allergies || undefined,
+        altezza: registerData.height ? parseFloat(registerData.height) : undefined,
       };
       if (isEditMode && patientId) {
         await PatientService.updatePatient(patientId, payload);
@@ -391,6 +407,67 @@ export default function AddPatient() {
                 onChange={handleChange}
                 variant="bordered"
                 className="mt-4"
+                classNames={{ label: "text-gray-700 font-medium" }}
+              />
+            </div>
+
+            <Divider />
+
+            {/* Dati Clinici */}
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4 bg-gray-50 p-2 rounded">
+                Dati Clinici
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <Select
+                  label="Gruppo Sanguigno"
+                  placeholder="Seleziona"
+                  variant="bordered"
+                  selectedKeys={
+                    registerData.bloodType ? [registerData.bloodType] : []
+                  }
+                  onSelectionChange={(keys) =>
+                    handleSelectChange("bloodType", Array.from(keys)[0] as string)
+                  }
+                  classNames={{ label: "text-gray-700 font-medium" }}
+                >
+                  {[
+                    "A+",
+                    "A-",
+                    "B+",
+                    "B-",
+                    "AB+",
+                    "AB-",
+                    "0+",
+                    "0-",
+                    "Non noto",
+                  ].map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {g}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <Input
+                  name="height"
+                  type="number"
+                  label="Altezza (cm)"
+                  placeholder="0"
+                  value={registerData.height}
+                  onChange={handleChange}
+                  variant="bordered"
+                  min={0}
+                  classNames={{ label: "text-gray-700 font-medium" }}
+                  description="Usata nella visita per calcolare il BMI insieme al peso rilevato"
+                />
+              </div>
+              <Textarea
+                name="allergies"
+                label="Allergie / Intolleranze"
+                placeholder="Elenca eventuali allergie a farmaci, alimenti, ecc."
+                value={registerData.allergies}
+                onChange={handleChange}
+                variant="bordered"
+                minRows={2}
                 classNames={{ label: "text-gray-700 font-medium" }}
               />
             </div>

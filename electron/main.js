@@ -244,8 +244,6 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.checkForUpdates();
-
   autoUpdater.on("checking-for-update", () => {
     mainWindowRef?.webContents?.send("updater:checking");
   });

@@ -24,17 +24,20 @@ import {
   Clock,
   ArrowRight,
   FlaskConical,
+  Award,
 } from "lucide-react";
 import {
   DoctorService,
   PatientService,
   VisitService,
   RichiestaEsameService,
+  CertificatoService,
 } from "../../services/OfflineServices";
 import {
   Patient,
   Visit,
   RichiestaEsameComplementare,
+  CertificatoPaziente,
 } from "../../types/Storage";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
@@ -47,6 +50,10 @@ interface DashboardStats {
   recentPatients: Patient[];
   recentVisits: (Visit & { patientName: string; patientCf: string })[];
   recentEsami: (RichiestaEsameComplementare & {
+    patientName: string;
+    patientCf: string;
+  })[];
+  recentCertificati: (CertificatoPaziente & {
     patientName: string;
     patientCf: string;
   })[];
@@ -103,11 +110,29 @@ export default function Home() {
     recentPatients: [],
     recentVisits: [],
     recentEsami: [],
+    recentCertificati: [],
     averageAge: 0,
     visitsThisMonth: 0,
     patientsThisMonth: 0,
   });
+  const [recentTab, setRecentTab] = useState<"esami" | "certificati">(() => {
+    try {
+      const s = localStorage.getItem("corioli_home_esami_certificati_tab");
+      if (s === "esami" || s === "certificati") return s;
+    } catch {
+      /* ignore */
+    }
+    return "esami";
+  });
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("corioli_home_esami_certificati_tab", recentTab);
+    } catch {
+      /* ignore */
+    }
+  }, [recentTab]);
   const [toast, setToast] = useState<{ open: boolean; message: string }>({
     open: false,
     message: "",
@@ -125,11 +150,15 @@ export default function Home() {
     const load = async () => {
       setLoading(true);
       try {
-        const [doctor, patients, visits, allEsami] = await Promise.all([
+        const patientsPromise = PatientService.getAllPatients();
+        const [doctor, patients, visits, allEsami, certArrays] = await Promise.all([
           DoctorService.initializeDefaultDoctor(),
-          PatientService.getAllPatients(),
+          patientsPromise,
           VisitService.getAllVisits(),
           RichiestaEsameService.getAll(),
+          patientsPromise.then((ps) =>
+            Promise.all(ps.map((p) => CertificatoService.getByPatientId(p.id))),
+          ),
         ]);
 
         setDoctorName(`${doctor.nome} ${doctor.cognome}`);
@@ -204,6 +233,24 @@ export default function Home() {
           })
           .slice(0, 6);
 
+        // Certificati recenti: flatten, arricchisci con nome paziente, ordina per data, prendi 6
+        const flatCerts = certArrays.flatMap((arr, i) =>
+          arr.map((c) => ({
+            ...c,
+            patientName: patients[i]
+              ? `${patients[i].nome} ${patients[i].cognome}`
+              : "Paziente sconosciuto",
+            patientCf: patients[i]?.codiceFiscale || "",
+          })),
+        );
+        const recentCertificati = flatCerts
+          .sort(
+            (a, b) =>
+              new Date(b.dataCertificato).getTime() -
+              new Date(a.dataCertificato).getTime(),
+          )
+          .slice(0, 6);
+
         // Average age
         let validAgesCount = 0;
         const totalAge = patients.reduce((sum, p) => {
@@ -223,6 +270,7 @@ export default function Home() {
           recentPatients: sortedPatients,
           recentVisits: sortedVisits,
           recentEsami: enrichedEsami,
+          recentCertificati,
           averageAge,
           visitsThisMonth,
           patientsThisMonth,
@@ -570,54 +618,140 @@ export default function Home() {
           </CardBody>
         </Card>
 
-        {/* Esami Complementari Recenti */}
+        {/* Esami / Certificati recenti con select come in Patient History */}
         <Card className="shadow-md border border-gray-100">
-          <CardHeader className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-2">
-              <FlaskConical className="text-teal-600" size={18} />
-              <h3 className="text-base font-semibold text-gray-900">
-                Esami Recenti
-              </h3>
+          <CardHeader className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-0 rounded-lg bg-default-100 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setRecentTab("esami")}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    recentTab === "esami"
+                      ? "bg-white text-teal-700 shadow-sm"
+                      : "text-default-600 hover:text-default-800"
+                  }`}
+                >
+                  <FlaskConical size={16} />
+                  Esami
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRecentTab("certificati")}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    recentTab === "certificati"
+                      ? "bg-white text-amber-700 shadow-sm"
+                      : "text-default-600 hover:text-default-800"
+                  }`}
+                >
+                  <Award size={16} />
+                  Certificati
+                </button>
+              </div>
             </div>
             <Chip size="sm" variant="flat" color="default" className="text-xs">
-              {stats.recentEsami.length} mostrati
+              {recentTab === "esami"
+                ? `${stats.recentEsami.length} mostrati`
+                : `${stats.recentCertificati.length} mostrati`}
             </Chip>
           </CardHeader>
           <CardBody className="p-0">
-            {stats.recentEsami.length > 0 ? (
+            {recentTab === "esami" ? (
+              stats.recentEsami.length > 0 ? (
+                <div className="divide-y divide-gray-100">
+                  {stats.recentEsami.map((esame) => (
+                    <div
+                      key={esame.id}
+                      className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
+                      onClick={() =>
+                        esame.patientId &&
+                        navigate(`/patient-history/${esame.patientId}`)
+                      }
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="p-1.5 rounded-lg flex-shrink-0 bg-teal-100 text-teal-600">
+                          <FlaskConical size={14} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-gray-900 group-hover:text-primary transition-colors truncate text-sm">
+                            {esame.nome}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {esame.patientName}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                        <div className="text-right">
+                          <p className="text-xs text-gray-400">
+                            {new Date(esame.dataRichiesta).toLocaleDateString(
+                              "it-IT",
+                            )}
+                          </p>
+                          {esame.note && (
+                            <p className="text-xs text-teal-500 truncate max-w-[80px]">
+                              {esame.note}
+                            </p>
+                          )}
+                        </div>
+                        <ArrowRight
+                          size={14}
+                          className="text-gray-300 group-hover:text-primary transition-colors"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
+                  <FlaskConical size={32} className="text-gray-200" />
+                  <p className="text-sm text-center">Nessun esame richiesto.</p>
+                  <p className="text-xs text-center text-gray-300">
+                    Gli esami vengono aggiunti dalla scheda del paziente.
+                  </p>
+                </div>
+              )
+            ) : stats.recentCertificati.length > 0 ? (
               <div className="divide-y divide-gray-100">
-                {stats.recentEsami.map((esame) => (
+                {stats.recentCertificati.map((cert) => (
                   <div
-                    key={esame.id}
+                    key={cert.id}
                     className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
                     onClick={() =>
-                      esame.patientId &&
-                      navigate(`/patient-history/${esame.patientId}`)
+                      cert.patientId &&
+                      navigate(`/patient-history/${cert.patientId}`)
                     }
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="p-1.5 rounded-lg flex-shrink-0 bg-teal-100 text-teal-600">
-                        <FlaskConical size={14} />
+                      <div className="p-1.5 rounded-lg flex-shrink-0 bg-amber-100 text-amber-600">
+                        <Award size={14} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-gray-900 group-hover:text-primary transition-colors truncate text-sm">
-                          {esame.nome}
+                          {cert.tipo === "assenza_lavoro"
+                            ? "Assenza da lavoro"
+                            : cert.tipo === "idoneita"
+                              ? "Idoneità"
+                              : cert.tipo === "malattia"
+                                ? "Malattia"
+                                : "Altro"}
                         </p>
                         <p className="text-xs text-gray-500 truncate">
-                          {esame.patientName}
+                          {cert.patientName}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                       <div className="text-right">
                         <p className="text-xs text-gray-400">
-                          {new Date(esame.dataRichiesta).toLocaleDateString(
+                          {new Date(cert.dataCertificato).toLocaleDateString(
                             "it-IT",
                           )}
                         </p>
-                        {esame.note && (
-                          <p className="text-xs text-teal-500 truncate max-w-[80px]">
-                            {esame.note}
+                        {cert.descrizione && (
+                          <p className="text-xs text-amber-600 truncate max-w-[120px]">
+                            {cert.descrizione.slice(0, 40)}
+                            {cert.descrizione.length > 40 ? "…" : ""}
                           </p>
                         )}
                       </div>
@@ -631,10 +765,10 @@ export default function Home() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
-                <FlaskConical size={32} className="text-gray-200" />
-                <p className="text-sm text-center">Nessun esame richiesto.</p>
+                <Award size={32} className="text-gray-200" />
+                <p className="text-sm text-center">Nessun certificato.</p>
                 <p className="text-xs text-center text-gray-300">
-                  Gli esami vengono aggiunti dalla scheda del paziente.
+                  I certificati si aggiungono dalla scheda del paziente.
                 </p>
               </div>
             )}
