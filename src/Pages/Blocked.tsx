@@ -6,8 +6,8 @@ import { DoctorService } from "../services/OfflineServices";
 import { storageService } from "../services/StorageServiceFallback";
 import { sendHeartbeat } from "../services/HeartbeatService";
 
-const SUPPORT_EMAIL = "support@corioli.app";
-const SUPPORT_PHONE = "+39 02 1234567";
+const SUPPORT_EMAIL = "pablobertot@gmail.com";
+const SUPPORT_PHONE = "+39 3938001284";
 const BLOCKED_STORAGE_KEY = "blocked_users";
 
 export default function Blocked() {
