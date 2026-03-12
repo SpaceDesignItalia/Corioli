@@ -231,6 +231,7 @@ export class PdfService {
     bx: number, by: number, barW: number,
     p5: number, p50: number, p95: number,
     patVal: number,
+    showGrowthAlert: boolean = false,
   ): void {
     // The bar line runs from x0 to x1, with some padding inside barW
     const PAD_L = 3;
@@ -276,11 +277,10 @@ export class PdfService {
 
     // ── centile % text ──
     const rank = estimateCentileRank(patVal, p5, p50, p95);
-    const cat = getGrowthCategory(rank);
     let pctStr = formatCentileLabel(rank);
 
-    if (cat !== "AGA") {
-      pctStr += ` (${cat})`; // es. "5° (SGA)"
+    if (showGrowthAlert && getGrowthCategory(rank) !== "AGA") {
+      pctStr += ` (${getGrowthCategory(rank)})`; // es. "5° (SGA)"
       doc.setFont("helvetica", "bold");
       // Se vuoi rosso: this.tc(doc, [180, 0, 0]);
     } else {
@@ -475,6 +475,7 @@ export class PdfService {
             EFW_COL_C,
             pesoRef.p5, pesoRef.p50, pesoRef.p95,
             efwGrams,
+            true,
           );
         }
       }
