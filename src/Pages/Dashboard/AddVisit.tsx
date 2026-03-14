@@ -51,6 +51,7 @@ import {
   parseGestationalWeeks,
   getCentileForWeight,
 } from "../../utils/fetalGrowthCentiles";
+import { getBiometryPercentile } from "../../utils/biometryCentiles";
 import {
   getUmbilicalPiPercentile,
   getUmbilicalRiPercentile,
@@ -79,13 +80,13 @@ import {
 } from "../../utils/doctorProfile";
 
 /** Barra grafica percentile (5°–95°): linea con rombo alla posizione del percentile */
-function PercentileBar({ percentile }: { percentile: number | null }) {
+function PercentileBar({ percentile, showText = true }: { percentile: number | null, showText?: boolean }) {
   if (percentile == null) return <span className="text-default-400 text-xs">—</span>;
   const clamped = Math.max(5, Math.min(95, percentile));
   const leftPct = ((clamped - 5) / 90) * 100;
   return (
-    <div className="inline-flex items-center gap-2">
-      <div className="relative w-20 h-4 flex items-center shrink-0">
+    <div className="inline-flex items-center gap-2 w-full">
+      <div className="relative flex-1 h-4 flex items-center shrink-0 min-w-[40px]">
         <div className="absolute left-0 right-0 top-1/2 -translate-y-px h-px bg-default-300" />
         <div className="absolute left-0 top-0 w-px h-3 bg-default-400 rounded-px" style={{ top: "2px" }} />
         <div className="absolute right-0 top-0 w-px h-3 bg-default-400 rounded-px" style={{ top: "2px" }} />
@@ -94,7 +95,7 @@ function PercentileBar({ percentile }: { percentile: number | null }) {
           style={{ left: `calc(${leftPct}% - 4px)` }}
         />
       </div>
-      <span className="text-xs text-default-600 tabular-nums">{Math.round(percentile)}°</span>
+      {showText && <span className="text-xs text-default-600 tabular-nums shrink-0">{Math.round(percentile)}°</span>}
     </div>
   );
 }
@@ -1147,11 +1148,52 @@ export default function AddVisit() {
     value: number,
   ) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
+    
+    // Calcola il percentile automatico se abbiamo GA
+    let autoPct: number | undefined = undefined;
+    const ga = parseGestationalWeeks(ostetriciaData.settimaneGestazione ?? "");
+    if (ga != null && value > 0) {
+      const p = getBiometryPercentile(value, ga, field);
+      if (p != null) autoPct = Math.round(p);
+    }
+
+    const pctKeyMap: Record<string, string> = {
+      bpdMm: "bpdPercentile",
+      hcMm: "hcPercentile",
+      acMm: "acPercentile",
+      flMm: "flPercentile",
+    };
+    const pctKey = pctKeyMap[field];
+
     setOstetriciaData((prev) => ({
       ...prev,
       biometriaFetale: {
         ...(prev.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }),
         [field]: value,
+        ...(pctKey ? { [pctKey]: autoPct } : {}),
+      },
+    }));
+  };
+
+  const handleBiometriaPercentileChange = (
+    field: "bpdMm" | "hcMm" | "acMm" | "flMm",
+    value: number | undefined,
+  ) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    const pctKeyMap: Record<string, string> = {
+      bpdMm: "bpdPercentile",
+      hcMm: "hcPercentile",
+      acMm: "acPercentile",
+      flMm: "flPercentile",
+    };
+    const pctKey = pctKeyMap[field];
+    if (!pctKey) return;
+
+    setOstetriciaData((prev) => ({
+      ...prev,
+      biometriaFetale: {
+        ...(prev.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }),
+        [pctKey]: value,
       },
     }));
   };
@@ -1161,11 +1203,45 @@ export default function AddVisit() {
     value: number | undefined,
   ) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
+
+    // Calcolo automatico percentile
+    let autoPct: number | undefined = undefined;
+    const ga = parseGestationalWeeks(ostetriciaData.settimaneGestazione ?? "");
+
+    if (ga != null && value != null && value > 0) {
+      if (field === "pi") {
+        const p = getUmbilicalPiPercentile(value, ga);
+        if (p != null) autoPct = Math.round(p);
+      } else if (field === "ri") {
+        const p = getUmbilicalRiPercentile(value, ga);
+        if (p != null) autoPct = Math.round(p);
+      }
+    }
+
+    const pctKey = field === "pi" ? "piPercentile" : "riPercentile";
+
     setOstetriciaData((prev) => ({
       ...prev,
       flussimetriaOmbelicale: {
         ...(prev.flussimetriaOmbelicale ?? {}),
         [field]: value,
+        ...(value !== undefined ? { [pctKey]: autoPct } : {}),
+      },
+    }));
+  };
+
+  const handleFlussimetriaPercentileChange = (
+    field: "pi" | "ri",
+    value: number | undefined,
+  ) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    const pctKey = field === "pi" ? "piPercentile" : "riPercentile";
+
+    setOstetriciaData((prev) => ({
+      ...prev,
+      flussimetriaOmbelicale: {
+        ...(prev.flussimetriaOmbelicale ?? {}),
+        [pctKey]: value,
       },
     }));
   };
@@ -2507,26 +2583,82 @@ export default function AddVisit() {
                       {(
                         FORMULA_BIOMETRIA_FIELDS[fetalFormula] ??
                         FORMULA_BIOMETRIA_FIELDS.hadlock4
-                      ).map((field) => (
-                        <Input
-                          key={field}
-                          type="number"
-                          label={BIOMETRIA_FIELD_LABELS[field]}
-                          size="sm"
-                          variant="bordered"
-                          labelPlacement="outside"
-                          value={
-                            ostetriciaData.biometriaFetale?.[field]
-                              ? String(ostetriciaData.biometriaFetale[field])
-                              : ""
+                      ).map((field) => {
+                        const pctKey =
+                          field === "bpdMm"
+                            ? "bpdPercentile"
+                            : field === "hcMm"
+                              ? "hcPercentile"
+                              : field === "acMm"
+                                ? "acPercentile"
+                                : "flPercentile";
+                        let currentPct = ostetriciaData.biometriaFetale?.[
+                          pctKey as keyof typeof ostetriciaData.biometriaFetale
+                        ] as number | undefined;
+
+                        // Se manca, prova a calcolarlo al volo
+                        if (currentPct == null) {
+                          const val = ostetriciaData.biometriaFetale?.[field];
+                          const ga = parseGestationalWeeks(
+                            ostetriciaData.settimaneGestazione ?? "",
+                          );
+                          if (val && val > 0 && ga != null) {
+                            const p = getBiometryPercentile(val, ga, field);
+                            if (p != null) currentPct = Math.round(p);
                           }
-                          onValueChange={(v) =>
-                            handleBiometriaFetaleChange(field, parseInt(v) || 0)
-                          }
-                          min={0}
-                          classNames={{ label: "pb-1" }}
-                        />
-                      ))}
+                        }
+
+                        return (
+                          <div key={field} className="flex flex-col gap-1">
+                            <Input
+                              type="number"
+                              label={BIOMETRIA_FIELD_LABELS[field]}
+                              size="sm"
+                              variant="bordered"
+                              labelPlacement="outside"
+                              value={
+                                ostetriciaData.biometriaFetale?.[field]
+                                  ? String(ostetriciaData.biometriaFetale[field])
+                                  : ""
+                              }
+                              onValueChange={(v) =>
+                                handleBiometriaFetaleChange(
+                                  field,
+                                  parseInt(v) || 0,
+                                )
+                              }
+                              min={0}
+                              classNames={{ label: "pb-1" }}
+                            />
+                            <div className="flex items-center gap-2 px-1 min-h-[24px]">
+                              <div className="flex-1">
+                                <PercentileBar
+                                  percentile={currentPct ?? null}
+                                  showText={false}
+                                />
+                              </div>
+                              <div className="flex items-center">
+                                <input
+                                  type="number"
+                                  className="w-7 text-right text-[11px] bg-transparent border-b border-default-200 focus:border-primary outline-none tabular-nums text-default-500 focus:text-primary placeholder:text-default-300"
+                                  placeholder="-"
+                                  value={currentPct ?? ""}
+                                  onChange={(e) => {
+                                    const v =
+                                      e.target.value === ""
+                                        ? undefined
+                                        : parseInt(e.target.value);
+                                    handleBiometriaPercentileChange(field, v);
+                                  }}
+                                />
+                                <span className="text-[11px] text-default-400 ml-0.5">
+                                  °
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                     <div className="bg-primary-50/50 rounded-xl p-4 flex items-center justify-between">
                       <p className="font-semibold text-gray-900">
@@ -2583,71 +2715,103 @@ export default function AddVisit() {
                   </CardHeader>
                   <CardBody className="px-4 py-6 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
-                      <Input
-                        type="number"
-                        label="PI (Pulsatility Index)"
-                        size="sm"
-                        variant="bordered"
-                        labelPlacement="outside"
-                        placeholder="es. 0,88"
-                        step={0.01}
-                        value={
-                          ostetriciaData.flussimetriaOmbelicale?.pi != null
-                            ? String(ostetriciaData.flussimetriaOmbelicale.pi)
-                            : ""
+                      {[
+                        {
+                          key: "pi",
+                          label: "PI (Pulsatility Index)",
+                          pctKey: "piPercentile",
+                          placeholder: "es. 0,88",
+                        },
+                        {
+                          key: "ri",
+                          label: "IR (Indice di resistenza)",
+                          pctKey: "riPercentile",
+                          placeholder: "es. 0,58",
+                        },
+                      ].map((item) => {
+                        const val =
+                          ostetriciaData.flussimetriaOmbelicale?.[
+                            item.key as "pi" | "ri"
+                          ];
+                        let currentPct = ostetriciaData.flussimetriaOmbelicale?.[
+                          item.pctKey as keyof typeof ostetriciaData.flussimetriaOmbelicale
+                        ] as number | undefined;
+
+                        if (currentPct == null) {
+                          const ga = parseGestationalWeeks(
+                            ostetriciaData.settimaneGestazione ?? "",
+                          );
+                          const valNum =
+                            typeof val === "number"
+                              ? val
+                              : parseFloat(String(val).replace(",", "."));
+
+                          if (ga != null && Number.isFinite(valNum) && valNum > 0) {
+                            if (item.key === "pi") {
+                              const p = getUmbilicalPiPercentile(valNum, ga);
+                              if (p != null) currentPct = Math.round(p);
+                            } else if (item.key === "ri") {
+                              const p = getUmbilicalRiPercentile(valNum, ga);
+                              if (p != null) currentPct = Math.round(p);
+                            }
+                          }
                         }
-                        onValueChange={(v) =>
-                          handleFlussimetriaOmbelicaleChange(
-                            "pi",
-                            v === "" ? undefined : parseFloat(v.replace(",", ".")) || undefined,
-                          )
-                        }
-                        classNames={{ label: "pb-1" }}
-                      />
-                      <Input
-                        type="number"
-                        label="IR (Indice di resistenza)"
-                        size="sm"
-                        variant="bordered"
-                        labelPlacement="outside"
-                        placeholder="es. 0,58"
-                        step={0.01}
-                        value={
-                          ostetriciaData.flussimetriaOmbelicale?.ri != null
-                            ? String(ostetriciaData.flussimetriaOmbelicale.ri)
-                            : ""
-                        }
-                        onValueChange={(v) =>
-                          handleFlussimetriaOmbelicaleChange(
-                            "ri",
-                            v === "" ? undefined : parseFloat(v.replace(",", ".")) || undefined,
-                          )
-                        }
-                        classNames={{ label: "pb-1" }}
-                      />
-                    </div>
-                    {flussimetriaCalcoli && (() => {
-                      const piPct = flussimetriaCalcoli.piPercentile ?? ostetriciaData.flussimetriaOmbelicale?.piPercentile;
-                      const riPct = flussimetriaCalcoli.riPercentile ?? ostetriciaData.flussimetriaOmbelicale?.riPercentile;
-                      const fmt = (v: number) => v.toFixed(2).replace(".", ",");
-                      return (
-                        <div className="bg-default-50 rounded-xl p-4 text-sm space-y-3">
-                          <p className="font-semibold text-gray-700">Arteria ombelicale</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium text-gray-700 min-w-[1.5rem]">PI</span>
-                              <span className="font-mono text-default-700">{fmt(flussimetriaCalcoli.pi)}</span>
-                              <PercentileBar percentile={piPct} />
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium text-gray-700 min-w-[1.5rem]">IR</span>
-                              <span className="font-mono text-default-700">{fmt(flussimetriaCalcoli.ri)}</span>
-                              <PercentileBar percentile={riPct} />
+
+                        return (
+                          <div key={item.key} className="flex flex-col gap-1">
+                            <Input
+                              type="number"
+                              label={item.label}
+                              size="sm"
+                              variant="bordered"
+                              labelPlacement="outside"
+                              placeholder={item.placeholder}
+                              step={0.01}
+                              value={val != null ? String(val) : ""}
+                              onValueChange={(v) =>
+                                handleFlussimetriaOmbelicaleChange(
+                                  item.key as "pi" | "ri",
+                                  v === ""
+                                    ? undefined
+                                    : parseFloat(v.replace(",", ".")) ||
+                                        undefined,
+                                )
+                              }
+                              classNames={{ label: "pb-1" }}
+                            />
+                            <div className="flex items-center gap-2 px-1 min-h-[24px]">
+                              <div className="flex-1">
+                                <PercentileBar
+                                  percentile={currentPct ?? null}
+                                  showText={false}
+                                />
+                              </div>
+                              <div className="flex items-center">
+                                <input
+                                  type="number"
+                                  className="w-7 text-right text-[11px] bg-transparent border-b border-default-200 focus:border-primary outline-none tabular-nums text-default-500 focus:text-primary placeholder:text-default-300"
+                                  placeholder="-"
+                                  value={currentPct ?? ""}
+                                  onChange={(e) => {
+                                    const v =
+                                      e.target.value === ""
+                                        ? undefined
+                                        : parseInt(e.target.value);
+                                    handleFlussimetriaPercentileChange(
+                                      item.key as "pi" | "ri",
+                                      v,
+                                    );
+                                  }}
+                                />
+                                <span className="text-[11px] text-default-400 ml-0.5">
+                                  °
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })()}
+                        );
+                      })}
+                    </div>
                   </CardBody>
                 </Card>
 

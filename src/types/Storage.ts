@@ -134,6 +134,14 @@ export interface Visit {
       hcMm: number;
       acMm: number;
       flMm: number;
+      /** Percentile BPD (calcolato o manuale) */
+      bpdPercentile?: number;
+      /** Percentile CC (calcolato o manuale) */
+      hcPercentile?: number;
+      /** Percentile CA (calcolato o manuale) */
+      acPercentile?: number;
+      /** Percentile FL (calcolato o manuale) */
+      flPercentile?: number;
     };
     /** Flussimetria Doppler arteria ombelicale. Inserire PI, IR, EDF (GA da Settimane di gestazione). */
     flussimetriaOmbelicale?: {
