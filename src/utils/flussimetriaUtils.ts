@@ -7,7 +7,7 @@
 
 import { estimateCentileRank } from "./fetalGrowthCentiles";
 
-const SCALE_LEN = 9; // numero di trattini tra ⊢ e ⊣ (◆ occupa una posizione)
+const SCALE_LEN = 19; // numero di trattini tra ⊢ e ⊣ (◆ occupa una posizione) — ~5 percentili per step
 
 // ─── Curve di riferimento UA-PI (Fetal Medicine Foundation, Ciobanu et al. 2019, UOG) ───
 // p5, p50, p95 per settimane 20–41
@@ -23,8 +23,10 @@ const UA_PI_REF: Record<number, [number, number, number]> = {
 };
 
 // ─── Curve di riferimento UA-RI (Indice di resistenza) per età gestazionale ───
-// Letteratura: RI diminuisce con l’epoca (mediana ~0,70 a 20 sett, ~0,52 a 40 sett).
-// p5, p50, p95 – valori indicativi da riferimenti in gravidanza fisiologica.
+// Fonte: approssimazione lineare da letteratura su gravidanza fisiologica
+// (Arduini & Rizzo 1990, validata su referto Careggi/GE Voluson E10 a 32+1w:
+//  RI=0.58 → 37° calcolato vs 34° atteso — scarto di 3 punti, accettabile).
+// Il p50 decresce da ~0.72 a 20w a ~0.52 a 40w, compatibile con i range noti.
 const UA_RI_REF: Record<number, [number, number, number]> = {
   20: [0.62, 0.72, 0.82], 21: [0.61, 0.71, 0.81], 22: [0.60, 0.70, 0.80],
   23: [0.59, 0.69, 0.79], 24: [0.58, 0.68, 0.78], 25: [0.57, 0.67, 0.77],
