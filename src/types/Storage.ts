@@ -142,6 +142,8 @@ export interface Visit {
       acPercentile?: number;
       /** Percentile FL (calcolato o manuale) */
       flPercentile?: number;
+      /** Percentile peso fetale stimato / EFW (calcolato o manuale) */
+      efwPercentile?: number;
     };
     /** Flussimetria Doppler arteria ombelicale. Inserire PI, IR, EDF (GA da Settimane di gestazione). */
     flussimetriaOmbelicale?: {

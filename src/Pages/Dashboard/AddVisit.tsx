@@ -1198,6 +1198,17 @@ export default function AddVisit() {
     }));
   };
 
+  const handleEfwPercentileChange = (value: number | undefined) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setOstetriciaData((prev) => ({
+      ...prev,
+      biometriaFetale: {
+        ...(prev.biometriaFetale ?? { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 }),
+        efwPercentile: value,
+      },
+    }));
+  };
+
   const handleFlussimetriaOmbelicaleChange = (
     field: "pi" | "ri",
     value: number | undefined,
@@ -2684,16 +2695,48 @@ export default function AddVisit() {
                             const ga = parseGestationalWeeks(
                               ostetriciaData.settimaneGestazione ?? "",
                             );
-                            const centile =
+                            const centileCalcolato =
                               ga != null
                                 ? getCentileForWeight(result.pesoGrammi, ga)
                                 : null;
+                            const currentEfwPct =
+                              ostetriciaData.biometriaFetale?.efwPercentile ??
+                              centileCalcolato;
                             return (
                               <div className="flex flex-col items-end gap-1">
                                 <p className="text-xl font-bold text-primary">
                                   {result.pesoGrammi} g
                                 </p>
-                                <PercentileBar percentile={centile} />
+                                <div className="flex items-center gap-2 min-h-[24px]">
+                                  <div className="flex-1 min-w-[60px]">
+                                    <PercentileBar
+                                      percentile={currentEfwPct ?? null}
+                                      showText={false}
+                                    />
+                                  </div>
+                                  <div className="flex items-center">
+                                    <input
+                                      type="number"
+                                      className="w-7 text-right text-[11px] bg-transparent border-b border-default-200 focus:border-primary outline-none tabular-nums text-default-500 focus:text-primary placeholder:text-default-300"
+                                      placeholder="-"
+                                      value={
+                                        currentEfwPct != null
+                                          ? currentEfwPct
+                                          : ""
+                                      }
+                                      onChange={(e) => {
+                                        const v =
+                                          e.target.value === ""
+                                            ? undefined
+                                            : parseInt(e.target.value);
+                                        handleEfwPercentileChange(v);
+                                      }}
+                                    />
+                                    <span className="text-[11px] text-default-400 ml-0.5">
+                                      °
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             );
                           }
