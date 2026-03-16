@@ -232,6 +232,7 @@ export class PdfService {
     p5: number, p50: number, p95: number,
     patVal: number,
     showGrowthAlert: boolean = false,
+    overrideRank?: number | null,
   ): void {
     // The bar line runs from x0 to x1, with some padding inside barW
     const PAD_L = 3;
@@ -276,7 +277,7 @@ export class PdfService {
     (doc as any).fillStroke();
 
     // ── centile % text ──
-    const rank = estimateCentileRank(patVal, p5, p50, p95);
+    const rank = overrideRank != null ? overrideRank : estimateCentileRank(patVal, p5, p50, p95);
     let pctStr = formatCentileLabel(rank);
 
     if (showGrowthAlert && getGrowthCategory(rank) !== "AGA") {
@@ -314,6 +315,13 @@ export class PdfService {
     gaWeeks: number | null,
     bpd: number, hc: number, ac: number, fl: number,
     efwGrams: number,
+    percentiles?: {
+      bpd?: number;
+      hc?: number;
+      ac?: number;
+      fl?: number;
+      efw?: number;
+    },
   ): number {
     // Collect non-zero measurements
     type BioItem = {
@@ -405,6 +413,15 @@ export class PdfService {
         if (gaWeeks !== null) {
           const ref = getBiometryReferenceAtGa(gaWeeks, item.param);
           if (ref) {
+            let overrideRank: number | null | undefined;
+            if (percentiles) {
+              overrideRank =
+                item.param === "bpdMm" ? percentiles.bpd :
+                item.param === "hcMm" ? percentiles.hc :
+                item.param === "acMm" ? percentiles.ac :
+                item.param === "flMm" ? percentiles.fl :
+                undefined;
+            }
             this.drawPercentileBar(
               doc,
               bx + COL_A + COL_B,
@@ -412,6 +429,8 @@ export class PdfService {
               COL_C,
               ref.p5, ref.p50, ref.p95,
               item.val,
+              false,
+              overrideRank,
             );
           }
         }
@@ -451,15 +470,20 @@ export class PdfService {
       // value
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); this.tc(doc, K30);
 
-      // compute centile label for EFW using shared Hadlock-based table (same as UI)
+      // compute centile label for EFW:
+      // - se l'utente ha inserito/modificato un percentile (efwPercentile), usiamo quello
+      // - altrimenti usiamo il calcolo automatico Hadlock, come in UI
       let efwCentileStr = "";
       let efwRank: number | null = null;
-      if (gaWeeks !== null) {
+      const storedEfwRank = percentiles?.efw ?? null;
+      if (storedEfwRank != null) {
+        efwRank = storedEfwRank;
+      } else if (gaWeeks !== null) {
         efwRank = getCentileForWeight(efwGrams, gaWeeks);
-        if (efwRank !== null) {
-          const cat = getGrowthCategory(efwRank);
-          efwCentileStr = ` (${formatCentileLabel(efwRank)} centile${cat !== "AGA" ? ` - ${cat}` : ""})`;
-        }
+      }
+      if (efwRank !== null) {
+        const cat = getGrowthCategory(efwRank);
+        efwCentileStr = ` (${formatCentileLabel(efwRank)} centile${cat !== "AGA" ? ` - ${cat}` : ""})`;
       }
       doc.text(`${efwGrams} g${efwCentileStr}`, ML + EFW_COL_A + PAD, y + ROW_H / 2 + 0.5, { baseline: "middle" });
       doc.line(ML + EFW_COL_A + EFW_COL_B, y, ML + EFW_COL_A + EFW_COL_B, y + ROW_H);
@@ -476,6 +500,7 @@ export class PdfService {
             pesoRef.p5, pesoRef.p50, pesoRef.p95,
             efwGrams,
             true,
+            efwRank,
           );
         }
       }
@@ -1027,6 +1052,13 @@ export class PdfService {
     y = this.drawBiometriaTable(
       doc, y, ga,
       bio.bpdMm, bio.hcMm, bio.acMm, bio.flMm, efwGrams,
+      {
+        bpd: bio.bpdPercentile,
+        hc: bio.hcPercentile,
+        ac: bio.acPercentile,
+        fl: bio.flPercentile,
+        efw: bio.efwPercentile,
+      },
     );
 
     // ── SEZIONE 5 — Flussimetria Doppler arteria ombelicale (se presente) ────
