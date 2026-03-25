@@ -78,7 +78,7 @@ function getPercentilesAtWeek(week: number): number[] | null {
  * Approssimazione numerica (Abramowitz & Stegun 7.1.26).
  * Errore < 1.5 * 10^-7.
  */
-function normalCDF(x: number): number {
+export function normalCDF(x: number): number {
   const t = 1 / (1 + 0.2316419 * Math.abs(x));
   const d = 0.3989422804014337 * Math.exp(-x * x / 2);
   // Abramowitz & Stegun 7.1.26: Phi(x)=1-phi(x)*(b1*t+b2*t^2+...+b5*t^5), t=1/(1+p*x)
