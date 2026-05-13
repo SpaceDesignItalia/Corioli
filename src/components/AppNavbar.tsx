@@ -9,12 +9,10 @@ import {
   NavbarMenuToggle,
   Chip,
   Tooltip,
-  Avatar,
   Button,
   Spinner,
 } from "@nextui-org/react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
-import { AcmeIcon } from "./sidebar/AcmeIcon";
 import { DoctorService } from "../services/OfflineServices";
 import { Download, MapPin, RefreshCw } from "lucide-react";
 import { storageService } from "../services/StorageServiceFallback";
@@ -27,7 +25,7 @@ const menuItems = [
   { label: "Visite", href: "/visite" },
   { label: "Documenti", href: "/documents" },
   { label: "Impostazioni", href: "/settings" },
-  { label: "Guida", href: "/help" },
+  { label: "Aiuto", href: "/help" },
 ];
 
 export default function AppNavbar() {
@@ -36,7 +34,6 @@ export default function AppNavbar() {
   const [primaryAmbulatorio, setPrimaryAmbulatorio] = useState<string | null>(
     null,
   );
-  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
@@ -49,10 +46,8 @@ export default function AppNavbar() {
         (a: { isPrimario?: boolean }) => a.isPrimario,
       );
       setPrimaryAmbulatorio(primary?.nome ?? null);
-      setProfileImage(doctor?.profileImage ?? null);
     } catch {
       setPrimaryAmbulatorio(null);
-      setProfileImage(null);
     }
   };
 
@@ -239,20 +234,22 @@ export default function AppNavbar() {
         {/* Toggle */}
         <NavbarMenuToggle className="text-default-400 ml-2 md:hidden" />
 
-        {/* Logo / Foto profilo */}
-        <NavbarBrand className="mr-4 w-[40vw] md:w-auto md:max-w-fit">
-          {profileImage ? (
-            <Avatar
-              src={profileImage}
-              className="w-10 h-10 flex-shrink-0"
-              size="md"
+        {/* Logo brand */}
+        <NavbarBrand className="mr-4 min-w-0 max-w-[min(56vw,260px)] shrink md:max-w-[220px] lg:max-w-[260px]">
+          <Link
+            to="/"
+            className="flex min-w-0 items-center outline-none ring-offset-2 ring-offset-background rounded-md focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label="Corioli — vai alla dashboard"
+          >
+            <img
+              src={`${import.meta.env.BASE_URL}corioli-logo-navbar.png`}
+              alt="Corioli"
+              width={220}
+              height={40}
+              className="h-7 w-auto max-h-8 object-contain object-left md:h-8 md:max-h-9"
+              decoding="async"
             />
-          ) : (
-            <div className="bg-emerald-500 text-white rounded-full p-2">
-              <AcmeIcon className="text-white" />
-            </div>
-          )}
-          <span className="ml-3 font-bold text-lg md:block">Corioli</span>
+          </Link>
         </NavbarBrand>
 
         {/* Navigation Items */}

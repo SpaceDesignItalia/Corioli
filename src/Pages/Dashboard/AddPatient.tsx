@@ -12,17 +12,49 @@ import {
   Chip,
   Textarea,
 } from "@nextui-org/react";
-import { ChangeEvent, useState, useEffect, useRef } from "react";
+import {
+  ChangeEvent,
+  KeyboardEvent,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import { I18nProvider } from "@react-aria/i18n";
 import dayjs from "dayjs";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { PatientService } from "../../services/OfflineServices";
 import { PageHeader } from "../../components/PageHeader";
-import { UserPlus, Pencil } from "lucide-react";
+import { UserPlus, Pencil, ExternalLink } from "lucide-react";
 import { parseDate } from "@internationalized/date";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { calculateAge } from "../../utils/dateUtils";
+import {
+  decodeCfToPatientFields,
+  isValidCodiceFiscaleFormat,
+} from "../../utils/codiceFiscale";
+import type { Patient } from "../../types/Storage";
+
+const CF_DUPLICATE_DEBOUNCE_MS = 450;
+
+/** Invio (senza Maiusc): passa al campo successivo senza inviare il form. */
+function focusFirstFocusable(container: HTMLElement | null) {
+  if (!container) return;
+  const sel =
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  container.querySelector<HTMLElement>(sel)?.focus();
+}
+
+function handleEnterAdvance(
+  e: KeyboardEvent,
+  focusNext: () => void,
+) {
+  if (e.key !== "Enter" || e.shiftKey) return;
+  const ne = e.nativeEvent;
+  if ("isComposing" in ne && ne.isComposing) return;
+  e.preventDefault();
+  focusNext();
+}
 
 interface RegisterData {
   firstName: string;
@@ -61,6 +93,27 @@ export default function AddPatient() {
   const [error, setError] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialLoadDone = useRef(false);
+  const lastDecodedCfRef = useRef<string | null>(null);
+  const [cfDecoding, setCfDecoding] = useState(false);
+  const [cfDuplicatePatient, setCfDuplicatePatient] = useState<Patient | null>(
+    null,
+  );
+  const [cfDuplicateChecking, setCfDuplicateChecking] = useState(false);
+  const registerDataCfRef = useRef(registerData.cf);
+  registerDataCfRef.current = registerData.cf;
+  const refCf = useRef<HTMLInputElement | null>(null);
+  const refFirstName = useRef<HTMLInputElement | null>(null);
+  const refLastName = useRef<HTMLInputElement | null>(null);
+  const refBirthDateWrap = useRef<HTMLDivElement | null>(null);
+  const refBirthplace = useRef<HTMLInputElement | null>(null);
+  const refGenderSelectWrap = useRef<HTMLDivElement | null>(null);
+  const refEmail = useRef<HTMLInputElement | null>(null);
+  const refPhone = useRef<HTMLInputElement | null>(null);
+  const refAddress = useRef<HTMLInputElement | null>(null);
+  const refBloodSelectWrap = useRef<HTMLDivElement | null>(null);
+  const refHeight = useRef<HTMLInputElement | null>(null);
+  const refAllergies = useRef<HTMLTextAreaElement | null>(null);
+  const refSubmit = useRef<HTMLButtonElement | null>(null);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -150,7 +203,11 @@ export default function AddPatient() {
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
     const { name, value } = e.target;
-    setRegisterData((prevData) => ({ ...prevData, [name]: value }));
+    const next =
+      name === "cf"
+        ? value.toUpperCase().replace(/\s/g, "").slice(0, 16)
+        : value;
+    setRegisterData((prevData) => ({ ...prevData, [name]: next }));
     if (error) setError(null);
   };
 
@@ -176,16 +233,112 @@ export default function AddPatient() {
     return re.test(email);
   };
 
-  const validateCF = (cf: string) => {
-    const re = /^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/;
-    return re.test(cf.toUpperCase());
-  };
+  useEffect(() => {
+    if (isEditMode) return;
+
+    const cf = registerData.cf.trim().toUpperCase();
+    if (!isValidCodiceFiscaleFormat(cf)) {
+      lastDecodedCfRef.current = null;
+      return;
+    }
+    if (lastDecodedCfRef.current === cf) return;
+
+    let cancelled = false;
+    setCfDecoding(true);
+    (async () => {
+      try {
+        const decoded = await decodeCfToPatientFields(cf);
+        if (cancelled) return;
+        lastDecodedCfRef.current = cf;
+        if (initialLoadDone.current) setHasUnsavedChanges(true);
+        setRegisterData((prev) => ({
+          ...prev,
+          cf,
+          birthday: decoded.dataNascita || prev.birthday,
+          birthplace:
+            decoded.luogoNascita &&
+            decoded.luogoNascita !== "Non specificato"
+              ? decoded.luogoNascita
+              : prev.birthplace,
+          gender: decoded.sesso || prev.gender,
+          firstName:
+            decoded.nomeGuess && !prev.firstName.trim()
+              ? decoded.nomeGuess
+              : prev.firstName,
+          lastName:
+            decoded.cognomeGuess && !prev.lastName.trim()
+              ? decoded.cognomeGuess
+              : prev.lastName,
+        }));
+      } catch {
+        lastDecodedCfRef.current = null;
+      } finally {
+        if (!cancelled) setCfDecoding(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      setCfDecoding(false);
+    };
+  }, [registerData.cf, isEditMode]);
+
+  useEffect(() => {
+    const normalized = registerData.cf.trim().toUpperCase();
+    if (!isValidCodiceFiscaleFormat(normalized)) {
+      setCfDuplicatePatient(null);
+      setCfDuplicateChecking(false);
+      return;
+    }
+
+    let cancelled = false;
+    const tid = setTimeout(async () => {
+      setCfDuplicateChecking(true);
+      const queried = normalized;
+      try {
+        const p = await PatientService.getPatientByCF(queried);
+        if (cancelled) return;
+        const latest = registerDataCfRef.current.trim().toUpperCase();
+        if (latest !== queried || !isValidCodiceFiscaleFormat(latest)) {
+          setCfDuplicatePatient(null);
+          return;
+        }
+        if (isEditMode && patientId && p?.id === patientId) {
+          setCfDuplicatePatient(null);
+        } else {
+          setCfDuplicatePatient(p ?? null);
+        }
+      } catch {
+        if (!cancelled) setCfDuplicatePatient(null);
+      } finally {
+        setCfDuplicateChecking(false);
+      }
+    }, CF_DUPLICATE_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(tid);
+    };
+  }, [registerData.cf, isEditMode, patientId]);
 
   const handleRegistration = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
 
-    if (registerData.cf.trim() && !validateCF(registerData.cf)) {
+    const cfNorm = registerData.cf.trim().toUpperCase();
+    if (
+      cfNorm &&
+      isValidCodiceFiscaleFormat(cfNorm) &&
+      cfDuplicatePatient &&
+      (cfDuplicatePatient.codiceFiscale?.trim().toUpperCase() ?? "") === cfNorm
+    ) {
+      setError(
+        "Questo codice fiscale è già assegnato a un altro paziente. Usa «Apri scheda paziente» sopra il campo oppure correggi il CF.",
+      );
+      return;
+    }
+
+    if (registerData.cf.trim() && !isValidCodiceFiscaleFormat(registerData.cf)) {
       setError("Codice fiscale non valido (formato: 16 caratteri)");
       return;
     }
@@ -286,25 +439,110 @@ export default function AddPatient() {
             {hasUnsavedChanges && (
               <Chip size="sm" color="warning" variant="flat">Modifiche non salvate</Chip>
             )}
+            {/* Codice fiscale per primo: decodifica automatica in inserimento */}
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4 bg-gray-50 p-2 rounded">
+                Codice fiscale
+              </h3>
+              {cfDuplicatePatient && (
+                <Card className="mb-3 border border-warning-400 bg-warning-50/80">
+                  <CardBody className="flex flex-col gap-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                    <p className="text-sm text-default-800">
+                      Questo codice fiscale è già registrato:{" "}
+                      <span className="font-semibold">
+                        {cfDuplicatePatient.cognome} {cfDuplicatePatient.nome}
+                      </span>
+                      .
+                    </p>
+                    <Button
+                      size="sm"
+                      color="warning"
+                      variant="solid"
+                      className="shrink-0"
+                      startContent={
+                        <ExternalLink className="h-4 w-4" aria-hidden />
+                      }
+                      onPress={() =>
+                        navigate(`/patient-history/${cfDuplicatePatient.id}`)
+                      }
+                    >
+                      Apri scheda paziente
+                    </Button>
+                  </CardBody>
+                </Card>
+              )}
+              {cfDuplicateChecking && !cfDuplicatePatient && (
+                <div className="mb-2 flex items-center gap-2 text-xs text-default-500">
+                  <Spinner size="sm" className="scale-75" />
+                  Verifica presenza in anagrafica…
+                </div>
+              )}
+              <div className="relative">
+                <Input
+                  ref={refCf}
+                  name="cf"
+                  label={
+                    isEditMode
+                      ? "Codice fiscale (opzionale)"
+                      : "Codice fiscale (opzionale) — inizia da qui"
+                  }
+                  placeholder="RSSMRA80A01H501U"
+                  value={registerData.cf}
+                  onChange={handleChange}
+                  onKeyDown={(e) =>
+                    handleEnterAdvance(e, () => refFirstName.current?.focus())
+                  }
+                  variant="bordered"
+                  maxLength={16}
+                  classNames={{
+                    label: "text-gray-700 font-medium",
+                    input: "uppercase font-mono tracking-wide",
+                  }}
+                  description={
+                    isEditMode
+                      ? "In modifica non applichiamo la decodifica automatica per non sovrascrivere i dati salvati."
+                      : "Con un CF valido a 16 caratteri compiliamo automaticamente data di nascita, luogo (se noto), sesso e, se disponibili dall’anagrafe, nome e cognome."
+                  }
+                  endContent={
+                    cfDecoding ? (
+                      <Spinner size="sm" color="primary" className="scale-75" />
+                    ) : null
+                  }
+                />
+              </div>
+            </div>
+
+            <Divider />
+
             {/* Dati Anagrafici */}
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4 bg-gray-50 p-2 rounded">Dati Anagrafici</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
+                  ref={refFirstName}
                   name="firstName"
                   label="Nome (opzionale)"
                   placeholder="Inserisci il nome"
                   value={registerData.firstName}
                   onChange={handleChange}
+                  onKeyDown={(e) =>
+                    handleEnterAdvance(e, () => refLastName.current?.focus())
+                  }
                   variant="bordered"
                   classNames={{ label: "text-gray-700 font-medium" }}
                 />
                 <Input
+                  ref={refLastName}
                   name="lastName"
                   label="Cognome (opzionale)"
                   placeholder="Inserisci il cognome"
                   value={registerData.lastName}
                   onChange={handleChange}
+                  onKeyDown={(e) =>
+                    handleEnterAdvance(e, () =>
+                      focusFirstFocusable(refBirthDateWrap.current),
+                    )
+                  }
                   variant="bordered"
                   classNames={{ label: "text-gray-700 font-medium" }}
                 />
@@ -318,59 +556,67 @@ export default function AddPatient() {
               <h3 className="text-lg font-medium text-gray-900 mb-4 bg-gray-50 p-2 rounded">Dati di Nascita</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <I18nProvider locale="it-IT">
-                  <DatePicker
-                    label="Data di Nascita (opzionale)"
-                    variant="bordered"
-                    showMonthAndYearPickers
-                    onChange={handleDateChange}
-                    value={registerData.birthday && /^\d{4}-\d{2}-\d{2}$/.test(registerData.birthday) ? parseDate(registerData.birthday) : undefined}
-                    classNames={{ label: "text-gray-700 font-medium" }}
-                  />
+                  <div ref={refBirthDateWrap} className="w-full">
+                    <DatePicker
+                      label="Data di Nascita (opzionale)"
+                      variant="bordered"
+                      showMonthAndYearPickers
+                      onChange={handleDateChange}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" || e.shiftKey) return;
+                        const ne = e.nativeEvent;
+                        if ("isComposing" in ne && ne.isComposing) return;
+                        const t = e.target as HTMLElement;
+                        if (t.closest('[role="dialog"], [role="grid"]')) return;
+                        e.preventDefault();
+                        refBirthplace.current?.focus();
+                      }}
+                      value={registerData.birthday && /^\d{4}-\d{2}-\d{2}$/.test(registerData.birthday) ? parseDate(registerData.birthday) : undefined}
+                      classNames={{ label: "text-gray-700 font-medium" }}
+                    />
+                  </div>
                   {registerData.birthday && calculateAge(registerData.birthday) != null && (
                     <p className="text-sm text-default-500 mt-1">Età: {calculateAge(registerData.birthday)} anni</p>
                   )}
                 </I18nProvider>
                 <Input
+                  ref={refBirthplace}
                   name="birthplace"
                   label="Luogo di Nascita (opzionale)"
                   placeholder="Es. Roma, Milano..."
                   value={registerData.birthplace}
                   onChange={handleChange}
+                  onKeyDown={(e) =>
+                    handleEnterAdvance(e, () =>
+                      focusFirstFocusable(refGenderSelectWrap.current),
+                    )
+                  }
                   variant="bordered"
                   classNames={{ label: "text-gray-700 font-medium" }}
                 />
-                <Select
-                  label="Genere (opzionale)"
-                  placeholder="Seleziona genere"
-                  variant="bordered"
-                  selectedKeys={registerData.gender ? [registerData.gender] : []}
-                  onSelectionChange={(keys) => handleSelectChange("gender", Array.from(keys)[0] as string)}
-                  classNames={{ label: "text-gray-700 font-medium" }}
-                >
-                  <SelectItem key="M" value="M">Maschio</SelectItem>
-                  <SelectItem key="F" value="F">Femmina</SelectItem>
-                </Select>
+                <div ref={refGenderSelectWrap} className="w-full">
+                  <Select
+                    label="Genere (opzionale)"
+                    placeholder="Seleziona genere"
+                    variant="bordered"
+                    selectedKeys={registerData.gender ? [registerData.gender] : []}
+                    onSelectionChange={(keys) => handleSelectChange("gender", Array.from(keys)[0] as string)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" || e.shiftKey) return;
+                      const ne = e.nativeEvent;
+                      if ("isComposing" in ne && ne.isComposing) return;
+                      const t = e.target as HTMLElement;
+                      if (t.closest('[role="listbox"]')) return;
+                      e.preventDefault();
+                      refEmail.current?.focus();
+                    }}
+                    classNames={{ label: "text-gray-700 font-medium" }}
+                  >
+                    <SelectItem key="M" value="M">Maschio</SelectItem>
+                    <SelectItem key="F" value="F">Femmina</SelectItem>
+                  </Select>
+                </div>
               </div>
-            </div>
-
-            <Divider />
-
-            {/* Documenti */}
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4 bg-gray-50 p-2 rounded">Documenti</h3>
-              <Input
-                name="cf"
-                label="Codice Fiscale (opzionale)"
-                placeholder="RSSMRA80A01H501U"
-                value={registerData.cf}
-                onChange={handleChange}
-                variant="bordered"
-                classNames={{
-                  label: "text-gray-700 font-medium",
-                  input: "uppercase",
-                }}
-                description="Non tutti i pazienti hanno il codice fiscale. Se inserito, deve essere di 16 caratteri."
-              />
             </div>
 
             <Divider />
@@ -380,31 +626,45 @@ export default function AddPatient() {
               <h3 className="text-lg font-medium text-gray-900 mb-4 bg-gray-50 p-2 rounded">Informazioni di Contatto</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
+                  ref={refEmail}
                   name="email"
                   type="email"
                   label="Email (opzionale)"
                   placeholder="esempio@email.com"
                   value={registerData.email}
                   onChange={handleChange}
+                  onKeyDown={(e) =>
+                    handleEnterAdvance(e, () => refPhone.current?.focus())
+                  }
                   variant="bordered"
                   classNames={{ label: "text-gray-700 font-medium" }}
                 />
                 <Input
+                  ref={refPhone}
                   name="phone"
                   label="Telefono (opzionale)"
                   placeholder="3331234567"
                   value={registerData.phone}
                   onChange={handleChange}
+                  onKeyDown={(e) =>
+                    handleEnterAdvance(e, () => refAddress.current?.focus())
+                  }
                   variant="bordered"
                   classNames={{ label: "text-gray-700 font-medium" }}
                 />
               </div>
               <Input
+                ref={refAddress}
                 name="address"
                 label="Indirizzo (opzionale)"
                 placeholder="Via Roma 10, Milano"
                 value={registerData.address}
                 onChange={handleChange}
+                onKeyDown={(e) =>
+                  handleEnterAdvance(e, () =>
+                    focusFirstFocusable(refBloodSelectWrap.current),
+                  )
+                }
                 variant="bordered"
                 className="mt-4"
                 classNames={{ label: "text-gray-700 font-medium" }}
@@ -419,41 +679,56 @@ export default function AddPatient() {
                 Dati Clinici
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <Select
-                  label="Gruppo Sanguigno"
-                  placeholder="Seleziona"
-                  variant="bordered"
-                  selectedKeys={
-                    registerData.bloodType ? [registerData.bloodType] : []
-                  }
-                  onSelectionChange={(keys) =>
-                    handleSelectChange("bloodType", Array.from(keys)[0] as string)
-                  }
-                  classNames={{ label: "text-gray-700 font-medium" }}
-                >
-                  {[
-                    "A+",
-                    "A-",
-                    "B+",
-                    "B-",
-                    "AB+",
-                    "AB-",
-                    "0+",
-                    "0-",
-                    "Non noto",
-                  ].map((g) => (
-                    <SelectItem key={g} value={g}>
-                      {g}
-                    </SelectItem>
-                  ))}
-                </Select>
+                <div ref={refBloodSelectWrap} className="w-full">
+                  <Select
+                    label="Gruppo Sanguigno"
+                    placeholder="Seleziona"
+                    variant="bordered"
+                    selectedKeys={
+                      registerData.bloodType ? [registerData.bloodType] : []
+                    }
+                    onSelectionChange={(keys) =>
+                      handleSelectChange("bloodType", Array.from(keys)[0] as string)
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" || e.shiftKey) return;
+                      const ne = e.nativeEvent;
+                      if ("isComposing" in ne && ne.isComposing) return;
+                      const t = e.target as HTMLElement;
+                      if (t.closest('[role="listbox"]')) return;
+                      e.preventDefault();
+                      refHeight.current?.focus();
+                    }}
+                    classNames={{ label: "text-gray-700 font-medium" }}
+                  >
+                    {[
+                      "A+",
+                      "A-",
+                      "B+",
+                      "B-",
+                      "AB+",
+                      "AB-",
+                      "0+",
+                      "0-",
+                      "Non noto",
+                    ].map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                </div>
                 <Input
+                  ref={refHeight}
                   name="height"
                   type="number"
                   label="Altezza (cm)"
                   placeholder="0"
                   value={registerData.height}
                   onChange={handleChange}
+                  onKeyDown={(e) =>
+                    handleEnterAdvance(e, () => refAllergies.current?.focus())
+                  }
                   variant="bordered"
                   min={0}
                   classNames={{ label: "text-gray-700 font-medium" }}
@@ -461,11 +736,19 @@ export default function AddPatient() {
                 />
               </div>
               <Textarea
+                ref={refAllergies}
                 name="allergies"
                 label="Allergie / Intolleranze"
                 placeholder="Elenca eventuali allergie a farmaci, alimenti, ecc."
                 value={registerData.allergies}
                 onChange={handleChange}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || e.shiftKey) return;
+                  const ne = e.nativeEvent;
+                  if ("isComposing" in ne && ne.isComposing) return;
+                  e.preventDefault();
+                  refSubmit.current?.focus();
+                }}
                 variant="bordered"
                 minRows={2}
                 classNames={{ label: "text-gray-700 font-medium" }}
@@ -486,6 +769,7 @@ export default function AddPatient() {
                 Annulla
               </Button>
               <Button
+                ref={refSubmit}
                 type="submit"
                 color="success"
                 className="flex-1 shadow-md shadow-success/20"
