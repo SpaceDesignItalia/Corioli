@@ -949,7 +949,7 @@ export default function PatientHistory() {
   };
 
   const getGenderColor = (gender: string) => {
-    return gender === "M" ? "primary" : "secondary";
+    return "primary";
   };
 
   const formatVisitDate = (dateString: string) => {
@@ -1335,7 +1335,7 @@ export default function PatientHistory() {
       {breadcrumbItems.length > 0 && <Breadcrumb items={breadcrumbItems} />}
 
       {/* 1. Profilo Paziente Unificato */}
-      <Card className="shadow-md border border-default-100">
+      <Card className="corioli-card">
         <CardBody className="p-6">
           <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
             {/* Avatar & Nome */}
@@ -1397,22 +1397,20 @@ export default function PatientHistory() {
             {/* Azioni Rapide */}
             <div className="flex flex-row md:flex-col gap-2 w-full md:w-auto mt-4 md:mt-0">
               <Button
-                color="secondary"
-                variant="flat"
+                variant="bordered"
                 size="sm"
                 onPress={() => navigate(`/patient-history/${patient.id}/files`)}
                 startContent={<FileTextIcon size={16} />}
-                className="justify-start md:w-40"
+                className="justify-start md:w-40 border-default-300 bg-white"
               >
                 File
               </Button>
               <Button
-                color="primary"
-                variant="flat"
+                variant="bordered"
                 size="sm"
                 onPress={handleOpenEdit}
                 startContent={<EditIcon size={16} />}
-                className="justify-start md:w-40"
+                className="justify-start md:w-40 border-default-300 bg-white"
               >
                 Modifica Dati
               </Button>
@@ -1490,9 +1488,9 @@ export default function PatientHistory() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* COLONNA SINISTRA: VISITE (2/3) */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-default-100 shadow-sm">
+          <div className="corioli-section-bar">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary-50 text-primary-600 rounded-lg">
+              <div className="p-2 bg-default-100 text-default-600 rounded-lg">
                 <FileTextIcon size={20} />
               </div>
               <div>
@@ -1503,8 +1501,8 @@ export default function PatientHistory() {
               </div>
             </div>
             <Button
-              color="success"
-              className="text-white font-medium shadow-sm"
+              color="primary"
+              className="font-medium shadow-sm"
               size="sm"
               onPress={() => {
                 if (!ensureDoctorProfileComplete()) return;
@@ -1570,7 +1568,7 @@ export default function PatientHistory() {
                             visit.tipo === "ginecologica_pediatrica"
                               ? "danger"
                               : visit.tipo === "ostetrica"
-                                ? "secondary"
+                                ? "primary"
                                 : "primary"
                           }
                           className="capitalize font-semibold"
@@ -1585,7 +1583,7 @@ export default function PatientHistory() {
                         <div>
                           {visit.tipo === "ostetrica" && visit.ostetricia ? (
                             <div className="mb-2">
-                              <span className="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-1 rounded-full mr-2">
+                              <span className="bg-danger-50 text-danger-700 text-xs font-bold px-2 py-1 rounded-full mr-2">
                                 {visit.ostetricia.settimaneGestazione || "?"}ª
                                 Settimana
                               </span>
@@ -1652,7 +1650,7 @@ export default function PatientHistory() {
                             isIconOnly
                             size="sm"
                             variant="light"
-                            color="secondary"
+                            color="primary"
                             onPress={() => handlePrintPdf(visit)}
                             isLoading={pdfLoading}
                             title="Stampa Referto"
@@ -1679,13 +1677,13 @@ export default function PatientHistory() {
                 onClick={() => setRightColumnTab("esami")}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                   rightColumnTab === "esami"
-                    ? "bg-white text-secondary-700 shadow-sm"
-                    : "text-default-600 hover:text-default-800"
+                    ? "corioli-tab-active"
+                    : "corioli-tab-inactive"
                 }`}
               >
                 <FlaskConical size={16} />
                 Esami
-                <span className={`text-xs ${rightColumnTab === "esami" ? "text-secondary-600" : "text-default-500"}`}>
+                <span className={`text-xs ${rightColumnTab === "esami" ? "text-default-700" : "text-default-500"}`}>
                   {richiesteEsami.length}
                 </span>
               </button>
@@ -1707,9 +1705,9 @@ export default function PatientHistory() {
             </div>
             {rightColumnTab === "esami" ? (
               <Button
-                color="secondary"
+                color="primary"
                 size="sm"
-                variant="flat"
+                variant="solid"
                 className="flex-shrink-0 font-medium"
                 onPress={handleOpenNuovaRichiestaEsame}
                 startContent={<PlusIcon size={16} />}
@@ -1738,7 +1736,7 @@ export default function PatientHistory() {
                   <Card className="bg-default-50 border-dashed border-default-300 shadow-none">
                     <CardBody className="text-center py-8 px-4">
                       <p className="text-sm text-gray-500 mb-3">Nessuna prescrizione attiva.</p>
-                      <Button color="secondary" variant="flat" size="sm" onPress={handleOpenNuovaRichiestaEsame}>
+                      <Button color="primary" size="sm" onPress={handleOpenNuovaRichiestaEsame}>
                         Crea Richiesta
                       </Button>
                     </CardBody>
@@ -1749,7 +1747,7 @@ export default function PatientHistory() {
                       key={r.id}
                       isPressable
                       onPress={() => handleOpenEsamePreview(r)}
-                      className="border border-default-200 shadow-sm hover:border-secondary-300 group cursor-pointer w-full min-h-[7.5rem]"
+                      className="border border-default-200 shadow-sm hover:border-primary-300 group cursor-pointer w-full min-h-[7.5rem]"
                     >
                       <CardBody className="p-3 min-h-[7.5rem] flex flex-col">
                         <div className="flex justify-between items-start mb-2">
@@ -1760,7 +1758,7 @@ export default function PatientHistory() {
                             <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditRichiestaEsame(r)} title="Modifica">
                               <EditIcon size={14} />
                             </Button>
-                            <Button size="sm" color="secondary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handlePrintRichiestaEsame(r)} isLoading={pdfLoading} title="Stampa PDF">
+                            <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handlePrintRichiestaEsame(r)} isLoading={pdfLoading} title="Stampa PDF">
                               <Printer size={14} />
                             </Button>
                           </div>
@@ -1854,7 +1852,7 @@ export default function PatientHistory() {
                       selectedVisit.tipo === "ginecologica_pediatrica"
                         ? "primary"
                         : selectedVisit.tipo === "ostetrica"
-                          ? "secondary"
+                          ? "primary"
                           : "default"
                     }
                     variant="flat"
@@ -2050,7 +2048,7 @@ export default function PatientHistory() {
                   {previewFullscreen ? "Riduci" : "Espandi"}
                 </Button>
                 <Button
-                  color="secondary"
+                  color="primary"
                   variant="flat"
                   startContent={<Printer size={16} />}
                   onPress={() => handlePrintPdf(selectedVisit)}
@@ -2320,7 +2318,7 @@ export default function PatientHistory() {
               <ModalHeader className="flex flex-col gap-1">
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
-                    <FlaskConical size={22} className="text-secondary-600" />
+                    <FlaskConical size={22} className="text-primary-700" />
                     <h2 className="text-xl font-bold">Anteprima esame</h2>
                   </div>
                 </div>
@@ -2347,7 +2345,7 @@ export default function PatientHistory() {
               <ModalFooter className="border-t border-default-200 gap-2 flex-wrap">
                 <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={async () => { if (!selectedRichiestaEsamePreview) return; const deleted = await handleDeleteRichiestaEsame(selectedRichiestaEsamePreview.id); if (deleted) { onEsamePreviewClose(); setSelectedRichiestaEsamePreview(null); } }} aria-label="Elimina richiesta esame" title="Elimina richiesta esame">Elimina</Button>
                 <Button variant="light" startContent={esamePreviewFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} onPress={() => setEsamePreviewFullscreen(!esamePreviewFullscreen)}>{esamePreviewFullscreen ? "Riduci" : "Espandi"}</Button>
-                <Button color="secondary" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedRichiestaEsamePreview && handlePrintRichiestaEsame(selectedRichiestaEsamePreview)} isLoading={pdfLoading}>Stampa PDF</Button>
+                <Button color="primary" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedRichiestaEsamePreview && handlePrintRichiestaEsame(selectedRichiestaEsamePreview)} isLoading={pdfLoading}>Stampa PDF</Button>
                 <Button color="primary" startContent={<EditIcon size={18} />} onPress={handleFromPreviewToEdit}>Modifica</Button>
               </ModalFooter>
             </>
@@ -2406,7 +2404,7 @@ export default function PatientHistory() {
       <Modal isOpen={isEsameOpen} onClose={handleCloseEsameModal} size="2xl">
         <ModalContent>
           <ModalHeader className="flex items-center gap-2 pb-2">
-            <FlaskConical size={22} className="text-secondary-600" />
+            <FlaskConical size={22} className="text-primary-700" />
             <span className="text-lg">
               {editingRichiestaEsame
                 ? "Modifica richiesta esame"
@@ -2506,7 +2504,7 @@ export default function PatientHistory() {
               Annulla
             </Button>
             <Button
-              color="secondary"
+              color="primary"
               onPress={handleSaveRichiestaEsame}
               isDisabled={!nuovaRichiestaNome.trim()}
               isLoading={savingEsame}

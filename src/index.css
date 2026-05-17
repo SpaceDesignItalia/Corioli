@@ -2,7 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Consenti copia, taglia, incolla con click destro in tutti i campi form */
+@layer base {
+  :root {
+    --background: #f8fafc;
+    --foreground: #0f172a;
+    --surface: #ffffff;
+    --brand-cta: #244843;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  ::selection {
+    background-color: #e2e8f0;
+    color: #0f172a;
+  }
+}
+
+@layer components {
+  .corioli-card {
+    @apply rounded-xl border border-default-200 bg-white shadow-sm;
+  }
+
+  .corioli-card-header {
+    @apply border-b border-default-200 bg-default-50 px-6 py-4;
+  }
+
+  .corioli-section-bar {
+    @apply flex items-center justify-between rounded-xl border border-default-200 bg-white px-4 py-3;
+  }
+
+  .corioli-kpi {
+    @apply rounded-xl border border-default-200 bg-white shadow-sm transition-shadow hover:shadow-md;
+  }
+
+  .corioli-tab-active {
+    @apply bg-white font-medium text-foreground shadow-sm ring-1 ring-default-200;
+  }
+
+  .corioli-tab-inactive {
+    @apply text-default-500 hover:bg-default-100 hover:text-default-700;
+  }
+
+  /* Unico stile CTA brand — usare su 1 pulsante principale per schermata */
+  .corioli-cta {
+    @apply bg-brand-800 text-white font-medium shadow-sm hover:bg-brand-900;
+  }
+
+  .voice-bar-live {
+    animation: voice-bar-pulse 0.55s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes voice-bar-pulse {
+  from {
+    transform: scaleY(0.45);
+    opacity: 0.65;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
 input,
 textarea,
 [contenteditable="true"],

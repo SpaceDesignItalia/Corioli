@@ -46,7 +46,7 @@ const getCategoryColor = (category: string) => {
     case "certificato":
       return "success";
     case "altro":
-      return "secondary";
+      return "primary";
     default:
       return "default";
   }

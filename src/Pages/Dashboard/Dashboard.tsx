@@ -230,7 +230,7 @@ export default function Dashboard() {
     return gender === "M"
       ? "primary"
       : gender === "F"
-        ? "secondary"
+        ? "primary"
         : "default";
   };
 

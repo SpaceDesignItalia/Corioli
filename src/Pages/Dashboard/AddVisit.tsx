@@ -3121,7 +3121,7 @@ export default function AddVisit() {
 
           <div className="flex gap-3">
             <Button
-              color="secondary"
+              color="primary"
               variant="flat"
               size="md"
               onPress={handlePrintPdf}

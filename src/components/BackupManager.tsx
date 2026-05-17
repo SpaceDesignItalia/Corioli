@@ -684,9 +684,9 @@ const BackupManager: React.FC = () => {
                         </CardBody>
                       </Card>
 
-                      <Card className="bg-secondary-50">
+                      <Card className="bg-brand-100">
                         <CardBody className="gap-4">
-                          <div className="flex items-center gap-3 text-secondary">
+                          <div className="flex items-center gap-3 text-primary">
                             <Upload size={24} />
                             <h3 className="text-lg font-semibold">Importa Backup</h3>
                           </div>
@@ -704,7 +704,7 @@ const BackupManager: React.FC = () => {
                               disabled={isLoading}
                             />
                             <Button
-                              color="secondary"
+                              color="primary"
                               className="w-full"
                               startContent={<Upload size={18} />}
                               onPress={() => fileInputRef.current?.click()}

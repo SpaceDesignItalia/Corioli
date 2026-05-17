@@ -95,8 +95,8 @@ const getVisitTypeLabel = (tipo?: Visit["tipo"]) => {
 
 const getVisitTypeColor = (
   tipo?: Visit["tipo"],
-): "secondary" | "warning" | "primary" => {
-  if (tipo === "ginecologica") return "secondary";
+): "danger" | "warning" | "primary" => {
+  if (tipo === "ginecologica") return "danger";
   if (tipo === "ostetrica") return "warning";
   return "primary";
 };
@@ -295,7 +295,7 @@ export default function Home() {
   const HeaderActions = (
     <div className="flex gap-3 w-full md:w-auto">
       <Button
-        color="secondary"
+        color="primary"
         startContent={<UserPlus size={18} />}
         onPress={() => navigate("/add-patient")}
         className="font-medium shadow-md shadow-primary/20 flex-1 md:flex-none"
@@ -303,11 +303,10 @@ export default function Home() {
         Nuovo Paziente
       </Button>
       <Button
-        color="secondary"
-        variant="flat"
+        variant="bordered"
         startContent={<Calendar size={18} />}
         onPress={() => navigate("/check-patient")}
-        className="font-medium flex-1 md:flex-none"
+        className="font-medium flex-1 md:flex-none border-default-300 text-default-700 bg-white"
       >
         Nuova Visita
       </Button>
@@ -320,7 +319,7 @@ export default function Home() {
         title={`${getGreetingMessage()}, ${doctorName || "Dottore"}`}
         subtitle="Ecco il riepilogo della tua attività."
         icon={LayoutDashboard}
-        iconColor="primary"
+        iconColor="default"
         actions={HeaderActions}
       />
 
@@ -330,7 +329,7 @@ export default function Home() {
         <Card
           isPressable
           onPress={() => navigate("/pazienti")}
-          className="shadow-sm hover:shadow-md transition-all border-l-4 border-emerald-500 bg-white/80 backdrop-blur-sm"
+          className="corioli-kpi border-l-4 border-emerald-500"
         >
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
@@ -342,13 +341,13 @@ export default function Home() {
                   {stats.totalPatients}
                 </h3>
                 {stats.patientsThisMonth > 0 && (
-                  <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-success-600 mt-1 flex items-center gap-1">
                     <TrendingUp size={12} /> +{stats.patientsThisMonth} questo
                     mese
                   </p>
                 )}
               </div>
-              <div className="p-2.5 bg-emerald-100/60 rounded-xl text-emerald-600">
+              <div className="p-2.5 bg-emerald-50 rounded-xl text-emerald-600">
                 <Users size={22} />
               </div>
             </div>
@@ -359,7 +358,7 @@ export default function Home() {
         <Card
           isPressable
           onPress={() => navigate("/visite")}
-          className="shadow-sm hover:shadow-md transition-all border-l-4 border-blue-500 bg-white/80 backdrop-blur-sm"
+          className="corioli-kpi border-l-4 border-blue-500"
         >
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
@@ -371,13 +370,13 @@ export default function Home() {
                   {stats.totalVisits}
                 </h3>
                 {stats.visitsThisMonth > 0 && (
-                  <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-success-600 mt-1 flex items-center gap-1">
                     <TrendingUp size={12} /> +{stats.visitsThisMonth} questo
                     mese
                   </p>
                 )}
               </div>
-              <div className="p-2.5 bg-blue-100/60 rounded-xl text-blue-600">
+              <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600">
                 <Activity size={22} />
               </div>
             </div>
@@ -385,7 +384,7 @@ export default function Home() {
         </Card>
 
         {/* Età media */}
-        <Card className="shadow-sm hover:shadow-md transition-all border-l-4 border-purple-500 bg-white/80 backdrop-blur-sm">
+        <Card className="corioli-kpi border-l-4 border-purple-500">
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
@@ -400,7 +399,7 @@ export default function Home() {
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">dei pazienti</p>
               </div>
-              <div className="p-2.5 bg-purple-100/60 rounded-xl text-purple-600">
+              <div className="p-2.5 bg-purple-50 rounded-xl text-purple-600">
                 <HeartPulse size={22} />
               </div>
             </div>
@@ -411,7 +410,7 @@ export default function Home() {
         <Card
           isPressable
           onPress={() => navigate("/visite")}
-          className="shadow-sm hover:shadow-md transition-all border-l-4 border-amber-500 bg-white/80 backdrop-blur-sm"
+          className="corioli-kpi border-l-4 border-amber-500"
         >
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
@@ -424,7 +423,7 @@ export default function Home() {
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">visite effettuate</p>
               </div>
-              <div className="p-2.5 bg-amber-100/60 rounded-xl text-amber-600">
+              <div className="p-2.5 bg-amber-50 rounded-xl text-amber-600">
                 <Clock size={22} />
               </div>
             </div>
@@ -435,8 +434,8 @@ export default function Home() {
       {/* ─── Lists Row ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Pazienti Recenti */}
-        <Card className="shadow-md border border-gray-100">
-          <CardHeader className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+        <Card className="corioli-card">
+          <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="flex items-center gap-2">
               <Users className="text-emerald-600" size={18} />
               <h3 className="text-base font-semibold text-gray-900">
@@ -466,11 +465,11 @@ export default function Home() {
                       <Avatar
                         name={patient.nome[0] + patient.cognome[0]}
                         size="sm"
-                        color={patient.sesso === "M" ? "primary" : "secondary"}
+                        color="success"
                         className="transition-transform group-hover:scale-110 flex-shrink-0"
                       />
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-900 group-hover:text-primary transition-colors truncate text-sm">
+                        <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
                           {patient.nome} {patient.cognome}
                         </p>
                         <p className="text-xs text-gray-500 truncate">
@@ -487,7 +486,7 @@ export default function Home() {
                       <Chip
                         size="sm"
                         variant="flat"
-                        color={patient.sesso === "M" ? "primary" : "secondary"}
+                        color="success"
                         className="text-xs"
                       >
                         {calculateAge(patient.dataNascita) > 0
@@ -496,7 +495,7 @@ export default function Home() {
                       </Chip>
                       <ArrowRight
                         size={14}
-                        className="text-gray-300 group-hover:text-primary transition-colors"
+                        className="text-gray-300 group-hover:text-brand-600 transition-colors"
                       />
                     </div>
                   </div>
@@ -521,8 +520,8 @@ export default function Home() {
         </Card>
 
         {/* Visite Recenti */}
-        <Card className="shadow-md border border-gray-100">
-          <CardHeader className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+        <Card className="corioli-card">
+          <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="flex items-center gap-2">
               <FileText className="text-blue-600" size={18} />
               <h3 className="text-base font-semibold text-gray-900">
@@ -555,10 +554,10 @@ export default function Home() {
                       <div
                         className={`p-1.5 rounded-lg flex-shrink-0 ${
                           visit.tipo === "ginecologica"
-                            ? "bg-purple-100 text-purple-600"
+                            ? "bg-danger-50 text-danger-700"
                             : visit.tipo === "ostetrica"
-                              ? "bg-amber-100 text-amber-600"
-                              : "bg-blue-100 text-blue-600"
+                              ? "bg-warning-50 text-warning-700"
+                              : "bg-default-100 text-default-700"
                         }`}
                       >
                         {visit.tipo === "ostetrica" ? (
@@ -568,7 +567,7 @@ export default function Home() {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-900 group-hover:text-primary transition-colors truncate text-sm">
+                        <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
                           {visit.patientName}
                         </p>
                         <p className="text-xs text-gray-500 truncate">
@@ -594,7 +593,7 @@ export default function Home() {
                       </div>
                       <ArrowRight
                         size={14}
-                        className="text-gray-300 group-hover:text-primary transition-colors"
+                        className="text-gray-300 group-hover:text-brand-600 transition-colors"
                       />
                     </div>
                   </div>
@@ -606,7 +605,7 @@ export default function Home() {
                 <p className="text-sm">Nessuna visita registrata.</p>
                 <Button
                   size="sm"
-                  color="secondary"
+                  color="primary"
                   variant="flat"
                   onPress={() => navigate("/check-patient")}
                   startContent={<Calendar size={14} />}
@@ -618,42 +617,39 @@ export default function Home() {
           </CardBody>
         </Card>
 
-        {/* Esami / Certificati recenti con select come in Patient History */}
-        <Card className="shadow-md border border-gray-100">
-          <CardHeader className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex gap-0 rounded-lg bg-default-100 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setRecentTab("esami")}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    recentTab === "esami"
-                      ? "bg-white text-teal-700 shadow-sm"
-                      : "text-default-600 hover:text-default-800"
-                  }`}
-                >
-                  <FlaskConical size={16} />
-                  Esami
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRecentTab("certificati")}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    recentTab === "certificati"
-                      ? "bg-white text-amber-700 shadow-sm"
-                      : "text-default-600 hover:text-default-800"
-                  }`}
-                >
-                  <Award size={16} />
-                  Certificati
-                </button>
-              </div>
+        {/* Esami / Certificati recenti */}
+        <Card className="corioli-card">
+          <CardHeader className="corioli-card-header flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="text-purple-600" size={18} />
+              <h3 className="text-base font-semibold text-gray-900">
+                Esami & Cert.
+              </h3>
             </div>
-            <Chip size="sm" variant="flat" color="default" className="text-xs">
-              {recentTab === "esami"
-                ? `${stats.recentEsami.length} mostrati`
-                : `${stats.recentCertificati.length} mostrati`}
-            </Chip>
+            <div className="flex gap-0 rounded-lg bg-default-200/50 p-0.5">
+              <button
+                type="button"
+                onClick={() => setRecentTab("esami")}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  recentTab === "esami"
+                    ? "bg-white shadow-sm text-gray-900"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Esami
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecentTab("certificati")}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  recentTab === "certificati"
+                    ? "bg-white shadow-sm text-gray-900"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Certificati
+              </button>
+            </div>
           </CardHeader>
           <CardBody className="p-0">
             {recentTab === "esami" ? (
@@ -669,11 +665,11 @@ export default function Home() {
                       }
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="p-1.5 rounded-lg flex-shrink-0 bg-teal-100 text-teal-600">
+                        <div className="p-1.5 rounded-lg flex-shrink-0 bg-cyan-50 text-cyan-600">
                           <FlaskConical size={14} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-gray-900 group-hover:text-primary transition-colors truncate text-sm">
+                          <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
                             {esame.nome}
                           </p>
                           <p className="text-xs text-gray-500 truncate">
@@ -689,14 +685,14 @@ export default function Home() {
                             )}
                           </p>
                           {esame.note && (
-                            <p className="text-xs text-teal-500 truncate max-w-[80px]">
+                            <p className="text-xs text-brand-600 truncate max-w-[80px]">
                               {esame.note}
                             </p>
                           )}
                         </div>
                         <ArrowRight
                           size={14}
-                          className="text-gray-300 group-hover:text-primary transition-colors"
+                          className="text-gray-300 group-hover:text-brand-600 transition-colors"
                         />
                       </div>
                     </div>
@@ -723,11 +719,11 @@ export default function Home() {
                     }
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="p-1.5 rounded-lg flex-shrink-0 bg-amber-100 text-amber-600">
+                      <div className="p-1.5 rounded-lg flex-shrink-0 bg-brand-100 text-brand-700">
                         <Award size={14} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-900 group-hover:text-primary transition-colors truncate text-sm">
+                        <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
                           {cert.tipo === "assenza_lavoro"
                             ? "Assenza da lavoro"
                             : cert.tipo === "idoneita"
@@ -749,7 +745,7 @@ export default function Home() {
                           )}
                         </p>
                         {cert.descrizione && (
-                          <p className="text-xs text-amber-600 truncate max-w-[120px]">
+                          <p className="text-xs text-brand-600 truncate max-w-[120px]">
                             {cert.descrizione.slice(0, 40)}
                             {cert.descrizione.length > 40 ? "…" : ""}
                           </p>
@@ -757,7 +753,7 @@ export default function Home() {
                       </div>
                       <ArrowRight
                         size={14}
-                        className="text-gray-300 group-hover:text-primary transition-colors"
+                        className="text-gray-300 group-hover:text-brand-600 transition-colors"
                       />
                     </div>
                   </div>

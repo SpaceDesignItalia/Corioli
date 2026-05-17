@@ -608,7 +608,7 @@ export default function Visite() {
                     <Chip
                       size="sm"
                       variant="flat"
-                      color={(visit.tipo === 'ginecologica' || visit.tipo === 'ginecologica_pediatrica') ? 'secondary' : visit.tipo === 'ostetrica' ? 'warning' : 'primary'}
+                      color={(visit.tipo === 'ginecologica' || visit.tipo === 'ginecologica_pediatrica') ? 'primary' : visit.tipo === 'ostetrica' ? 'warning' : 'primary'}
                       className="capitalize"
                     >
                       {visit.tipo}
@@ -691,7 +691,7 @@ export default function Visite() {
                       selectedVisit.tipo === "ginecologica" || selectedVisit.tipo === "ginecologica_pediatrica"
                         ? "primary"
                         : selectedVisit.tipo === "ostetrica"
-                          ? "secondary"
+                          ? "primary"
                           : "default"
                     }
                     variant="flat"
@@ -812,7 +812,7 @@ export default function Visite() {
                   {previewFullscreen ? "Riduci" : "Espandi"}
                 </Button>
                 <Button
-                  color="secondary"
+                  color="primary"
                   variant="flat"
                   startContent={<Printer size={16} />}
                   onPress={() => handlePrintPdf(selectedVisit)}

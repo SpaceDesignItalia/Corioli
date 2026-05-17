@@ -228,7 +228,7 @@ export default function AppNavbar() {
       height="64px"
     >
       <NavbarContent
-        className="border-small border-default-200/20 bg-background/60 shadow-medium gap-4 rounded-full px-4 backdrop-blur-md backdrop-saturate-150"
+        className="border-small border-default-200 bg-white/90 shadow-medium gap-4 rounded-full px-4 backdrop-blur-md backdrop-saturate-150"
         justify="center"
       >
         {/* Toggle */}
@@ -259,7 +259,7 @@ export default function AppNavbar() {
             <NavbarItem key={item.href} className="hidden md:flex">
               <Link
                 to={item.href}
-                className={`text-sm ${isActive ? "text-emerald-600 font-medium" : "text-default-500"} hover:text-emerald-600 transition-colors`}
+                className={`text-sm ${isActive ? "text-foreground font-semibold" : "text-default-500"} hover:text-foreground transition-colors`}
               >
                 {item.label}
               </Link>
@@ -273,8 +273,8 @@ export default function AppNavbar() {
             <Chip
               size="sm"
               variant="flat"
-              color="success"
-              startContent={<MapPin size={14} className="text-success" />}
+              color="default"
+              startContent={<MapPin size={14} className="text-default-500" />}
               className="cursor-pointer font-medium hover:opacity-90 transition-opacity"
               onClick={() => navigate("/settings")}
               role="button"
@@ -352,7 +352,7 @@ export default function AppNavbar() {
 
       {/* Mobile Menu */}
       <NavbarMenu
-        className="rounded-large border-small border-default-200/20 bg-background/60 shadow-medium top-[calc(var(--navbar-height)/2)] mx-auto mt-16 max-h-[40vh] max-w-[80vw] py-6 backdrop-blur-md backdrop-saturate-150"
+        className="rounded-large border-small border-default-200 bg-white/95 shadow-medium top-[calc(var(--navbar-height)/2)] mx-auto mt-16 max-h-[40vh] max-w-[80vw] py-6 backdrop-blur-md backdrop-saturate-150"
         motionProps={{
           initial: { opacity: 0, y: -20 },
           animate: { opacity: 1, y: 0 },
@@ -369,7 +369,7 @@ export default function AppNavbar() {
             className="flex items-center gap-2 text-default-500 text-sm w-full text-left hover:text-foreground"
             onClick={() => navigate("/settings")}
           >
-            <MapPin size={16} className="text-success flex-shrink-0" />
+            <MapPin size={16} className="text-primary flex-shrink-0" />
             <span>
               Ambulatorio:{" "}
               <strong className="text-foreground">
@@ -431,7 +431,7 @@ export default function AppNavbar() {
           <NavbarMenuItem key={`${item.label}-${index}`}>
             <Link
               to={item.href}
-              className="text-default-500 w-full text-md hover:text-emerald-600 transition-colors"
+              className="text-default-500 w-full text-md hover:text-primary transition-colors"
             >
               {item.label}
             </Link>

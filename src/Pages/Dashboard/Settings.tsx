@@ -1288,7 +1288,7 @@ const SettingsScreen = () => {
         title="Impostazioni"
         subtitle="Personalizza la tua esperienza dell'applicazione"
         icon={SettingsIcon}
-        iconColor="secondary"
+        iconColor="primary"
       />
 
       {/* Messages */}
@@ -1506,7 +1506,7 @@ const SettingsScreen = () => {
           <Card className="shadow-lg h-full flex flex-col">
             <CardHeader className="pb-2 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-5 h-5 bg-emerald-500 rounded"></div>
+                <div className="w-5 h-5 bg-brand-800 rounded"></div>
                 <h2 className="text-xl font-semibold text-gray-900">
                   Ambulatori
                 </h2>
@@ -1689,11 +1689,11 @@ const SettingsScreen = () => {
                       {patientCount}
                     </p>
                   </div>
-                  <div className="p-3 bg-secondary-50 rounded-lg border border-secondary-100">
-                    <p className="text-xs text-secondary-600 font-semibold uppercase tracking-wider">
+                  <div className="p-3 bg-brand-100 rounded-lg border border-brand-200">
+                    <p className="text-xs text-brand-800 font-semibold uppercase tracking-wider">
                       Visite
                     </p>
-                    <p className="text-2xl font-bold text-secondary-700 mt-1">
+                    <p className="text-2xl font-bold text-brand-700 mt-1">
                       {visitCount}
                     </p>
                   </div>
@@ -1745,7 +1745,7 @@ const SettingsScreen = () => {
           <Card className="shadow-lg h-full">
             <CardHeader className="pb-1">
               <div className="flex items-center gap-3">
-                <SettingsIcon className="w-5 h-5 text-secondary" />
+                <SettingsIcon className="w-5 h-5 text-primary" />
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">
                     Funzionalita Visite
@@ -1872,7 +1872,7 @@ const SettingsScreen = () => {
                 <Chip color="warning" variant="flat">
                   Gruppi: {duplicateGroups.length}
                 </Chip>
-                <Chip color="secondary" variant="flat">
+                <Chip color="primary" variant="flat">
                   Record:{" "}
                   {duplicateGroups.reduce(
                     (acc, g) => acc + g.patients.length,
