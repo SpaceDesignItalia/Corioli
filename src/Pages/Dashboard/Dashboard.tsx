@@ -29,7 +29,7 @@ import {
 import { Patient } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
-import { Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { Users, UserPlus, ChevronLeft, ChevronRight } from "lucide-react";
 import { calculateAge } from "../../utils/dateUtils";
 
 // Interfaccia compatibile con il componente esistente
@@ -265,11 +265,10 @@ export default function Dashboard() {
   const HeaderActions = (
     <div className="flex gap-3">
       <Button
-        color="success"
-        // variant="shadow"
-        className="shadow-md shadow-success/20 text-white"
+        color="primary"
+        startContent={<UserPlus size={18} />}
         onPress={() => navigate("/add-patient")}
-        startContent={<span className="text-lg">+</span>}
+        className="font-medium shadow-md shadow-primary/20"
       >
         Aggiungi Paziente
       </Button>
@@ -282,7 +281,7 @@ export default function Dashboard() {
         title="Lista Pazienti"
         subtitle="Cerca e gestisci i tuoi pazienti"
         icon={Users}
-        iconColor="success"
+        iconColor="primary"
         actions={HeaderActions}
       >
         {/* Search Bar embedded in header area */}

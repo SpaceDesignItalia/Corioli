@@ -775,7 +775,7 @@ const BackupManager: React.FC = () => {
                             />
 
                             <Button
-                              color="success"
+                              color="primary"
                               variant="flat"
                               onPress={() => patientsCsvInputRef.current?.click()}
                               isDisabled={isLoading}
@@ -784,7 +784,7 @@ const BackupManager: React.FC = () => {
                             </Button>
 
                             <Button
-                              color="success"
+                              color="primary"
                               variant="flat"
                               onPress={() => appointmentsCsvInputRef.current?.click()}
                               isDisabled={isLoading}
@@ -796,7 +796,7 @@ const BackupManager: React.FC = () => {
                           </div>
 
                           <Button
-                            color="success"
+                            color="primary"
                             onPress={handleImportCsvData}
                             isLoading={isLoading && !csvImportProgress}
                             isDisabled={!patientsCsvFile || !appointmentsCsvFile}
@@ -810,7 +810,7 @@ const BackupManager: React.FC = () => {
                             <Progress
                               size="md"
                               value={(csvImportProgress.current / Math.max(1, csvImportProgress.total)) * 100}
-                              color="success"
+                              color="primary"
                               className="max-w-full"
                               aria-label={`Import in corso: ${csvImportProgress.phase} ${csvImportProgress.current}/${csvImportProgress.total}`}
                             />

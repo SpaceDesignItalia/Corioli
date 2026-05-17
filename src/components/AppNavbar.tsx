@@ -310,7 +310,7 @@ export default function AppNavbar() {
               <Tooltip content="Installa l'aggiornamento e riavvia">
                 <Button
                   size="sm"
-                  color="success"
+                  color="primary"
                   onPress={handleInstallUpdate}
                   startContent={<Download size={14} />}
                 >

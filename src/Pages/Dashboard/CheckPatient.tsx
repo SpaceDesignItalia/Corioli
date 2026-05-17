@@ -217,7 +217,7 @@ export default function CheckPatient() {
           <div className="text-center space-y-4">
             <p className="text-gray-600">Il paziente non è ancora registrato?</p>
             <Button
-              color="success"
+              color="primary"
               variant="flat"
               onPress={() => navigate("/add-patient")}
               className="w-full"

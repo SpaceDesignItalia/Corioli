@@ -3139,9 +3139,9 @@ export default function AddVisit() {
 
             <Button
               onPress={() => handleSubmit()}
-              color="success"
+              color="primary"
               size="md"
-              className="px-6 font-bold text-white shadow-lg shadow-success/20 rounded-full"
+              className="px-6 font-bold shadow-lg shadow-primary/20 rounded-full"
               isLoading={loading}
               isDisabled={loading}
               startContent={<Save size={18} />}

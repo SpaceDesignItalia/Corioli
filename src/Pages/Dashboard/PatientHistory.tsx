@@ -1525,9 +1525,8 @@ export default function PatientHistory() {
                   Inizia il percorso clinico.
                 </p>
                 <Button
-                  color="success"
+                  color="primary"
                   size="sm"
-                  className="text-white"
                   onPress={() => {
                     if (!ensureDoctorProfileComplete()) return;
                     navigate(`/add-visit?patientId=${patient.id}`);
@@ -2284,7 +2283,7 @@ export default function PatientHistory() {
                 Annulla
               </Button>
               <Button
-                color="success"
+                color="primary"
                 onPress={handleSavePatient}
                 isLoading={saving}
                 startContent={!saving ? <SaveIcon size={16} /> : undefined}

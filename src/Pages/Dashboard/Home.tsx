@@ -319,7 +319,7 @@ export default function Home() {
         title={`${getGreetingMessage()}, ${doctorName || "Dottore"}`}
         subtitle="Ecco il riepilogo della tua attività."
         icon={LayoutDashboard}
-        iconColor="default"
+        iconColor="primary"
         actions={HeaderActions}
       />
 

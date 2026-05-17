@@ -410,7 +410,7 @@ export default function AddPatient() {
         title={isEditMode ? "Modifica Paziente" : "Aggiungi Nuovo Paziente"}
         subtitle={isEditMode ? "Modifica i dati del paziente selezionato" : "Inserisci i dati del paziente per aggiungerlo al sistema"}
         icon={isEditMode ? Pencil : UserPlus}
-        iconColor={isEditMode ? "warning" : "success"}
+        iconColor={isEditMode ? "warning" : "primary"}
       />
 
       <Card className="shadow-lg border border-gray-100">
@@ -771,8 +771,8 @@ export default function AddPatient() {
               <Button
                 ref={refSubmit}
                 type="submit"
-                color="success"
-                className="flex-1 shadow-md shadow-success/20"
+                color="primary"
+                className="flex-1 shadow-md shadow-primary/20"
                 isLoading={isLoading}
                 isDisabled={isLoading}
               >

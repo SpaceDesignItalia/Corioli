@@ -1354,7 +1354,7 @@ const SettingsScreen = () => {
                     <Chip color="success">Pronto da installare</Chip>
                     <Button
                       size="sm"
-                      color="success"
+                      color="primary"
                       onPress={handleQuitAndInstall}
                     >
                       Installa ora
@@ -1653,7 +1653,7 @@ const SettingsScreen = () => {
                   />
                 </div>
                 <Button
-                  color="success"
+                  color="primary"
                   variant="flat"
                   onPress={addAmbulatorio}
                   isLoading={savingAmbulatori}

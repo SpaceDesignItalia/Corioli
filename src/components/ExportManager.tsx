@@ -224,14 +224,14 @@ const ExportManager: React.FC = () => {
                 <Card className="hover:shadow-md transition-shadow">
                   <CardBody className="p-4">
                     <div className="flex items-center gap-3 mb-3">
-                      <FileSpreadsheet className="w-8 h-8 text-success" />
+                      <FileSpreadsheet className="w-8 h-8 text-primary" />
                       <div>
                         <h4 className="font-semibold">Pazienti CSV</h4>
                         <p className="text-sm text-gray-600">Elenco pazienti per Excel</p>
                       </div>
                     </div>
                     <Button
-                      color="success"
+                      color="primary"
                       variant="flat"
                       onPress={handleExportPatientsCSV}
                       isLoading={isLoading}
