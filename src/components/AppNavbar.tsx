@@ -14,7 +14,7 @@ import {
 } from "@nextui-org/react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { DoctorService } from "../services/OfflineServices";
-import { Download, MapPin, RefreshCw } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import { storageService } from "../services/StorageServiceFallback";
 import { sendHeartbeat } from "../services/HeartbeatService";
 import axios from "axios";
@@ -269,19 +269,29 @@ export default function AppNavbar() {
 
         {/* Ambulatorio attuale - clic per andare a Impostazioni */}
         <NavbarItem className="hidden sm:flex ml-2 pl-2 border-l border-default-200">
-          <Tooltip content="Clicca per aprire Impostazioni e cambiare la sede in uso">
-            <Chip
-              size="sm"
-              variant="flat"
-              color="default"
-              startContent={<MapPin size={14} className="text-default-500" />}
-              className="cursor-pointer font-medium hover:opacity-90 transition-opacity"
-              onClick={() => navigate("/settings")}
-              role="button"
-            >
-              {primaryAmbulatorio || "Nessun ambulatorio"}
-            </Chip>
-          </Tooltip>
+          {primaryAmbulatorio ? (
+            <Tooltip content="Clicca per aprire Impostazioni e cambiare la sede in uso">
+              <button
+                type="button"
+                className="navbar-ambulatorio-set"
+                onClick={() => navigate("/settings")}
+              >
+                <i className="ti ti-map-pin" aria-hidden />
+                {primaryAmbulatorio}
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip content="Configura l'ambulatorio primario nelle Impostazioni">
+              <button
+                type="button"
+                className="navbar-ambulatorio-cta"
+                onClick={() => navigate("/settings")}
+              >
+                <i className="ti ti-alert-triangle" aria-hidden />
+                Imposta ambulatorio
+              </button>
+            </Tooltip>
+          )}
         </NavbarItem>
 
         {updateChecking && (
@@ -364,19 +374,27 @@ export default function AppNavbar() {
         }}
       >
         <NavbarMenuItem className="pt-2 pb-3 border-b border-default-100">
-          <button
-            type="button"
-            className="flex items-center gap-2 text-default-500 text-sm w-full text-left hover:text-foreground"
-            onClick={() => navigate("/settings")}
-          >
-            <MapPin size={16} className="text-primary flex-shrink-0" />
-            <span>
-              Ambulatorio:{" "}
-              <strong className="text-foreground">
-                {primaryAmbulatorio || "—"}
-              </strong>
-            </span>
-          </button>
+          {primaryAmbulatorio ? (
+            <button
+              type="button"
+              className="navbar-ambulatorio-set w-full text-left"
+              onClick={() => navigate("/settings")}
+            >
+              <i className="ti ti-map-pin" aria-hidden />
+              <span>
+                Ambulatorio: <strong>{primaryAmbulatorio}</strong>
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="navbar-ambulatorio-cta"
+              onClick={() => navigate("/settings")}
+            >
+              <i className="ti ti-alert-triangle" aria-hidden />
+              Imposta ambulatorio
+            </button>
+          )}
         </NavbarMenuItem>
         <NavbarMenuItem className="pb-3 border-b border-default-100">
           <button

@@ -5,7 +5,6 @@ import {
   CardHeader,
   Input,
   Button,
-  Textarea,
   Divider,
   Tabs,
   Tab,
@@ -25,12 +24,7 @@ import {
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 
-/** Stile tipografia fissa per i Textarea del referto: evita che il testo cambi aspetto quando diventa molto lungo. */
-const REFERTO_TEXTAREA_CLASSES = {
-  input: "!text-base !leading-relaxed font-normal",
-  inputWrapper:
-    "group-hover:border-primary transition-colors bg-white",
-} as const;
+import { RefertoTextarea } from "../../components/RefertoTextarea";
 import { addDays, differenceInDays, parseISO, isValid, format, subDays } from "date-fns";
 import {
   PatientService,
@@ -1448,7 +1442,7 @@ export default function AddVisit() {
     isPediatricVisitEnabled || visitData.tipo === "ginecologica_pediatrica";
 
   return (
-    <div className="max-w-[1200px] mx-auto space-y-6 pb-32">
+    <div className="corioli-page space-y-6 pb-32">
       {/* 1. Header Navigation */}
       <Breadcrumb items={breadcrumbItems} />
 
@@ -1809,7 +1803,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ginecologiaData.prestazione}
                         onValueChange={(value) =>
                           handleGinecologiaChange("prestazione", value)
@@ -1817,7 +1811,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1826,7 +1819,7 @@ export default function AddVisit() {
                       <label className="text-sm font-bold text-gray-700 block mb-1">
                         2. Descrizione Problema / Dati Clinici
                       </label>
-                      <Textarea
+                      <RefertoTextarea
                         value={ginecologiaData.problemaClinico}
                         onValueChange={(value) =>
                           handleGinecologiaChange("problemaClinico", value)
@@ -1834,7 +1827,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="La paziente riferisce..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1859,7 +1851,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ginecologiaData.esameBimanuale}
                         onValueChange={(value) =>
                           handleGinecologiaChange("esameBimanuale", value)
@@ -1867,7 +1859,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={5}
                         placeholder="Esame bimanuale, speculum, ecografia TV office..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1892,7 +1883,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ginecologiaData.terapiaSpecifica}
                         onValueChange={(value) =>
                           handleGinecologiaChange("terapiaSpecifica", value)
@@ -1900,7 +1891,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Si consiglia..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
                   </CardBody>
@@ -2065,7 +2055,7 @@ export default function AddVisit() {
                             }
                           />
                         </div>
-                        <Textarea
+                        <RefertoTextarea
                           value={ginecologiaData.prestazione}
                           onValueChange={(value) =>
                             handleGinecologiaChange("prestazione", value)
@@ -2073,7 +2063,6 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -2082,7 +2071,7 @@ export default function AddVisit() {
                         <label className="text-sm font-bold text-gray-700 block mb-1">
                           2. Descrizione Problema / Dati Clinici
                         </label>
-                        <Textarea
+                        <RefertoTextarea
                           value={ginecologiaData.problemaClinico}
                           onValueChange={(value) =>
                             handleGinecologiaChange("problemaClinico", value)
@@ -2090,7 +2079,6 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="La paziente riferisce..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -2115,7 +2103,7 @@ export default function AddVisit() {
                             }
                           />
                         </div>
-                        <Textarea
+                        <RefertoTextarea
                           value={ginecologiaData.esameBimanuale}
                           onValueChange={(value) =>
                             handleGinecologiaChange("esameBimanuale", value)
@@ -2123,7 +2111,6 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={5}
                           placeholder="Esame bimanuale, speculum, ecografia TV office..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -2148,7 +2135,7 @@ export default function AddVisit() {
                             }
                           />
                         </div>
-                        <Textarea
+                        <RefertoTextarea
                           value={ginecologiaData.terapiaSpecifica}
                           onValueChange={(value) =>
                             handleGinecologiaChange("terapiaSpecifica", value)
@@ -2156,7 +2143,6 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="Si consiglia..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
                     </CardBody>
@@ -3001,7 +2987,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ostetriciaData.prestazione}
                         onValueChange={(value) =>
                           handleOstetriciaChange("prestazione", value)
@@ -3009,7 +2995,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Anamnesi ostetrica, motivo della visita, dati clinici..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -3018,7 +3003,7 @@ export default function AddVisit() {
                       <label className="text-sm font-bold text-gray-700 block mb-1">
                         2. Descrizione Problema
                       </label>
-                      <Textarea
+                      <RefertoTextarea
                         value={ostetriciaData.problemaClinico}
                         onValueChange={(value) =>
                           handleOstetriciaChange("problemaClinico", value)
@@ -3026,7 +3011,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Motivo della visita, sintomi riferiti..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -3051,7 +3035,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ostetriciaData.esameObiettivo}
                         onValueChange={(value) =>
                           handleOstetriciaChange("esameObiettivo", value)
@@ -3059,7 +3043,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={5}
                         placeholder="Biometria fetale, liquido amniotico..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -3084,7 +3067,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ostetriciaData.noteOstetriche}
                         onValueChange={(value) =>
                           handleOstetriciaChange("noteOstetriche", value)
@@ -3092,7 +3075,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Raccomandazioni e follow-up..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
                   </CardBody>

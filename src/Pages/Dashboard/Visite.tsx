@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
   CardBody,
@@ -75,8 +75,16 @@ interface EnrichedVisit extends Visit {
   patientCf: string;
 }
 
+const VISIT_TYPE_FILTERS = new Set([
+  "generale",
+  "ginecologica",
+  "ginecologica_pediatrica",
+  "ostetrica",
+]);
+
 export default function Visite() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [visits, setVisits] = useState<EnrichedVisit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<EnrichedVisit | null>(null);
@@ -85,6 +93,13 @@ export default function Visite() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterTipo, setFilterTipo] = useState<string>("tutti");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const tipo = searchParams.get("tipo");
+    if (tipo && VISIT_TYPE_FILTERS.has(tipo)) {
+      setFilterTipo(tipo);
+    }
+  }, [searchParams]);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [fetalFormula, setFetalFormula] = useState("hadlock4");
   const rowsPerPage = 10;
@@ -525,7 +540,7 @@ export default function Visite() {
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
         title="Gestione Visite"
         subtitle="Visualizza lo storico completo delle visite effettuate."

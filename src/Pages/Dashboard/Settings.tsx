@@ -1282,7 +1282,7 @@ const SettingsScreen = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       {/* Header */}
       <PageHeader
         title="Impostazioni"

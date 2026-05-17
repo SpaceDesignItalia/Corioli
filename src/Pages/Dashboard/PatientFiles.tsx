@@ -313,7 +313,7 @@ export default function PatientFiles() {
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       {breadcrumbItems.length > 0 && <Breadcrumb items={breadcrumbItems} />}
 
       <PageHeader

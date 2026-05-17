@@ -516,7 +516,7 @@ export default function HelpAndFeedback() {
     (inputValue.trim() || pendingAttachments.length > 0);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-500 flex flex-col min-h-0">
+    <div className="corioli-page space-y-6 animate-in fade-in duration-500 flex flex-col min-h-0">
       <PageHeader
         title="Assistenza e Feedback"
         subtitle="Siamo qui per aiutarti. Trova risposte o contattaci direttamente."

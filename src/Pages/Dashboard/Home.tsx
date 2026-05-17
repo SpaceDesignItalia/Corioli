@@ -23,43 +23,42 @@ import {
   Stethoscope,
   Clock,
   ArrowRight,
-  FlaskConical,
-  Award,
 } from "lucide-react";
 import {
   DoctorService,
   PatientService,
   VisitService,
-  RichiestaEsameService,
-  CertificatoService,
 } from "../../services/OfflineServices";
+import { Patient, Visit } from "../../types/Storage";
 import {
-  Patient,
-  Visit,
-  RichiestaEsameComplementare,
-  CertificatoPaziente,
-} from "../../types/Storage";
+  computeActivePregnancies,
+  type ActivePregnancy,
+} from "../../utils/activePregnancyUtils";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 
+interface GroupedRecentVisit {
+  patientId: string;
+  patientName: string;
+  dateKey: string;
+  dateLabel: string;
+  count: number;
+  tipo?: Visit["tipo"];
+  mixedTypes: boolean;
+}
+
 interface DashboardStats {
   totalPatients: number;
   totalVisits: number;
   recentPatients: Patient[];
-  recentVisits: (Visit & { patientName: string; patientCf: string })[];
-  recentEsami: (RichiestaEsameComplementare & {
-    patientName: string;
-    patientCf: string;
-  })[];
-  recentCertificati: (CertificatoPaziente & {
-    patientName: string;
-    patientCf: string;
-  })[];
+  groupedRecentVisits: GroupedRecentVisit[];
+  activePregnancies: ActivePregnancy[];
   averageAge: number;
   visitsThisMonth: number;
   patientsThisMonth: number;
+  subtitle: string;
 }
 
 const getGreetingMessage = () => {
@@ -101,6 +100,170 @@ const getVisitTypeColor = (
   return "primary";
 };
 
+const getVisitDateKey = (dataVisita: string): string => {
+  const d = new Date(dataVisita);
+  if (isNaN(d.getTime())) return dataVisita.slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+const getVisitTypePluralPhrase = (
+  tipo: Visit["tipo"] | undefined,
+  count: number,
+): string => {
+  if (count <= 1) return getVisitTypeLabel(tipo);
+  if (tipo === "ginecologica") return `${count} visite ginecologiche`;
+  if (tipo === "ostetrica") return `${count} visite ostetriche`;
+  return `${count} visite`;
+};
+
+const formatPatientDisplayName = (patient: Patient): string | null => {
+  const name = `${patient.nome ?? ""} ${patient.cognome ?? ""}`.trim();
+  return name || null;
+};
+
+const groupRecentVisits = (
+  visits: (Visit & { patientName: string })[],
+  maxItems = 5,
+): GroupedRecentVisit[] => {
+  const groups = new Map<string, GroupedRecentVisit>();
+
+  for (const visit of visits) {
+    const dateKey = getVisitDateKey(visit.dataVisita);
+    const key = `${visit.patientId}_${dateKey}`;
+    const existing = groups.get(key);
+
+    if (!existing) {
+      groups.set(key, {
+        patientId: visit.patientId,
+        patientName: visit.patientName,
+        dateKey,
+        dateLabel: new Date(visit.dataVisita).toLocaleDateString("it-IT"),
+        count: 1,
+        tipo: visit.tipo,
+        mixedTypes: false,
+      });
+      continue;
+    }
+
+    existing.count += 1;
+    if (existing.tipo !== visit.tipo) {
+      existing.mixedTypes = true;
+    }
+  }
+
+  return Array.from(groups.values())
+    .sort((a, b) => b.dateKey.localeCompare(a.dateKey))
+    .slice(0, maxItems);
+};
+
+const buildDashboardSubtitle = (
+  visits: (Visit & { patientName: string })[],
+): string => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const visitsToday = visits.filter((v) => {
+    const d = new Date(v.dataVisita);
+    if (isNaN(d.getTime())) return false;
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() === today.getTime();
+  });
+
+  if (visitsToday.length > 0) {
+    const n = visitsToday.length;
+    return n === 1
+      ? "Hai 1 visita programmata oggi"
+      : `Hai ${n} visite programmate oggi`;
+  }
+
+  const todayKey = today.toISOString().slice(0, 10);
+  let isFirstOpenToday = false;
+  try {
+    const lastOpen = localStorage.getItem("corioli_home_last_open");
+    isFirstOpenToday = lastOpen !== todayKey;
+    if (isFirstOpenToday) {
+      localStorage.setItem("corioli_home_last_open", todayKey);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  if (isFirstOpenToday && visits.length > 0) {
+    const last = visits[0];
+    const visitDate = new Date(last.dataVisita);
+    visitDate.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const when =
+      visitDate.getTime() === yesterday.getTime()
+        ? "ieri"
+        : visitDate.toLocaleDateString("it-IT", {
+            day: "numeric",
+            month: "long",
+          });
+    return `Ultima visita: ${when} con ${last.patientName}`;
+  }
+
+  return "Ecco il riepilogo della tua attività";
+};
+
+const PREGNANCY_TOTAL_WEEKS = 40;
+
+function isPregnancySegmentCompleted(
+  segmentIndex: number,
+  weeks: number,
+  days: number,
+): boolean {
+  if (weeks >= PREGNANCY_TOTAL_WEEKS) return true;
+  return segmentIndex < weeks || (segmentIndex === weeks && days > 0);
+}
+
+function PregnancyWeekSegments({
+  weeks,
+  days,
+}: {
+  weeks: number;
+  days: number;
+}) {
+  return (
+    <div className="dashboard-pregnancy-segments" aria-hidden>
+      {Array.from({ length: PREGNANCY_TOTAL_WEEKS }, (_, i) => (
+        <span
+          key={i}
+          className={`dashboard-pregnancy-segment${
+            isPregnancySegmentCompleted(i, weeks, days)
+              ? " dashboard-pregnancy-segment--done"
+              : ""
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PregnancyDaysText({ daysToBirth }: { daysToBirth: number }) {
+  const label =
+    daysToBirth === 1 ? "giorno al parto" : "giorni al parto";
+
+  if (daysToBirth <= 14) {
+    const color = daysToBirth <= 7 ? "#A32D2D" : "#854F0B";
+    return (
+      <span style={{ color, fontWeight: 500 }}>
+        ⚠ {daysToBirth} {label}
+      </span>
+    );
+  }
+
+  return (
+    <span>
+      {daysToBirth} {label}
+    </span>
+  );
+}
+
 export default function Home() {
   const navigate = useNavigate();
   const [doctorName, setDoctorName] = useState<string | null>(null);
@@ -108,31 +271,15 @@ export default function Home() {
     totalPatients: 0,
     totalVisits: 0,
     recentPatients: [],
-    recentVisits: [],
-    recentEsami: [],
-    recentCertificati: [],
+    groupedRecentVisits: [],
+    activePregnancies: [],
     averageAge: 0,
     visitsThisMonth: 0,
     patientsThisMonth: 0,
-  });
-  const [recentTab, setRecentTab] = useState<"esami" | "certificati">(() => {
-    try {
-      const s = localStorage.getItem("corioli_home_esami_certificati_tab");
-      if (s === "esami" || s === "certificati") return s;
-    } catch {
-      /* ignore */
-    }
-    return "esami";
+    subtitle: "Ecco il riepilogo della tua attività",
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem("corioli_home_esami_certificati_tab", recentTab);
-    } catch {
-      /* ignore */
-    }
-  }, [recentTab]);
   const [toast, setToast] = useState<{ open: boolean; message: string }>({
     open: false,
     message: "",
@@ -151,14 +298,10 @@ export default function Home() {
       setLoading(true);
       try {
         const patientsPromise = PatientService.getAllPatients();
-        const [doctor, patients, visits, allEsami, certArrays] = await Promise.all([
+        const [doctor, patients, visits] = await Promise.all([
           DoctorService.initializeDefaultDoctor(),
           patientsPromise,
           VisitService.getAllVisits(),
-          RichiestaEsameService.getAll(),
-          patientsPromise.then((ps) =>
-            Promise.all(ps.map((p) => CertificatoService.getByPatientId(p.id))),
-          ),
         ]);
 
         setDoctorName(`${doctor.nome} ${doctor.cognome}`);
@@ -170,7 +313,6 @@ export default function Home() {
           1,
         ).toISOString();
 
-        // This month counts
         const visitsThisMonth = visits.filter(
           (v) => v.dataVisita >= thisMonthStart,
         ).length;
@@ -178,7 +320,6 @@ export default function Home() {
           (p) => p.createdAt >= thisMonthStart,
         ).length;
 
-        // Recent patients sorted by activity
         const visitDatesByPatient = new Map<string, number>();
         for (const v of visits) {
           const t = new Date(v.dataVisita).getTime();
@@ -201,57 +342,25 @@ export default function Home() {
           })
           .slice(0, 6);
 
-        // Enrich visits with patient info
         const patientMap = new Map(patients.map((p) => [p.id, p]));
         const enrichedVisits = visits.map((v) => {
           const p = patientMap.get(v.patientId);
           return {
             ...v,
-            patientName: p ? `${p.nome} ${p.cognome}` : "Paziente sconosciuto",
+            patientName: p
+              ? formatPatientDisplayName(p) ?? "Paziente senza nome"
+              : "Paziente sconosciuto",
             patientCf: p?.codiceFiscale || "",
           };
         });
-        const sortedVisits = enrichedVisits
-          .sort(
-            (a, b) =>
-              new Date(b.dataVisita).getTime() -
-              new Date(a.dataVisita).getTime(),
-          )
-          .slice(0, 6);
-
-        // Enrich esami with patient info
-        const enrichedEsami = allEsami
-          .map((e) => {
-            const p = patientMap.get(e.patientId);
-            return {
-              ...e,
-              patientName: p
-                ? `${p.nome} ${p.cognome}`
-                : "Paziente sconosciuto",
-              patientCf: p?.codiceFiscale || "",
-            };
-          })
-          .slice(0, 6);
-
-        // Certificati recenti: flatten, arricchisci con nome paziente, ordina per data, prendi 6
-        const flatCerts = certArrays.flatMap((arr, i) =>
-          arr.map((c) => ({
-            ...c,
-            patientName: patients[i]
-              ? `${patients[i].nome} ${patients[i].cognome}`
-              : "Paziente sconosciuto",
-            patientCf: patients[i]?.codiceFiscale || "",
-          })),
+        const sortedVisits = enrichedVisits.sort(
+          (a, b) =>
+            new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime(),
         );
-        const recentCertificati = flatCerts
-          .sort(
-            (a, b) =>
-              new Date(b.dataCertificato).getTime() -
-              new Date(a.dataCertificato).getTime(),
-          )
-          .slice(0, 6);
+        const groupedRecentVisits = groupRecentVisits(sortedVisits, 5);
+        const subtitle = buildDashboardSubtitle(sortedVisits);
+        const activePregnancies = computeActivePregnancies(visits, patients);
 
-        // Average age
         let validAgesCount = 0;
         const totalAge = patients.reduce((sum, p) => {
           const age = calculateAge(p.dataNascita);
@@ -268,12 +377,12 @@ export default function Home() {
           totalPatients: patients.length,
           totalVisits: visits.length,
           recentPatients: sortedPatients,
-          recentVisits: sortedVisits,
-          recentEsami: enrichedEsami,
-          recentCertificati,
+          groupedRecentVisits,
+          activePregnancies,
           averageAge,
           visitsThisMonth,
           patientsThisMonth,
+          subtitle,
         });
       } catch (e) {
         console.error(e);
@@ -291,6 +400,11 @@ export default function Home() {
       </div>
     );
   }
+
+  const { activePregnancies } = stats;
+  const visiblePregnancies = [...activePregnancies]
+    .sort((a, b) => a.daysToBirth - b.daysToBirth)
+    .slice(0, 5);
 
   const HeaderActions = (
     <div className="flex gap-3 w-full md:w-auto">
@@ -314,10 +428,10 @@ export default function Home() {
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
         title={`${getGreetingMessage()}, ${doctorName || "Dottore"}`}
-        subtitle="Ecco il riepilogo della tua attività."
+        subtitle={stats.subtitle}
         icon={LayoutDashboard}
         iconColor="primary"
         actions={HeaderActions}
@@ -325,11 +439,10 @@ export default function Home() {
 
       {/* ─── KPI Cards ────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Pazienti totali */}
         <Card
           isPressable
           onPress={() => navigate("/pazienti")}
-          className="corioli-kpi border-l-4 border-emerald-500"
+          className="corioli-kpi"
         >
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
@@ -347,18 +460,17 @@ export default function Home() {
                   </p>
                 )}
               </div>
-              <div className="p-2.5 bg-emerald-50 rounded-xl text-emerald-600">
+              <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
                 <Users size={22} />
               </div>
             </div>
           </CardBody>
         </Card>
 
-        {/* Visite totali */}
         <Card
           isPressable
           onPress={() => navigate("/visite")}
-          className="corioli-kpi border-l-4 border-blue-500"
+          className="corioli-kpi"
         >
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
@@ -376,15 +488,14 @@ export default function Home() {
                   </p>
                 )}
               </div>
-              <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600">
+              <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
                 <Activity size={22} />
               </div>
             </div>
           </CardBody>
         </Card>
 
-        {/* Età media */}
-        <Card className="corioli-kpi border-l-4 border-purple-500">
+        <Card className="corioli-kpi">
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
               <div>
@@ -392,25 +503,30 @@ export default function Home() {
                   Età Media
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900 mt-1">
-                  {stats.averageAge}
-                  <span className="text-base font-normal text-gray-400 ml-1">
-                    anni
-                  </span>
+                  {stats.averageAge > 0 ? (
+                    <>
+                      {stats.averageAge}
+                      <span className="text-base font-normal text-gray-400 ml-1">
+                        anni
+                      </span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">dei pazienti</p>
               </div>
-              <div className="p-2.5 bg-purple-50 rounded-xl text-purple-600">
+              <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
                 <HeartPulse size={22} />
               </div>
             </div>
           </CardBody>
         </Card>
 
-        {/* Visite questo mese */}
         <Card
           isPressable
           onPress={() => navigate("/visite")}
-          className="corioli-kpi border-l-4 border-amber-500"
+          className="corioli-kpi"
         >
           <CardBody className="p-4">
             <div className="flex items-start justify-between">
@@ -423,7 +539,7 @@ export default function Home() {
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">visite effettuate</p>
               </div>
-              <div className="p-2.5 bg-amber-50 rounded-xl text-amber-600">
+              <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
                 <Clock size={22} />
               </div>
             </div>
@@ -436,8 +552,8 @@ export default function Home() {
         {/* Pazienti Recenti */}
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Users className="text-emerald-600" size={18} />
+            <div className="dashboard-column-header-title">
+              <Users className="text-emerald-600 shrink-0" size={16} />
               <h3 className="text-base font-semibold text-gray-900">
                 Pazienti Recenti
               </h3>
@@ -455,51 +571,65 @@ export default function Home() {
           <CardBody className="p-0">
             {stats.recentPatients.length > 0 ? (
               <div className="divide-y divide-gray-100">
-                {stats.recentPatients.map((patient) => (
-                  <div
-                    key={patient.id}
-                    className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
-                    onClick={() => navigate(`/patient-history/${patient.id}`)}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Avatar
-                        name={patient.nome[0] + patient.cognome[0]}
-                        size="sm"
-                        color="success"
-                        className="transition-transform group-hover:scale-110 flex-shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
-                          {patient.nome} {patient.cognome}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          <CodiceFiscaleValue
-                            value={patient.codiceFiscale}
-                            generatedFromImport={Boolean(
-                              patient.codiceFiscaleGenerato,
-                            )}
-                          />
-                        </p>
+                {stats.recentPatients.map((patient) => {
+                  const displayName = formatPatientDisplayName(patient);
+                  const avatarInitials = displayName
+                    ? `${patient.nome?.[0] ?? ""}${patient.cognome?.[0] ?? ""}`.trim() ||
+                      displayName.slice(0, 2).toUpperCase()
+                    : "?";
+
+                  return (
+                    <div
+                      key={patient.id}
+                      className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
+                      onClick={() => navigate(`/patient-history/${patient.id}`)}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar
+                          name={avatarInitials}
+                          size="sm"
+                          color="default"
+                          className="transition-transform group-hover:scale-110 flex-shrink-0"
+                        />
+                        <div className="min-w-0">
+                          {displayName ? (
+                            <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
+                              {displayName}
+                            </p>
+                          ) : (
+                            <p className="text-sm text-gray-400 italic truncate">
+                              Paziente senza nome
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-500 truncate">
+                            <CodiceFiscaleValue
+                              value={patient.codiceFiscale}
+                              generatedFromImport={Boolean(
+                                patient.codiceFiscaleGenerato,
+                              )}
+                            />
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                        <Chip
+                          size="sm"
+                          variant="flat"
+                          color="default"
+                          className="text-xs"
+                        >
+                          {calculateAge(patient.dataNascita) > 0
+                            ? `${calculateAge(patient.dataNascita)}a`
+                            : "—"}
+                        </Chip>
+                        <ArrowRight
+                          size={14}
+                          className="text-gray-300 group-hover:text-brand-600 transition-colors"
+                        />
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                      <Chip
-                        size="sm"
-                        variant="flat"
-                        color="success"
-                        className="text-xs"
-                      >
-                        {calculateAge(patient.dataNascita) > 0
-                          ? `${calculateAge(patient.dataNascita)}a`
-                          : "—"}
-                      </Chip>
-                      <ArrowRight
-                        size={14}
-                        className="text-gray-300 group-hover:text-brand-600 transition-colors"
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
@@ -522,8 +652,8 @@ export default function Home() {
         {/* Visite Recenti */}
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <FileText className="text-blue-600" size={18} />
+            <div className="dashboard-column-header-title">
+              <FileText className="text-blue-600 shrink-0" size={16} />
               <h3 className="text-base font-semibold text-gray-900">
                 Visite Recenti
               </h3>
@@ -539,28 +669,28 @@ export default function Home() {
             </Button>
           </CardHeader>
           <CardBody className="p-0">
-            {stats.recentVisits.length > 0 ? (
+            {stats.groupedRecentVisits.length > 0 ? (
               <div className="divide-y divide-gray-100">
-                {stats.recentVisits.map((visit) => (
+                {stats.groupedRecentVisits.map((group) => (
                   <div
-                    key={visit.id}
+                    key={`${group.patientId}_${group.dateKey}`}
                     className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
                     onClick={() =>
-                      visit.patientId &&
-                      navigate(`/patient-history/${visit.patientId}`)
+                      group.patientId &&
+                      navigate(`/patient-history/${group.patientId}`)
                     }
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div
                         className={`p-1.5 rounded-lg flex-shrink-0 ${
-                          visit.tipo === "ginecologica"
+                          group.tipo === "ginecologica"
                             ? "bg-danger-50 text-danger-700"
-                            : visit.tipo === "ostetrica"
+                            : group.tipo === "ostetrica"
                               ? "bg-warning-50 text-warning-700"
                               : "bg-default-100 text-default-700"
                         }`}
                       >
-                        {visit.tipo === "ostetrica" ? (
+                        {group.tipo === "ostetrica" ? (
                           <Baby size={14} />
                         ) : (
                           <Stethoscope size={14} />
@@ -568,34 +698,30 @@ export default function Home() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
-                          {visit.patientName}
+                          {group.patientName}
                         </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {visit.descrizioneClinica || "Nessuna descrizione"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                      <div className="text-right">
-                        <Chip
-                          size="sm"
-                          variant="flat"
-                          color={getVisitTypeColor(visit.tipo)}
-                          className="text-xs"
-                        >
-                          {getVisitTypeLabel(visit.tipo)}
-                        </Chip>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(visit.dataVisita).toLocaleDateString(
-                            "it-IT",
+                        <p className="text-xs text-gray-500 truncate flex items-center gap-1 flex-wrap">
+                          {group.mixedTypes ? (
+                            <span>{group.count} visite</span>
+                          ) : (
+                            <Chip
+                              size="sm"
+                              variant="flat"
+                              color={getVisitTypeColor(group.tipo)}
+                              className="text-xs h-5"
+                            >
+                              {getVisitTypePluralPhrase(group.tipo, group.count)}
+                            </Chip>
                           )}
+                          <span className="text-gray-400">·</span>
+                          <span>{group.dateLabel}</span>
                         </p>
                       </div>
-                      <ArrowRight
-                        size={14}
-                        className="text-gray-300 group-hover:text-brand-600 transition-colors"
-                      />
                     </div>
+                    <ArrowRight
+                      size={14}
+                      className="text-gray-300 group-hover:text-brand-600 transition-colors flex-shrink-0 ml-2"
+                    />
                   </div>
                 ))}
               </div>
@@ -617,154 +743,119 @@ export default function Home() {
           </CardBody>
         </Card>
 
-        {/* Esami / Certificati recenti */}
+        {/* Gravidanze in corso */}
         <Card className="corioli-card">
-          <CardHeader className="corioli-card-header flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <FlaskConical className="text-purple-600" size={18} />
-              <h3 className="text-base font-semibold text-gray-900">
-                Esami & Cert.
+          <CardHeader className="corioli-card-header flex justify-between items-center gap-2">
+            <div className="dashboard-column-header-title min-w-0">
+              <i
+                className="ti ti-baby-carriage dashboard-column-header-icon text-emerald-700"
+                aria-hidden
+              />
+              <h3 className="text-base font-semibold text-gray-900 truncate">
+                Gravidanze in corso
               </h3>
             </div>
-            <div className="flex gap-0 rounded-lg bg-default-200/50 p-0.5">
-              <button
-                type="button"
-                onClick={() => setRecentTab("esami")}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  recentTab === "esami"
-                    ? "bg-white shadow-sm text-gray-900"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                Esami
-              </button>
-              <button
-                type="button"
-                onClick={() => setRecentTab("certificati")}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  recentTab === "certificati"
-                    ? "bg-white shadow-sm text-gray-900"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                Certificati
-              </button>
-            </div>
+            <Button
+              size="sm"
+              variant="light"
+              color="primary"
+              endContent={<ChevronRight size={16} />}
+              onPress={() => navigate("/visite?tipo=ostetrica")}
+            >
+              Vedi tutte
+            </Button>
           </CardHeader>
           <CardBody className="p-0">
-            {recentTab === "esami" ? (
-              stats.recentEsami.length > 0 ? (
-                <div className="divide-y divide-gray-100">
-                  {stats.recentEsami.map((esame) => (
-                    <div
-                      key={esame.id}
-                      className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
-                      onClick={() =>
-                        esame.patientId &&
-                        navigate(`/patient-history/${esame.patientId}`)
-                      }
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="p-1.5 rounded-lg flex-shrink-0 bg-cyan-50 text-cyan-600">
-                          <FlaskConical size={14} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
-                            {esame.nome}
+            {activePregnancies.length > 0 ? (
+              <>
+                <div>
+                  {visiblePregnancies.map((pregnancy) => {
+                    const urgencyClass =
+                      pregnancy.daysToBirth <= 7
+                        ? "dashboard-pregnancy-row--urgent-red"
+                        : pregnancy.daysToBirth <= 14
+                          ? "dashboard-pregnancy-row--urgent-amber"
+                          : "";
+
+                    return (
+                      <div
+                        key={pregnancy.patientId}
+                        className={`dashboard-pregnancy-row group ${urgencyClass}`}
+                        onClick={() =>
+                          navigate(`/patient-history/${pregnancy.patientId}`)
+                        }
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            navigate(
+                              `/patient-history/${pregnancy.patientId}`,
+                            );
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="dashboard-pregnancy-avatar">
+                            {pregnancy.initials}
+                          </div>
+                          <p
+                            className="flex-1 min-w-0 truncate group-hover:text-brand-600 transition-colors"
+                            style={{
+                              fontSize: "13px",
+                              fontWeight: 500,
+                              color: "var(--color-text-primary)",
+                            }}
+                          >
+                            {pregnancy.patientName}
                           </p>
-                          <p className="text-xs text-gray-500 truncate">
-                            {esame.patientName}
+                          <span className="dashboard-pregnancy-badge">
+                            {pregnancy.gestationLabel}
+                          </span>
+                          <ArrowRight
+                            size={14}
+                            className="text-gray-300 group-hover:text-brand-600 transition-colors shrink-0"
+                          />
+                        </div>
+                        <div className="dashboard-pregnancy-timeline ml-[42px]">
+                          <PregnancyWeekSegments
+                            weeks={pregnancy.weeks}
+                            days={pregnancy.days}
+                          />
+                          <p className="dashboard-pregnancy-meta truncate">
+                            Settimana {pregnancy.gestationLabel} · DPP:{" "}
+                            {pregnancy.dppLabel} ·{" "}
+                            <PregnancyDaysText
+                              daysToBirth={pregnancy.daysToBirth}
+                            />
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                        <div className="text-right">
-                          <p className="text-xs text-gray-400">
-                            {new Date(esame.dataRichiesta).toLocaleDateString(
-                              "it-IT",
-                            )}
-                          </p>
-                          {esame.note && (
-                            <p className="text-xs text-brand-600 truncate max-w-[80px]">
-                              {esame.note}
-                            </p>
-                          )}
-                        </div>
-                        <ArrowRight
-                          size={14}
-                          className="text-gray-300 group-hover:text-brand-600 transition-colors"
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
-                  <FlaskConical size={32} className="text-gray-200" />
-                  <p className="text-sm text-center">Nessun esame richiesto.</p>
-                  <p className="text-xs text-center text-gray-300">
-                    Gli esami vengono aggiunti dalla scheda del paziente.
-                  </p>
-                </div>
-              )
-            ) : stats.recentCertificati.length > 0 ? (
-              <div className="divide-y divide-gray-100">
-                {stats.recentCertificati.map((cert) => (
-                  <div
-                    key={cert.id}
-                    className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer group"
-                    onClick={() =>
-                      cert.patientId &&
-                      navigate(`/patient-history/${cert.patientId}`)
-                    }
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="p-1.5 rounded-lg flex-shrink-0 bg-brand-100 text-brand-700">
-                        <Award size={14} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
-                          {cert.tipo === "assenza_lavoro"
-                            ? "Assenza da lavoro"
-                            : cert.tipo === "idoneita"
-                              ? "Idoneità"
-                              : cert.tipo === "malattia"
-                                ? "Malattia"
-                                : "Altro"}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {cert.patientName}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                      <div className="text-right">
-                        <p className="text-xs text-gray-400">
-                          {new Date(cert.dataCertificato).toLocaleDateString(
-                            "it-IT",
-                          )}
-                        </p>
-                        {cert.descrizione && (
-                          <p className="text-xs text-brand-600 truncate max-w-[120px]">
-                            {cert.descrizione.slice(0, 40)}
-                            {cert.descrizione.length > 40 ? "…" : ""}
-                          </p>
-                        )}
-                      </div>
-                      <ArrowRight
-                        size={14}
-                        className="text-gray-300 group-hover:text-brand-600 transition-colors"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+              </>
             ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-gray-400 gap-2">
-                <Award size={32} className="text-gray-200" />
-                <p className="text-sm text-center">Nessun certificato.</p>
-                <p className="text-xs text-center text-gray-300">
-                  I certificati si aggiungono dalla scheda del paziente.
+              <div className="flex flex-col items-center justify-center px-6 py-10 text-center gap-2">
+                <i
+                  className="ti ti-baby-carriage"
+                  style={{
+                    fontSize: "32px",
+                    color: "var(--color-text-tertiary)",
+                  }}
+                  aria-hidden
+                />
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  Nessuna gravidanza in corso
+                </p>
+                <p
+                  className="text-xs max-w-[240px]"
+                  style={{ color: "var(--color-text-tertiary)" }}
+                >
+                  Le pazienti ostetriche con UM registrata appariranno qui
+                  automaticamente
                 </p>
               </div>
             )}

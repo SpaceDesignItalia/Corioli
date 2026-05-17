@@ -960,6 +960,62 @@ export default function PatientHistory() {
     }
   };
 
+  const formatCardDateSubtle = (dateString: string) => {
+    try {
+      return format(parseISO(dateString), "d MMMM yyyy", {
+        locale: it,
+      }).toLowerCase();
+    } catch {
+      return dateString;
+    }
+  };
+
+  const hasGynRefertoCompilato = (visit: Visit) => {
+    if (
+      visit.tipo !== "ginecologica" &&
+      visit.tipo !== "ginecologica_pediatrica"
+    ) {
+      return false;
+    }
+    const gyn = visit.ginecologia;
+    if (!gyn) return false;
+    const refertoFields = [
+      gyn.conclusione,
+      gyn.terapiaSpecifica,
+      gyn.esameBimanuale,
+      gyn.speculum,
+      gyn.ecografiaTV,
+      visit.conclusioniDiagnostiche,
+    ];
+    return refertoFields.some((f) => Boolean(f?.trim()));
+  };
+
+  const getGynVisitContextBadges = (
+    visit: Visit,
+  ): Array<"terapia" | "followup"> => {
+    if (!hasGynRefertoCompilato(visit) || !visit.ginecologia) return [];
+    const gyn = visit.ginecologia;
+    const badges: Array<"terapia" | "followup"> = [];
+    if (gyn.terapiaInAtto?.trim()) {
+      badges.push("terapia");
+    }
+    const haystack = [
+      gyn.conclusione,
+      gyn.terapiaSpecifica,
+      gyn.accertamenti,
+      gyn.problemaClinico,
+      visit.anamnesi,
+      visit.terapie,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (/in programma|follow[- ]?up/.test(haystack)) {
+      badges.push("followup");
+    }
+    return badges;
+  };
+
   const getPreviewAnamnesi = (visit: Visit) => {
     if (
       visit.tipo === "ginecologica" ||
@@ -1331,7 +1387,7 @@ export default function PatientHistory() {
     : [];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="corioli-page space-y-6">
       {breadcrumbItems.length > 0 && <Breadcrumb items={breadcrumbItems} />}
 
       {/* 1. Profilo Paziente Unificato */}
@@ -1346,47 +1402,77 @@ export default function PatientHistory() {
                 color={getGenderColor(patient.sesso)}
                 isBordered
               />
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">
                   {patient.nome} {patient.cognome}
                 </h1>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                  <div className="flex items-center gap-1 bg-default-100 px-2 py-1 rounded-md">
-                    <UserIcon size={14} />
-                    <CodiceFiscaleValue
-                      value={patient.codiceFiscale}
-                      generatedFromImport={Boolean(
-                        patient.codiceFiscaleGenerato,
-                      )}
-                    />
-                  </div>
-                  <span className="hidden md:inline text-default-300">|</span>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-600">
+                  <CodiceFiscaleValue
+                    value={patient.codiceFiscale}
+                    generatedFromImport={Boolean(
+                      patient.codiceFiscaleGenerato,
+                    )}
+                  />
+                  <span className="text-default-300">·</span>
                   <span>
                     {formatVisitDate(patient.dataNascita)}
                     <span className="text-default-400 ml-1">
                       ({calculateAge(patient.dataNascita)} anni)
                     </span>
                   </span>
-                  <span className="hidden md:inline text-default-300">|</span>
-                  <span className="font-medium">
-                    {patient.sesso === "M" ? "Maschio" : "Femmina"}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <span className="patient-clinical-badge">
+                    Gruppo {patient.gruppoSanguigno || "—"}
+                  </span>
+                  <span className="patient-clinical-badge">
+                    {patient.altezza != null && patient.altezza > 0
+                      ? `${patient.altezza} cm`
+                      : "—"}
                   </span>
                 </div>
                 {(patient.telefono ||
                   patient.email ||
                   patient.luogoNascita) && (
-                  <div className="text-sm text-gray-500 pt-1 flex flex-wrap gap-x-4">
+                  <div className="text-sm text-gray-500 pt-1 flex flex-wrap gap-x-4 gap-y-1">
                     {patient.luogoNascita && (
-                      <span>📍 {patient.luogoNascita}</span>
+                      <span className="inline-flex items-center">
+                        <i
+                          className="ti ti-map-pin patient-header-contact-icon"
+                          aria-hidden
+                        />
+                        {patient.luogoNascita}
+                      </span>
                     )}
-                    {patient.telefono && <span>📞 {patient.telefono}</span>}
-                    {patient.email && <span>✉️ {patient.email}</span>}
+                    {patient.telefono && (
+                      <span className="inline-flex items-center">
+                        <i
+                          className="ti ti-phone patient-header-contact-icon"
+                          aria-hidden
+                        />
+                        {patient.telefono}
+                      </span>
+                    )}
+                    {patient.email && (
+                      <span className="inline-flex items-center">
+                        <i
+                          className="ti ti-mail patient-header-contact-icon"
+                          aria-hidden
+                        />
+                        {patient.email}
+                      </span>
+                    )}
                   </div>
                 )}
                 {patient.allergie && patient.allergie.trim() !== "" && (
-                  <div className="text-sm text-danger-500 pt-1 flex items-start gap-1">
-                    <span>⚠️</span>
-                    <span className="whitespace-pre-line">
+                  <div className="text-sm text-danger-500 pt-1 flex items-center gap-1">
+                    <span className="inline-flex shrink-0 items-center">
+                      <i
+                        className="ti ti-alert-triangle patient-header-allergy-icon"
+                        aria-hidden
+                      />
+                    </span>
+                    <span className="whitespace-pre-line leading-snug">
                       Allergie: {patient.allergie}
                     </span>
                   </div>
@@ -1395,25 +1481,24 @@ export default function PatientHistory() {
             </div>
 
             {/* Azioni Rapide */}
-            <div className="flex flex-row md:flex-col gap-2 w-full md:w-auto mt-4 md:mt-0">
-              <Button
-                variant="bordered"
-                size="sm"
-                onPress={() => navigate(`/patient-history/${patient.id}/files`)}
-                startContent={<FileTextIcon size={16} />}
-                className="justify-start md:w-40 border-default-300 bg-white"
-              >
-                File
-              </Button>
+            <div className="flex flex-col items-stretch md:items-end gap-1 w-full md:w-auto mt-4 md:mt-0">
               <Button
                 variant="bordered"
                 size="sm"
                 onPress={handleOpenEdit}
-                startContent={<EditIcon size={16} />}
-                className="justify-start md:w-40 border-default-300 bg-white"
+                startContent={<i className="ti ti-edit text-base" aria-hidden />}
+                className="justify-start md:w-44 border-[0.5px] border-default-300 bg-white px-4 py-2 h-auto min-h-0 font-medium"
               >
                 Modifica Dati
               </Button>
+              <button
+                type="button"
+                onClick={() => navigate(`/patient-history/${patient.id}/files`)}
+                className="patient-header-file-btn md:w-44"
+              >
+                <i className="ti ti-folder" aria-hidden />
+                File
+              </button>
             </div>
           </div>
         </CardBody>
@@ -1559,21 +1644,37 @@ export default function PatientHistory() {
                             })}
                           </span>
                         </div>
-                        <Chip
-                          size="sm"
-                          variant="flat"
-                          color={
-                            visit.tipo === "ginecologica" ||
-                            visit.tipo === "ginecologica_pediatrica"
-                              ? "danger"
-                              : visit.tipo === "ostetrica"
-                                ? "primary"
-                                : "primary"
-                          }
-                          className="capitalize font-semibold"
-                        >
-                          {visit.tipo || "Generale"}
-                        </Chip>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color={
+                              visit.tipo === "ginecologica" ||
+                              visit.tipo === "ginecologica_pediatrica"
+                                ? "danger"
+                                : visit.tipo === "ostetrica"
+                                  ? "primary"
+                                  : "primary"
+                            }
+                            className="capitalize font-semibold"
+                          >
+                            {visit.tipo || "Generale"}
+                          </Chip>
+                          {getGynVisitContextBadges(visit).map((badge) => (
+                            <span
+                              key={badge}
+                              className={`visit-context-badge ${
+                                badge === "terapia"
+                                  ? "visit-context-badge--terapia"
+                                  : "visit-context-badge--followup"
+                              }`}
+                            >
+                              {badge === "terapia"
+                                ? "Terapia attiva"
+                                : "Follow-up"}
+                            </span>
+                          ))}
+                        </div>
                       </div>
 
                       {/* Contenuto Principale */}
@@ -1632,30 +1733,30 @@ export default function PatientHistory() {
                         className="flex md:flex-col gap-2 justify-end md:justify-start border-t md:border-t-0 md:border-l border-default-100 pt-3 md:pt-0 md:pl-4"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Button
-                          isIconOnly
-                          size="sm"
-                          variant="light"
-                          color="primary"
-                          onPress={() => navigate(`/edit-visit/${visit.id}`)}
-                          title="Modifica"
+                        <button
+                          type="button"
+                          className="visit-card-icon-btn"
+                          title="Modifica visita"
+                          onClick={() => navigate(`/edit-visit/${visit.id}`)}
                         >
-                          <EditIcon size={18} />
-                        </Button>
+                          <i className="ti ti-edit" aria-hidden />
+                        </button>
                         {(visit.tipo === "ginecologica" ||
                           visit.tipo === "ginecologica_pediatrica" ||
                           visit.tipo === "ostetrica") && (
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="light"
-                            color="primary"
-                            onPress={() => handlePrintPdf(visit)}
-                            isLoading={pdfLoading}
-                            title="Stampa Referto"
+                          <button
+                            type="button"
+                            className="visit-card-icon-btn disabled:opacity-50 disabled:pointer-events-none"
+                            title="Stampa"
+                            onClick={() => handlePrintPdf(visit)}
+                            disabled={pdfLoading}
                           >
-                            <Printer size={18} />
-                          </Button>
+                            {pdfLoading ? (
+                              <Spinner size="sm" color="current" />
+                            ) : (
+                              <i className="ti ti-printer" aria-hidden />
+                            )}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -1749,10 +1850,15 @@ export default function PatientHistory() {
                       className="border border-default-200 shadow-sm hover:border-primary-300 group cursor-pointer w-full min-h-[7.5rem]"
                     >
                       <CardBody className="p-3 min-h-[7.5rem] flex flex-col">
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                            {formatVisitDate(r.dataRichiesta)}
-                          </span>
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="right-col-card-title break-words">
+                              {r.nome}
+                            </h4>
+                            <p className="right-col-card-date">
+                              {formatCardDateSubtle(r.dataRichiesta)}
+                            </p>
+                          </div>
                           <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                             <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditRichiestaEsame(r)} title="Modifica">
                               <EditIcon size={14} />
@@ -1762,7 +1868,6 @@ export default function PatientHistory() {
                             </Button>
                           </div>
                         </div>
-                        <h4 className="font-semibold text-gray-800 text-sm leading-snug mb-1 break-words">{r.nome}</h4>
                         {r.note ? (
                           <p className="text-xs text-gray-500 bg-gray-50 p-1.5 rounded border border-gray-100 break-words line-clamp-3">{r.note}</p>
                         ) : (
@@ -1794,23 +1899,43 @@ export default function PatientHistory() {
                       className="border border-default-200 shadow-sm hover:border-warning-300 group cursor-pointer w-full min-h-[5rem]"
                     >
                       <CardBody className="p-3 min-h-[5rem] flex flex-col">
-                        <div className="flex justify-between items-start mb-1 gap-2">
-                          <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
-                            {format(parseISO(c.dataCertificato), "dd MMM yyyy", { locale: it })}
-                          </span>
-                          <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditCertificato(c)} title="Modifica">
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="right-col-card-title break-words">
+                              {getCertificatoTipoLabel(c.tipo)}
+                            </h4>
+                            <p className="right-col-card-date">
+                              {formatCardDateSubtle(c.dataCertificato)}
+                            </p>
+                          </div>
+                          <div
+                            className="flex gap-1 flex-shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Button
+                              size="sm"
+                              color="primary"
+                              variant="light"
+                              isIconOnly
+                              className="h-6 w-6 min-w-0"
+                              onPress={() => handleOpenEditCertificato(c)}
+                              title="Modifica"
+                            >
                               <EditIcon size={14} />
                             </Button>
-                            <Button size="sm" color="warning" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handlePrintCertificato(c)} isLoading={pdfLoading} title="Stampa PDF">
+                            <Button
+                              size="sm"
+                              color="warning"
+                              variant="light"
+                              isIconOnly
+                              className="h-6 w-6 min-w-0"
+                              onPress={() => handlePrintCertificato(c)}
+                              isLoading={pdfLoading}
+                              title="Stampa PDF"
+                            >
                               <Printer size={14} />
                             </Button>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Chip size="sm" variant="flat" color="warning" className="text-[10px]">
-                            {getCertificatoTipoLabel(c.tipo)}
-                          </Chip>
                         </div>
                         <p className="text-xs text-gray-700 line-clamp-2 break-words">{c.descrizione}</p>
                       </CardBody>

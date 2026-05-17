@@ -5,16 +5,17 @@ type DesktopShellProps = {
   children: React.ReactNode;
 };
 
+/** Larghezza unica per navbar e contenuto — evita salti tra le pagine */
+const SHELL_CLASS = "mx-auto w-full max-w-7xl px-6";
+
 export default function DesktopShell({ children }: DesktopShellProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-slate-50">
-      <div className="sticky top-0 z-50 px-6 pt-6">
+      <header className={`sticky top-0 z-50 pt-6 ${SHELL_CLASS}`}>
         <AppNavbar />
-      </div>
+      </header>
 
-      <main className="container mx-auto px-6 py-8">
-        <div className="max-w-7xl mx-auto">{children}</div>
-      </main>
+      <main className={`py-8 ${SHELL_CLASS}`}>{children}</main>
     </div>
   );
 }
