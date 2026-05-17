@@ -23,7 +23,6 @@ import {
   Upload,
   Download,
   Trash2,
-  Plus,
   Search,
   Eye
 } from "lucide-react";
@@ -240,10 +239,10 @@ export default function Documents() {
 
   const HeaderActions = (
     <Button
-      color="primary"
+      variant="bordered"
       onPress={onUploadOpen}
-      startContent={<Plus size={18} />}
-      className="shadow-md shadow-primary/20"
+      startContent={<FileText size={18} />}
+      className="font-medium border-default-300 text-default-700 bg-white"
     >
       Carica Documento
     </Button>
@@ -329,10 +328,10 @@ export default function Documents() {
                   }
                 </p>
                 <Button
-                  color="primary"
+                  variant="bordered"
                   onPress={onUploadOpen}
-                  startContent={<Plus size={18} />}
-                  className="shadow-md shadow-primary/20"
+                  startContent={<FileText size={18} />}
+                  className="font-medium border-default-300 text-default-700 bg-white"
                 >
                   Carica Primo Documento
                 </Button>

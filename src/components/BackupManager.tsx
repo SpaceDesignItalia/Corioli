@@ -539,7 +539,7 @@ const BackupManager: React.FC = () => {
 
   return (
     <>
-      <Button onPress={onOpen} color="primary" variant="shadow" startContent={<Database size={18} />}>
+      <Button onPress={onOpen} color="primary" variant="shadow">
         Gestione Dati Completa
       </Button>
 

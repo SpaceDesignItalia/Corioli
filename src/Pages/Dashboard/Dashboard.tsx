@@ -337,14 +337,14 @@ export default function Dashboard() {
   );
 
   const HeaderActions = (
-    <div className="flex gap-3">
+    <div className="flex gap-3 w-full md:w-auto">
       <Button
         color="primary"
         startContent={<UserPlus size={18} />}
         onPress={() => navigate("/add-patient")}
-        className="font-medium shadow-md shadow-primary/20"
+        className="font-medium shadow-md shadow-primary/20 flex-1 md:flex-none"
       >
-        Aggiungi Paziente
+        Nuovo Paziente
       </Button>
     </div>
   );
@@ -627,12 +627,11 @@ export default function Dashboard() {
           </p>
           <Button
             color="primary"
-            size="lg"
+            startContent={<UserPlus size={18} />}
             onPress={() => navigate("/add-patient")}
-            startContent={<span className="text-xl">+</span>}
-            className="shadow-lg shadow-primary/20"
+            className="font-medium shadow-md shadow-primary/20"
           >
-            Aggiungi Paziente
+            Nuovo Paziente
           </Button>
         </div>
       )}

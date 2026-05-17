@@ -18,7 +18,7 @@ import {
   Select,
   SelectItem,
 } from "@nextui-org/react";
-import { FileText, ChevronRight, Plus, Calendar, Eye, Printer, Maximize2, Minimize2, DownloadIcon, Trash2Icon } from "lucide-react";
+import { FileText, ChevronRight, Calendar, Eye, Printer, Maximize2, Minimize2, DownloadIcon, Trash2Icon } from "lucide-react";
 import { PatientService, VisitService, PreferenceService, DoctorService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Visit, Patient, Doctor } from "../../types/Storage";
@@ -530,10 +530,10 @@ export default function Visite() {
 
   const HeaderActions = (
     <Button
-      color="primary"
-      startContent={<Plus size={18} />}
+      variant="bordered"
+      startContent={<Calendar size={18} />}
       onPress={() => navigate("/check-patient")}
-      className="shadow-md shadow-primary/20"
+      className="font-medium border-default-300 text-default-700 bg-white"
     >
       Nuova Visita
     </Button>
