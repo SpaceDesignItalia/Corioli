@@ -94,25 +94,25 @@ export function normalCDF(x: number): number {
 }
 
 /**
- * Stima il rango centile (0-100) assumendo una distribuzione normale.
- * Ricostruisce Media e SD dai percentili p5, p50, p95 forniti.
- * Mean = p50
- * SD = (p95 - p5) / 3.29  (poiché p5-p95 copre +/- 1.645 SD = 3.29 SD)
+ * Stima il rango centile (0-100) con approccio split-half SD.
+ * Per value ≤ p50 usa sdLeft = (p50-p5)/1.645; per value > p50 usa sdRight = (p95-p50)/1.645.
+ * Garantisce i valori esatti (5%, 50%, 95%) ai punti di riferimento e gestisce
+ * correttamente distribuzioni asimmetriche (peso fetale, PI).
  */
 export function estimateCentileRank(value: number, p5: number, p50: number, p95: number): number {
-  // Sanity check
   if (p5 >= p95) return 50;
 
-  const mean = p50;
-  const sd = (p95 - p5) / 3.29;
-
-  if (sd <= 0) return 50;
-
-  const z = (value - mean) / sd;
-  const percentile = normalCDF(z) * 100;
-
-  // Clamp 0-100 (anche se CDF lo fa già matematicamente, utile per precisione JS)
-  return Math.min(100, Math.max(0, percentile));
+  if (value <= p50) {
+    const sdLeft = (p50 - p5) / 1.645;
+    if (sdLeft <= 0) return 50;
+    const z = (value - p50) / sdLeft;
+    return Math.min(100, Math.max(0, normalCDF(z) * 100));
+  } else {
+    const sdRight = (p95 - p50) / 1.645;
+    if (sdRight <= 0) return 50;
+    const z = (value - p50) / sdRight;
+    return Math.min(100, Math.max(0, normalCDF(z) * 100));
+  }
 }
 
 /** Formatta il centile per la UI (es. <5°, 78°, >95°) */
@@ -138,12 +138,25 @@ export function getCentileForWeight(weightG: number, gaWeeks: number): number | 
   if (gaWeeks < MIN_WEEK || gaWeeks > MAX_WEEK || weightG <= 0) return null;
   const row = getPercentilesAtWeek(gaWeeks);
   if (!row) return null;
-  // row corrisponde a CENTILE_INDEX = [5, 10, 25, 50, 75, 90, 95]
-  // Usiamo p5 (idx 0), p50 (idx 3), p95 (idx 6) per coerenza col PDF
-  const p5 = row[0] ?? 0;
-  const p50 = row[3] ?? 0;
-  const p95 = row[6] ?? 0;
-  return estimateCentileRank(weightG, p5, p50, p95);
+  // CENTILE_INDEX = [5, 10, 25, 50, 75, 90, 95]
+  // Sotto p5: estrapolazione Gaussiana con sdLeft = (p50-p5)/1.645
+  if (weightG <= row[0]) {
+    return estimateCentileRank(weightG, row[0], row[3], row[6]);
+  }
+  // Sopra p95: estrapolazione Gaussiana con sdRight = (p95-p50)/1.645
+  if (weightG >= row[6]) {
+    return estimateCentileRank(weightG, row[0], row[3], row[6]);
+  }
+  // Nell'intervallo p5-p95: interpolazione lineare diretta tra i 7 punti noti
+  for (let i = 0; i < CENTILE_INDEX.length - 1; i++) {
+    const lo = row[i];
+    const hi = row[i + 1];
+    if (weightG >= lo && weightG <= hi) {
+      const t = (weightG - lo) / (hi - lo);
+      return CENTILE_INDEX[i] + t * (CENTILE_INDEX[i + 1] - CENTILE_INDEX[i]);
+    }
+  }
+  return null;
 }
 
 /**

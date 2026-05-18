@@ -1219,6 +1219,7 @@ export default function AddVisit() {
             bioUpdates[pctKeyMap[measField]] = p != null ? Math.round(p) : undefined;
           }
         });
+        bioUpdates["efwPercentile"] = undefined;
         return { ...prev, [field]: value, biometriaFetale: { ...bio, ...bioUpdates } };
       });
       return;
@@ -1267,6 +1268,7 @@ export default function AddVisit() {
               bioUpdates[pctKeyMap[measField]] = p != null ? Math.round(p) : undefined;
             }
           });
+          bioUpdates["efwPercentile"] = undefined;
           next.biometriaFetale = { ...bio, ...bioUpdates };
         }
         const oldSett = prev.settimaneGestazione || "—";
