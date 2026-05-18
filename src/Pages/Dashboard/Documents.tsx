@@ -23,7 +23,6 @@ import {
   Upload,
   Download,
   Trash2,
-  Plus,
   Search,
   Eye
 } from "lucide-react";
@@ -46,7 +45,7 @@ const getCategoryColor = (category: string) => {
     case "certificato":
       return "success";
     case "altro":
-      return "secondary";
+      return "primary";
     default:
       return "default";
   }
@@ -240,17 +239,17 @@ export default function Documents() {
 
   const HeaderActions = (
     <Button
-      color="primary"
+      variant="bordered"
       onPress={onUploadOpen}
-      startContent={<Plus size={18} />}
-      className="shadow-md shadow-primary/20"
+      startContent={<FileText size={18} />}
+      className="font-medium border-default-300 text-default-700 bg-white"
     >
       Carica Documento
     </Button>
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
         title="Gestione Documenti"
         subtitle="Archivia e consulta corsi ECM, certificati e documenti professionali."
@@ -329,10 +328,10 @@ export default function Documents() {
                   }
                 </p>
                 <Button
-                  color="primary"
+                  variant="bordered"
                   onPress={onUploadOpen}
-                  startContent={<Plus size={18} />}
-                  className="shadow-md shadow-primary/20"
+                  startContent={<FileText size={18} />}
+                  className="font-medium border-default-300 text-default-700 bg-white"
                 >
                   Carica Primo Documento
                 </Button>

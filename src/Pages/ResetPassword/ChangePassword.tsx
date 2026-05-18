@@ -68,7 +68,7 @@ export default function ChangePassword() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-r from-blue-50 to-blue-100 py-10 px-4">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-brand-50 via-white to-slate-50 py-10 px-4">
       <div className="bg-white shadow-xl ring-1 ring-gray-900/10 rounded-2xl p-8 w-full max-w-3xl">
         <h1 className="text-4xl font-extrabold text-gray-900 mb-8 text-center">
           Cambia Password

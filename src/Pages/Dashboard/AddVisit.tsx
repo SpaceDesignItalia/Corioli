@@ -5,7 +5,6 @@ import {
   CardHeader,
   Input,
   Button,
-  Textarea,
   Divider,
   Tabs,
   Tab,
@@ -25,12 +24,7 @@ import {
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 
-/** Stile tipografia fissa per i Textarea del referto: evita che il testo cambi aspetto quando diventa molto lungo. */
-const REFERTO_TEXTAREA_CLASSES = {
-  input: "!text-base !leading-relaxed font-normal",
-  inputWrapper:
-    "group-hover:border-primary transition-colors bg-white",
-} as const;
+import { RefertoTextarea } from "../../components/RefertoTextarea";
 import { addDays, differenceInDays, parseISO, isValid, format, subDays } from "date-fns";
 import {
   PatientService,
@@ -98,6 +92,33 @@ function PercentileBar({ percentile, showText = true }: { percentile: number | n
       {showText && <span className="text-xs text-default-600 tabular-nums shrink-0">{Math.round(percentile)}°</span>}
     </div>
   );
+}
+
+/** Mostra PI/IR con virgola decimale (locale IT). */
+function formatFlussimetriaNumForInput(n: number): string {
+  return String(n).replace(".", ",");
+}
+
+/**
+ * Parsing durante digitazione: non committa se l'utente sta ancora scrivendo la parte decimale (es. "1,").
+ */
+function parseFlussimetriaFieldLive(
+  raw: string,
+): number | undefined | "incomplete" {
+  const t = raw.trim();
+  if (t === "") return undefined;
+  if (t === "-" || t === "+") return "incomplete";
+  if (/[.,]$/.test(t)) return "incomplete";
+  const n = parseFloat(t.replace(",", "."));
+  if (!Number.isFinite(n)) return undefined;
+  return n;
+}
+
+function parseFlussimetriaFieldBlur(raw: string): number | undefined {
+  const t = raw.trim();
+  if (t === "") return undefined;
+  const n = parseFloat(t.replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /** Controlli anamnesi ginecologica */
@@ -284,6 +305,52 @@ const createDefaultOstetriciaData = () => ({
     | undefined,
 });
 
+type OstetriciaFormState = ReturnType<typeof createDefaultOstetriciaData>;
+
+function mergeFlussimetriaDraftIntoOstetricia(
+  ostetricia: OstetriciaFormState,
+  draft: { pi: string | null; ri: string | null },
+): OstetriciaFormState {
+  if (draft.pi === null && draft.ri === null) return ostetricia;
+  const prevF = ostetricia.flussimetriaOmbelicale ?? {};
+  const nextF = { ...prevF };
+  if (draft.pi !== null) {
+    const v = parseFlussimetriaFieldBlur(draft.pi);
+    if (v !== undefined) nextF.pi = v;
+    else delete nextF.pi;
+  }
+  if (draft.ri !== null) {
+    const v = parseFlussimetriaFieldBlur(draft.ri);
+    if (v !== undefined) nextF.ri = v;
+    else delete nextF.ri;
+  }
+  return { ...ostetricia, flussimetriaOmbelicale: nextF };
+}
+
+function computeFlussimetriaCalcoliSnapshot(ostetricia: OstetriciaFormState) {
+  const f = ostetricia.flussimetriaOmbelicale;
+  const ga = parseGestationalWeeks(ostetricia.settimaneGestazione ?? "");
+
+  if (f?.pi != null && f?.ri != null) {
+    const pi = Number(f.pi);
+    const ri = Number(f.ri);
+    if (!Number.isFinite(pi) || !Number.isFinite(ri)) return null;
+    const piPercentile = ga != null ? getUmbilicalPiPercentile(pi, ga) : null;
+    const riPercentile = ga != null ? getUmbilicalRiPercentile(ri, ga) : null;
+    return { pi, ri, piPercentile, riPercentile };
+  }
+
+  const psv = f?.psv != null ? Number(f.psv) : NaN;
+  const edv = f?.edv != null ? Number(f.edv) : NaN;
+  const vm = f?.velocitaMedia != null ? Number(f.velocitaMedia) : 0;
+  if (!isFinite(psv) || !isFinite(edv) || vm === 0) return null;
+  const pi = (psv - edv) / vm;
+  const ri = psv !== 0 ? (psv - edv) / psv : NaN;
+  const piPercentile = ga != null ? getUmbilicalPiPercentile(pi, ga) : null;
+  const riPercentile = ga != null ? getUmbilicalRiPercentile(ri, ga) : null;
+  return { pi, ri, piPercentile, riPercentile };
+}
+
 export default function AddVisit() {
   const [searchParams] = useSearchParams();
   const { visitId } = useParams<{ visitId: string }>();
@@ -331,6 +398,12 @@ export default function AddVisit() {
   const [ostetriciaData, setOstetriciaData] = useState(
     createDefaultOstetriciaData,
   );
+  /** Testo libero PI/IR mentre il campo ha focus (virgola decimale senza perdere "1," durante la digitazione). */
+  const [flussimetriaOmbelicaleDraft, setFlussimetriaOmbelicaleDraft] =
+    useState<{ pi: string | null; ri: string | null }>({
+      pi: null,
+      ri: null,
+    });
 
   useEffect(() => {
     const loadData = async () => {
@@ -345,6 +418,7 @@ export default function AddVisit() {
       setVisitData(createDefaultVisitData());
       setGinecologiaData(createDefaultGinecologiaData());
       setOstetriciaData(createDefaultOstetriciaData());
+      setFlussimetriaOmbelicaleDraft({ pi: null, ri: null });
 
       try {
         const templates = await TemplateService.getAllTemplates();
@@ -643,6 +717,18 @@ export default function AddVisit() {
         return false;
       }
 
+      const ostetriciaForSave =
+        visitData.tipo === "ostetrica"
+          ? mergeFlussimetriaDraftIntoOstetricia(
+              ostetriciaData,
+              flussimetriaOmbelicaleDraft,
+            )
+          : ostetriciaData;
+      const flussimetriaCalcoliForSave =
+        visitData.tipo === "ostetrica"
+          ? computeFlussimetriaCalcoliSnapshot(ostetriciaForSave)
+          : null;
+
       const visitToSave = {
         patientId: patient.id,
         dataVisita: visitData.dataVisita,
@@ -660,12 +746,16 @@ export default function AddVisit() {
         ostetricia:
           visitData.tipo === "ostetrica"
             ? {
-                ...ostetriciaData,
-                flussimetriaOmbelicale: ostetriciaData.flussimetriaOmbelicale
+                ...ostetriciaForSave,
+                flussimetriaOmbelicale: ostetriciaForSave.flussimetriaOmbelicale
                   ? {
-                      ...ostetriciaData.flussimetriaOmbelicale,
-                      piPercentile: flussimetriaCalcoli?.piPercentile ?? ostetriciaData.flussimetriaOmbelicale.piPercentile,
-                      riPercentile: flussimetriaCalcoli?.riPercentile ?? ostetriciaData.flussimetriaOmbelicale.riPercentile,
+                      ...ostetriciaForSave.flussimetriaOmbelicale,
+                      piPercentile:
+                        flussimetriaCalcoliForSave?.piPercentile ??
+                        ostetriciaForSave.flussimetriaOmbelicale.piPercentile,
+                      riPercentile:
+                        flussimetriaCalcoliForSave?.riPercentile ??
+                        ostetriciaForSave.flussimetriaOmbelicale.riPercentile,
                     }
                   : undefined,
               }
@@ -680,6 +770,10 @@ export default function AddVisit() {
         await VisitService.addVisit(visitToSave);
         setHasUnsavedChanges(false);
         showToast("Visita salvata con successo!");
+      }
+      if (visitData.tipo === "ostetrica") {
+        setOstetriciaData(ostetriciaForSave);
+        setFlussimetriaOmbelicaleDraft({ pi: null, ri: null });
       }
       if (!options?.skipRedirect) {
         setTimeout(() => navigate(`/patient-history/${patient.id}`), 1000);
@@ -1257,39 +1351,17 @@ export default function AddVisit() {
     }));
   };
 
-  const flussimetriaCalcoli = useMemo(() => {
-    const f = ostetriciaData.flussimetriaOmbelicale;
-    const ga = parseGestationalWeeks(ostetriciaData.settimaneGestazione ?? "");
-
-    // Inserimento diretto PI, IR (flusso principale)
-    if (f?.pi != null && f?.ri != null) {
-      const pi = Number(f.pi);
-      const ri = Number(f.ri);
-      if (!Number.isFinite(pi) || !Number.isFinite(ri)) return null;
-      const piPercentile = ga != null ? getUmbilicalPiPercentile(pi, ga) : null;
-      const riPercentile = ga != null ? getUmbilicalRiPercentile(ri, ga) : null;
-      return { pi, ri, piPercentile, riPercentile };
-    }
-
-    // Retrocompatibilità: da PSV, EDV, velocità media
-    const psv = f?.psv != null ? Number(f.psv) : NaN;
-    const edv = f?.edv != null ? Number(f.edv) : NaN;
-    const vm = f?.velocitaMedia != null ? Number(f.velocitaMedia) : 0;
-    if (!isFinite(psv) || !isFinite(edv) || vm === 0) return null;
-    const pi = (psv - edv) / vm;
-    const ri = psv !== 0 ? (psv - edv) / psv : NaN;
-    const edf = edv > 0 ? "positivo" as const : edv === 0 ? "assente" as const : "invertito" as const;
-    const piPercentile = ga != null ? getUmbilicalPiPercentile(pi, ga) : null;
-    const riPercentile = ga != null ? getUmbilicalRiPercentile(ri, ga) : null;
-    return { pi, ri, piPercentile, riPercentile };
-  }, [
+  const flussimetriaCalcoli = useMemo(
+    () => computeFlussimetriaCalcoliSnapshot(ostetriciaData),
+    [
     ostetriciaData.flussimetriaOmbelicale?.pi,
     ostetriciaData.flussimetriaOmbelicale?.ri,
     ostetriciaData.flussimetriaOmbelicale?.psv,
     ostetriciaData.flussimetriaOmbelicale?.edv,
     ostetriciaData.flussimetriaOmbelicale?.velocitaMedia,
     ostetriciaData.settimaneGestazione,
-  ]);
+    ],
+  );
 
   const scalePesoFetale = useMemo(() => {
     const b = ostetriciaData.biometriaFetale ?? {
@@ -1370,7 +1442,7 @@ export default function AddVisit() {
     isPediatricVisitEnabled || visitData.tipo === "ginecologica_pediatrica";
 
   return (
-    <div className="max-w-[1200px] mx-auto space-y-6 pb-32">
+    <div className="corioli-page space-y-6 pb-32">
       {/* 1. Header Navigation */}
       <Breadcrumb items={breadcrumbItems} />
 
@@ -1731,7 +1803,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ginecologiaData.prestazione}
                         onValueChange={(value) =>
                           handleGinecologiaChange("prestazione", value)
@@ -1739,7 +1811,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1748,7 +1819,7 @@ export default function AddVisit() {
                       <label className="text-sm font-bold text-gray-700 block mb-1">
                         2. Descrizione Problema / Dati Clinici
                       </label>
-                      <Textarea
+                      <RefertoTextarea
                         value={ginecologiaData.problemaClinico}
                         onValueChange={(value) =>
                           handleGinecologiaChange("problemaClinico", value)
@@ -1756,7 +1827,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="La paziente riferisce..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1781,7 +1851,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ginecologiaData.esameBimanuale}
                         onValueChange={(value) =>
                           handleGinecologiaChange("esameBimanuale", value)
@@ -1789,7 +1859,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={5}
                         placeholder="Esame bimanuale, speculum, ecografia TV office..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -1814,7 +1883,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ginecologiaData.terapiaSpecifica}
                         onValueChange={(value) =>
                           handleGinecologiaChange("terapiaSpecifica", value)
@@ -1822,7 +1891,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Si consiglia..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
                   </CardBody>
@@ -1987,7 +2055,7 @@ export default function AddVisit() {
                             }
                           />
                         </div>
-                        <Textarea
+                        <RefertoTextarea
                           value={ginecologiaData.prestazione}
                           onValueChange={(value) =>
                             handleGinecologiaChange("prestazione", value)
@@ -1995,7 +2063,6 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -2004,7 +2071,7 @@ export default function AddVisit() {
                         <label className="text-sm font-bold text-gray-700 block mb-1">
                           2. Descrizione Problema / Dati Clinici
                         </label>
-                        <Textarea
+                        <RefertoTextarea
                           value={ginecologiaData.problemaClinico}
                           onValueChange={(value) =>
                             handleGinecologiaChange("problemaClinico", value)
@@ -2012,7 +2079,6 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="La paziente riferisce..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -2037,7 +2103,7 @@ export default function AddVisit() {
                             }
                           />
                         </div>
-                        <Textarea
+                        <RefertoTextarea
                           value={ginecologiaData.esameBimanuale}
                           onValueChange={(value) =>
                             handleGinecologiaChange("esameBimanuale", value)
@@ -2045,7 +2111,6 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={5}
                           placeholder="Esame bimanuale, speculum, ecografia TV office..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
 
@@ -2070,7 +2135,7 @@ export default function AddVisit() {
                             }
                           />
                         </div>
-                        <Textarea
+                        <RefertoTextarea
                           value={ginecologiaData.terapiaSpecifica}
                           onValueChange={(value) =>
                             handleGinecologiaChange("terapiaSpecifica", value)
@@ -2078,7 +2143,6 @@ export default function AddVisit() {
                           variant="bordered"
                           minRows={3}
                           placeholder="Si consiglia..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                         />
                       </div>
                     </CardBody>
@@ -2800,26 +2864,69 @@ export default function AddVisit() {
                           }
                         }
 
+                        const fieldKey = item.key as "pi" | "ri";
+                        const draftVal =
+                          fieldKey === "pi"
+                            ? flussimetriaOmbelicaleDraft.pi
+                            : flussimetriaOmbelicaleDraft.ri;
+
                         return (
                           <div key={item.key} className="flex flex-col gap-1">
                             <Input
-                              type="number"
+                              type="text"
+                              inputMode="decimal"
                               label={item.label}
                               size="sm"
                               variant="bordered"
                               labelPlacement="outside"
                               placeholder={item.placeholder}
-                              step={0.01}
-                              value={val != null ? String(val) : ""}
-                              onValueChange={(v) =>
-                                handleFlussimetriaOmbelicaleChange(
-                                  item.key as "pi" | "ri",
-                                  v === ""
-                                    ? undefined
-                                    : parseFloat(v.replace(",", ".")) ||
-                                        undefined,
-                                )
+                              value={
+                                draftVal ??
+                                (val != null && Number.isFinite(Number(val))
+                                  ? formatFlussimetriaNumForInput(Number(val))
+                                  : "")
                               }
+                              onFocus={() => {
+                                setFlussimetriaOmbelicaleDraft((d) => ({
+                                  ...d,
+                                  [fieldKey]:
+                                    val != null &&
+                                    Number.isFinite(Number(val))
+                                      ? formatFlussimetriaNumForInput(
+                                          Number(val),
+                                        )
+                                      : "",
+                                }));
+                              }}
+                              onBlur={() => {
+                                const raw =
+                                  fieldKey === "pi"
+                                    ? flussimetriaOmbelicaleDraft.pi
+                                    : flussimetriaOmbelicaleDraft.ri;
+                                if (raw !== null) {
+                                  handleFlussimetriaOmbelicaleChange(
+                                    fieldKey,
+                                    parseFlussimetriaFieldBlur(raw),
+                                  );
+                                }
+                                setFlussimetriaOmbelicaleDraft((d) => ({
+                                  ...d,
+                                  [fieldKey]: null,
+                                }));
+                              }}
+                              onValueChange={(v) => {
+                                setFlussimetriaOmbelicaleDraft((d) => ({
+                                  ...d,
+                                  [fieldKey]: v,
+                                }));
+                                const live = parseFlussimetriaFieldLive(v);
+                                if (live !== "incomplete") {
+                                  handleFlussimetriaOmbelicaleChange(
+                                    fieldKey,
+                                    live,
+                                  );
+                                }
+                              }}
                               classNames={{ label: "pb-1" }}
                             />
                             <div className="flex items-center gap-2 px-1 min-h-[24px]">
@@ -2880,7 +2987,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ostetriciaData.prestazione}
                         onValueChange={(value) =>
                           handleOstetriciaChange("prestazione", value)
@@ -2888,7 +2995,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Anamnesi ostetrica, motivo della visita, dati clinici..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2897,7 +3003,7 @@ export default function AddVisit() {
                       <label className="text-sm font-bold text-gray-700 block mb-1">
                         2. Descrizione Problema
                       </label>
-                      <Textarea
+                      <RefertoTextarea
                         value={ostetriciaData.problemaClinico}
                         onValueChange={(value) =>
                           handleOstetriciaChange("problemaClinico", value)
@@ -2905,7 +3011,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Motivo della visita, sintomi riferiti..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2930,7 +3035,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ostetriciaData.esameObiettivo}
                         onValueChange={(value) =>
                           handleOstetriciaChange("esameObiettivo", value)
@@ -2938,7 +3043,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={5}
                         placeholder="Biometria fetale, liquido amniotico..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
 
@@ -2963,7 +3067,7 @@ export default function AddVisit() {
                           }
                         />
                       </div>
-                      <Textarea
+                      <RefertoTextarea
                         value={ostetriciaData.noteOstetriche}
                         onValueChange={(value) =>
                           handleOstetriciaChange("noteOstetriche", value)
@@ -2971,7 +3075,6 @@ export default function AddVisit() {
                         variant="bordered"
                         minRows={3}
                         placeholder="Raccomandazioni e follow-up..."
-                        classNames={REFERTO_TEXTAREA_CLASSES}
                       />
                     </div>
                   </CardBody>
@@ -3000,7 +3103,7 @@ export default function AddVisit() {
 
           <div className="flex gap-3">
             <Button
-              color="secondary"
+              color="primary"
               variant="flat"
               size="md"
               onPress={handlePrintPdf}
@@ -3018,9 +3121,9 @@ export default function AddVisit() {
 
             <Button
               onPress={() => handleSubmit()}
-              color="success"
+              color="primary"
               size="md"
-              className="px-6 font-bold text-white shadow-lg shadow-success/20 rounded-full"
+              className="px-6 font-bold shadow-lg shadow-primary/20 rounded-full"
               isLoading={loading}
               isDisabled={loading}
               startContent={<Save size={18} />}

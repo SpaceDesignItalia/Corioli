@@ -69,18 +69,18 @@ export default function Login() {
     <div
       style={{
         fontFamily: "sans-serif",
-        background: "linear-gradient(105deg, #67a2b2, #e9f6ff)",
-        color: "#333",
+        background: "linear-gradient(160deg, #F0F9F9 0%, #FFFFFF 50%, #F8FAFC 100%)",
+        color: "#0F172A",
       }}
       className="md:h-screen relative"
     >
       <div className="absolute top-4 right-4 flex items-center space-x-2">
             <button
               onClick={() => navigate("/about-us")}
-              className="text-blue-600 font-semibold hover:underline flex items-center space-x-1"
+              className="text-brand-800 font-semibold hover:underline flex items-center space-x-1"
             >
               <span>About Us</span>
-              <ArrowForwardIcon className="text-blue-600" />
+              <ArrowForwardIcon className="text-brand-800" />
             </button>
       </div>
       <div className="grid md:grid-cols-2 items-center gap-8 h-full">
@@ -105,7 +105,7 @@ export default function Login() {
                 Non hai un account?
                 <a
                   href="/register"
-                  className="text-blue-600 font-semibold hover:underline ml-1 whitespace-nowrap"
+                  className="text-brand-800 font-semibold hover:underline ml-1 whitespace-nowrap"
                 >
                   Registrati qu
                 </a>
@@ -153,7 +153,7 @@ export default function Login() {
               <div>
                 <a
                   href="/forgotten-password"
-                  className="text-blue-600 font-semibold text-sm hover:underline"
+                  className="text-brand-800 font-semibold text-sm hover:underline"
                 >
                   Password dimenticata?
                 </a>
@@ -167,7 +167,7 @@ export default function Login() {
                 type="submit"
                 disabled={isLoading}
                 className={`w-full shadow-xl py-2.5 px-4 text-sm font-semibold rounded-full text-white ${
-                  isLoading ? "bg-gray-400" : "bg-[#333] hover:bg-[#222]"
+                  isLoading ? "bg-gray-400" : "bg-brand-800 hover:bg-brand-900"
                 } focus:outline-none`}
               >
                 {isLoading ? "Caricamento..." : "Accedi"}

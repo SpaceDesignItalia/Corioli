@@ -21,16 +21,16 @@ const ComingSoon: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-r from-blue-300 to-blue-600 py-10 px-4">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-r from-brand-200 to-brand-700 py-10 px-4">
       <div className="bg-white shadow-xl ring-1 ring-gray-900/10 rounded-2xl p-8 w-full max-w-2xl text-center">
-        <h1 className="text-5xl font-extrabold text-gray-900 mb-8 bg-clip-text text-transparent bg-gradient-to-r from-blue-300 via-blue-500 to-blue-800">
+        <h1 className="text-5xl font-extrabold text-gray-900 mb-8 bg-clip-text text-transparent bg-gradient-to-r from-brand-300 via-brand-500 to-brand-800">
           In Costruzione
         </h1>
         <p className="text-lg mb-8 text-gray-800">
           Stiamo lavorando per portare nuove funzionalità!
         </p>
         <button
-          className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-lg"
+          className="px-6 py-3 bg-brand-800 text-white rounded-lg hover:bg-brand-900 transition text-lg"
           onClick={handleNotifyClick}
         >
           Domande

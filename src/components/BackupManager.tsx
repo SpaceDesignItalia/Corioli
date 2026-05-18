@@ -539,7 +539,7 @@ const BackupManager: React.FC = () => {
 
   return (
     <>
-      <Button onPress={onOpen} color="primary" variant="shadow" startContent={<Database size={18} />}>
+      <Button onPress={onOpen} color="primary" variant="shadow">
         Gestione Dati Completa
       </Button>
 
@@ -684,9 +684,9 @@ const BackupManager: React.FC = () => {
                         </CardBody>
                       </Card>
 
-                      <Card className="bg-secondary-50">
+                      <Card className="bg-brand-100">
                         <CardBody className="gap-4">
-                          <div className="flex items-center gap-3 text-secondary">
+                          <div className="flex items-center gap-3 text-primary">
                             <Upload size={24} />
                             <h3 className="text-lg font-semibold">Importa Backup</h3>
                           </div>
@@ -704,7 +704,7 @@ const BackupManager: React.FC = () => {
                               disabled={isLoading}
                             />
                             <Button
-                              color="secondary"
+                              color="primary"
                               className="w-full"
                               startContent={<Upload size={18} />}
                               onPress={() => fileInputRef.current?.click()}
@@ -775,7 +775,7 @@ const BackupManager: React.FC = () => {
                             />
 
                             <Button
-                              color="success"
+                              color="primary"
                               variant="flat"
                               onPress={() => patientsCsvInputRef.current?.click()}
                               isDisabled={isLoading}
@@ -784,7 +784,7 @@ const BackupManager: React.FC = () => {
                             </Button>
 
                             <Button
-                              color="success"
+                              color="primary"
                               variant="flat"
                               onPress={() => appointmentsCsvInputRef.current?.click()}
                               isDisabled={isLoading}
@@ -796,7 +796,7 @@ const BackupManager: React.FC = () => {
                           </div>
 
                           <Button
-                            color="success"
+                            color="primary"
                             onPress={handleImportCsvData}
                             isLoading={isLoading && !csvImportProgress}
                             isDisabled={!patientsCsvFile || !appointmentsCsvFile}
@@ -810,7 +810,7 @@ const BackupManager: React.FC = () => {
                             <Progress
                               size="md"
                               value={(csvImportProgress.current / Math.max(1, csvImportProgress.total)) * 100}
-                              color="success"
+                              color="primary"
                               className="max-w-full"
                               aria-label={`Import in corso: ${csvImportProgress.phase} ${csvImportProgress.current}/${csvImportProgress.total}`}
                             />

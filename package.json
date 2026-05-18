@@ -1,7 +1,7 @@
 {
   "name": "appdottori",
   "private": true,
-  "version": "1.0.10",
+  "version": "1.1.0",
   "type": "module",
   "description": "Gestione pazienti e visite - Corioli",
   "author": "Pablo",
@@ -30,6 +30,7 @@
     "@mui/x-date-pickers": "^7.14.0",
     "@nextui-org/react": "^2.6.11",
     "@orbytapp/orbyt-sdk": "^1.0.1-beta.8",
+    "codice-fiscale-ts": "^1.3.3",
     "date-fns": "^3.6.0",
     "dayjs": "^1.11.13",
     "dompurify": "^3.1.6",

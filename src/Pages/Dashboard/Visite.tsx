@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
   CardBody,
@@ -18,7 +18,7 @@ import {
   Select,
   SelectItem,
 } from "@nextui-org/react";
-import { FileText, ChevronRight, Plus, Calendar, Eye, Printer, Maximize2, Minimize2, DownloadIcon, Trash2Icon } from "lucide-react";
+import { FileText, ChevronRight, Calendar, Eye, Printer, Maximize2, Minimize2, DownloadIcon, Trash2Icon } from "lucide-react";
 import { PatientService, VisitService, PreferenceService, DoctorService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Visit, Patient, Doctor } from "../../types/Storage";
@@ -75,8 +75,16 @@ interface EnrichedVisit extends Visit {
   patientCf: string;
 }
 
+const VISIT_TYPE_FILTERS = new Set([
+  "generale",
+  "ginecologica",
+  "ginecologica_pediatrica",
+  "ostetrica",
+]);
+
 export default function Visite() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [visits, setVisits] = useState<EnrichedVisit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<EnrichedVisit | null>(null);
@@ -85,6 +93,13 @@ export default function Visite() {
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterTipo, setFilterTipo] = useState<string>("tutti");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const tipo = searchParams.get("tipo");
+    if (tipo && VISIT_TYPE_FILTERS.has(tipo)) {
+      setFilterTipo(tipo);
+    }
+  }, [searchParams]);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [fetalFormula, setFetalFormula] = useState("hadlock4");
   const rowsPerPage = 10;
@@ -515,17 +530,17 @@ export default function Visite() {
 
   const HeaderActions = (
     <Button
-      color="primary"
-      startContent={<Plus size={18} />}
+      variant="bordered"
+      startContent={<Calendar size={18} />}
       onPress={() => navigate("/check-patient")}
-      className="shadow-md shadow-primary/20"
+      className="font-medium border-default-300 text-default-700 bg-white"
     >
       Nuova Visita
     </Button>
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
         title="Gestione Visite"
         subtitle="Visualizza lo storico completo delle visite effettuate."
@@ -608,7 +623,7 @@ export default function Visite() {
                     <Chip
                       size="sm"
                       variant="flat"
-                      color={(visit.tipo === 'ginecologica' || visit.tipo === 'ginecologica_pediatrica') ? 'secondary' : visit.tipo === 'ostetrica' ? 'warning' : 'primary'}
+                      color={(visit.tipo === 'ginecologica' || visit.tipo === 'ginecologica_pediatrica') ? 'primary' : visit.tipo === 'ostetrica' ? 'warning' : 'primary'}
                       className="capitalize"
                     >
                       {visit.tipo}
@@ -691,7 +706,7 @@ export default function Visite() {
                       selectedVisit.tipo === "ginecologica" || selectedVisit.tipo === "ginecologica_pediatrica"
                         ? "primary"
                         : selectedVisit.tipo === "ostetrica"
-                          ? "secondary"
+                          ? "primary"
                           : "default"
                     }
                     variant="flat"
@@ -812,7 +827,7 @@ export default function Visite() {
                   {previewFullscreen ? "Riduci" : "Espandi"}
                 </Button>
                 <Button
-                  color="secondary"
+                  color="primary"
                   variant="flat"
                   startContent={<Printer size={16} />}
                   onPress={() => handlePrintPdf(selectedVisit)}

@@ -15,8 +15,6 @@ import {
   Chip,
   Avatar,
   Spinner,
-  Select,
-  SelectItem,
 } from "@nextui-org/react";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
@@ -26,10 +24,9 @@ import {
   DoctorService,
   PreferenceService,
 } from "../../services/OfflineServices";
-import { Patient } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
-import { Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { Users, UserPlus, ChevronLeft, ChevronRight } from "lucide-react";
 import { calculateAge } from "../../utils/dateUtils";
 
 // Interfaccia compatibile con il componente esistente
@@ -57,8 +54,81 @@ interface RecentPatientSearchEntry {
 const RECENT_PATIENT_SEARCHES_KEY = "appdottori_recent_patient_searches";
 const MAX_RECENT_PATIENT_SEARCHES = 6;
 
-const PAGE_SIZE_OPTIONS = [12, 24, 48, 96] as const;
-const DEFAULT_PAGE_SIZE = 24;
+const ROWS_PER_PAGE = 24;
+
+function isNonEmpty(value?: string | null): boolean {
+  const v = (value ?? "").trim();
+  if (!v) return false;
+  if (v === "—" || v === "-") return false;
+  return !/^[-—\s]+$/.test(v);
+}
+
+function hasDisplayName(patient: { name?: string; surname?: string }): boolean {
+  return isNonEmpty(patient.name) || isNonEmpty(patient.surname);
+}
+
+/** Verde solo con nome, cognome, CF e data di nascita. */
+function hasCompleteAnagrafica(patient: PatientData): boolean {
+  return (
+    isNonEmpty(patient.name) &&
+    isNonEmpty(patient.surname) &&
+    isNonEmpty(patient.cf) &&
+    isNonEmpty(patient.birthday)
+  );
+}
+
+function getDisplayName(patient: PatientData): string {
+  return [patient.name, patient.surname].filter(isNonEmpty).join(" ");
+}
+
+function isReadableCf(cf?: string): boolean {
+  return isNonEmpty(cf);
+}
+
+function chipValido(p: RecentPatientSearchEntry): boolean {
+  if (isNonEmpty(p.name) || isNonEmpty(p.surname)) return true;
+  return isReadableCf(p.cf);
+}
+
+function hasCardDetails(patient: PatientData): boolean {
+  const hasBirthday = isNonEmpty(patient.birthday);
+  const hasBirthplace = isNonEmpty(patient.birthplace);
+  const hasGender = patient.gender === "M" || patient.gender === "F";
+  const count = [hasBirthday, hasBirthplace, hasGender].filter(Boolean).length;
+  if (count === 0) return false;
+  if (count === 1 && hasGender) return false;
+  return true;
+}
+
+function IncompletePatientCf({
+  cf,
+  cfGenerated,
+}: {
+  cf: string;
+  cfGenerated?: boolean;
+}) {
+  return (
+    <span
+      className="truncate"
+      style={{
+        color: "var(--color-text-secondary)",
+        fontFamily: "var(--font-mono)",
+        fontSize: "12px",
+        cursor: "default",
+      }}
+    >
+      {cf.trim().toUpperCase()}
+      {cfGenerated && (
+        <span
+          className="text-danger font-bold ml-1"
+          title="Codice fiscale generato automaticamente da import"
+        >
+          *
+        </span>
+      )}
+    </span>
+  );
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -75,7 +145,6 @@ export default function Dashboard() {
     RecentPatientSearchEntry[]
   >([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_PAGE_SIZE);
 
   const loadPatients = useCallback(async () => {
     setLoading(true);
@@ -186,15 +255,20 @@ export default function Dashboard() {
   }, [patients, deferredSearch]);
 
   const totalFiltered = filteredPatients.length;
-  const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / ROWS_PER_PAGE));
   const paginatedPatients = useMemo(() => {
-    const start = (currentPage - 1) * rowsPerPage;
-    return filteredPatients.slice(start, start + rowsPerPage);
-  }, [filteredPatients, currentPage, rowsPerPage]);
+    const start = (currentPage - 1) * ROWS_PER_PAGE;
+    return filteredPatients.slice(start, start + ROWS_PER_PAGE);
+  }, [filteredPatients, currentPage]);
+
+  const recentValidChips = useMemo(
+    () => recentPatientSearches.filter(chipValido),
+    [recentPatientSearches],
+  );
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [deferredSearch, rowsPerPage]);
+  }, [deferredSearch]);
 
   useEffect(() => {
     // Mantieni in memoria solo pazienti ancora esistenti/aggiornati.
@@ -230,7 +304,7 @@ export default function Dashboard() {
     return gender === "M"
       ? "primary"
       : gender === "F"
-        ? "secondary"
+        ? "primary"
         : "default";
   };
 
@@ -263,26 +337,25 @@ export default function Dashboard() {
   );
 
   const HeaderActions = (
-    <div className="flex gap-3">
+    <div className="flex gap-3 w-full md:w-auto">
       <Button
-        color="success"
-        // variant="shadow"
-        className="shadow-md shadow-success/20 text-white"
+        color="primary"
+        startContent={<UserPlus size={18} />}
         onPress={() => navigate("/add-patient")}
-        startContent={<span className="text-lg">+</span>}
+        className="font-medium shadow-md shadow-primary/20 flex-1 md:flex-none"
       >
-        Aggiungi Paziente
+        Nuovo Paziente
       </Button>
     </div>
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
         title="Lista Pazienti"
         subtitle="Cerca e gestisci i tuoi pazienti"
         icon={Users}
-        iconColor="success"
+        iconColor="primary"
         actions={HeaderActions}
       >
         {/* Search Bar embedded in header area */}
@@ -304,7 +377,7 @@ export default function Dashboard() {
               isClearable
               onClear={() => setSearchTerm("")}
             />
-            {recentPatientSearches.length > 0 && (
+            {recentValidChips.length > 0 && (
               <div className="mt-3">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs text-gray-500">
@@ -325,7 +398,11 @@ export default function Dashboard() {
                   </Button>
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {recentPatientSearches.map((p) => (
+                  {recentValidChips.map((p) => {
+                    const chipName = getDisplayName(p);
+                    const showChipName = hasDisplayName(p);
+                    const showChipCf = isReadableCf(p.cf);
+                    return (
                     <Button
                       key={p.id}
                       size="sm"
@@ -333,15 +410,18 @@ export default function Dashboard() {
                       className="justify-start shrink-0"
                       onPress={() => handleOpenPatientHistory(p as PatientData)}
                     >
-                      <span className="mr-2">
-                        {p.name} {p.surname}
-                      </span>
-                      <CodiceFiscaleValue
-                        value={p.cf}
-                        generatedFromImport={Boolean(p.cfGenerated)}
-                      />
+                      {showChipName && (
+                        <span className="mr-2">{chipName}</span>
+                      )}
+                      {showChipCf && (
+                        <CodiceFiscaleValue
+                          value={p.cf}
+                          generatedFromImport={Boolean(p.cfGenerated)}
+                        />
+                      )}
                     </Button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -368,95 +448,136 @@ export default function Dashboard() {
       {/* Patients Grid (paginated) */}
       {!loading && (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-            <p className="text-sm text-default-500">
+          <div className="mb-4">
+            <p
+              className="text-[13px]"
+              style={{ color: "var(--color-text-tertiary)" }}
+            >
               {totalFiltered === 0
                 ? "Nessun paziente"
                 : `${totalFiltered} ${totalFiltered === 1 ? "paziente" : "pazienti"} — pagina ${currentPage} di ${totalPages}`}
             </p>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-default-500">
-                Righe per pagina:
-              </span>
-              <Select
-                size="sm"
-                className="w-20"
-                selectedKeys={[String(rowsPerPage)]}
-                onSelectionChange={(keys) => {
-                  const v = Array.from(keys)[0];
-                  if (v) setRowsPerPage(Number(v));
-                }}
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <SelectItem key={String(n)} value={String(n)}>
-                    {n}
-                  </SelectItem>
-                ))}
-              </Select>
-            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {paginatedPatients.map((patient) => (
+            {paginatedPatients.map((patient) => {
+              const complete = hasCompleteAnagrafica(patient);
+              const showName = hasDisplayName(patient);
+              const showDetails = hasCardDetails(patient);
+              const showCf = isNonEmpty(patient.cf);
+              return (
               <Card
                 key={patient.id}
                 isPressable
                 onPress={() => handleOpenPatientHistory(patient)}
-                className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02] cursor-pointer"
+                className="hover:shadow-lg transition-all duration-200 hover:scale-[1.02] cursor-pointer border-l-[3px]"
+                style={{
+                  borderLeftColor: complete ? "#1D9E75" : "#EF9F27",
+                }}
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-3 w-full">
-                    <Avatar
-                      name={getPatientInitials(patient)}
-                      className="flex-shrink-0"
-                      color={getGenderColor(patient.gender)}
-                    />
+                    {showName ? (
+                      <Avatar
+                        name={getPatientInitials(patient)}
+                        className="flex-shrink-0"
+                        color={getGenderColor(patient.gender)}
+                      />
+                    ) : (
+                      <div
+                        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-base font-medium"
+                        style={{
+                          backgroundColor: "#F1EFE8",
+                          color: "#888780",
+                        }}
+                        aria-hidden
+                      >
+                        ?
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-lg truncate">
-                        {patient.name} {patient.surname}
-                      </h4>
-                      <p className="text-sm text-gray-500 truncate">
-                        <CodiceFiscaleValue
-                          value={patient.cf}
-                          generatedFromImport={Boolean(patient.cfGenerated)}
-                        />
-                      </p>
+                      {showName ? (
+                        <>
+                          <h4 className="font-semibold text-lg truncate">
+                            {getDisplayName(patient)}
+                          </h4>
+                          {showCf && (
+                            <p className="text-sm text-gray-500 truncate">
+                              <CodiceFiscaleValue
+                                value={patient.cf}
+                                generatedFromImport={Boolean(
+                                  patient.cfGenerated,
+                                )}
+                              />
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {showCf && (
+                            <p className="truncate" style={{ cursor: "default" }}>
+                              <IncompletePatientCf
+                                cf={patient.cf!}
+                                cfGenerated={patient.cfGenerated}
+                              />
+                            </p>
+                          )}
+                          <span
+                            className="mt-1 inline-block rounded-[20px] px-2 py-0.5 text-[11px] font-medium"
+                            style={{
+                              backgroundColor: "#FAEEDA",
+                              color: "#854F0B",
+                              border: "0.5px solid #EF9F27",
+                            }}
+                          >
+                            Anagrafica incompleta
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
+                {showDetails && (
                 <CardBody className="pt-0">
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Data di nascita:</span>
-                      <span>
-                        {patient.birthday
-                          ? `${new Date(patient.birthday).toLocaleDateString("it-IT")}${calculateAge(patient.birthday) != null ? ` (${calculateAge(patient.birthday)} anni)` : ""}`
-                          : "N/A"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Luogo:</span>
-                      <span className="truncate max-w-[120px]">
-                        {patient.birthplace || "N/A"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Genere:</span>
-                      <Chip
-                        size="sm"
-                        color={getGenderColor(patient.gender)}
-                        variant="flat"
-                      >
-                        {patient.gender === "M"
-                          ? "Maschio"
-                          : patient.gender === "F"
-                            ? "Femmina"
-                            : "N/A"}
-                      </Chip>
-                    </div>
+                    {isNonEmpty(patient.birthday) && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Data di nascita:</span>
+                        <span>
+                          {new Date(patient.birthday!).toLocaleDateString(
+                            "it-IT",
+                          )}
+                          {calculateAge(patient.birthday) != null
+                            ? ` (${calculateAge(patient.birthday)} anni)`
+                            : ""}
+                        </span>
+                      </div>
+                    )}
+                    {isNonEmpty(patient.birthplace) && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Luogo:</span>
+                        <span className="max-w-[120px] truncate">
+                          {patient.birthplace}
+                        </span>
+                      </div>
+                    )}
+                    {(patient.gender === "M" || patient.gender === "F") && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Genere:</span>
+                        <Chip
+                          size="sm"
+                          color={getGenderColor(patient.gender)}
+                          variant="flat"
+                        >
+                          {patient.gender === "M" ? "Maschio" : "Femmina"}
+                        </Chip>
+                      </div>
+                    )}
                   </div>
                 </CardBody>
+                )}
               </Card>
-            ))}
+              );
+            })}
           </div>
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-4 mt-8">
@@ -506,12 +627,11 @@ export default function Dashboard() {
           </p>
           <Button
             color="primary"
-            size="lg"
+            startContent={<UserPlus size={18} />}
             onPress={() => navigate("/add-patient")}
-            startContent={<span className="text-xl">+</span>}
-            className="shadow-lg shadow-primary/20"
+            className="font-medium shadow-md shadow-primary/20"
           >
-            Aggiungi Paziente
+            Nuovo Paziente
           </Button>
         </div>
       )}

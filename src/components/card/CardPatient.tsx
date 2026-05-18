@@ -26,7 +26,7 @@ export default function CardPatient({ patient }: { patient: PatientData }) {
 
   // Determine the icon and color based on the patient's gender
   const GenderIcon = patient.gender === "M" ? FaMale : FaFemale;
-  const iconColor = patient.gender === "M" ? "text-blue-500" : "text-pink-500";
+  const iconColor = patient.gender === "M" ? "text-brand-700" : "text-brand-600";
 
   return (
     <div className="col-span-1 flex flex-col divide-y divide-gray-200 rounded-lg bg-white text-center shadow transform transition-transform hover:scale-105 hover:shadow-lg cursor-pointer">
@@ -53,7 +53,7 @@ export default function CardPatient({ patient }: { patient: PatientData }) {
         <div className="-mt-px flex divide-x divide-gray-200">
           <button
             onClick={handleNewVisit}
-            className="relative -mr-px inline-flex w-0 flex-1 items-center justify-center gap-x-3 rounded-bl-lg border border-transparent py-4 text-sm font-semibold text-gray-900 transition-colors duration-500 ease-in-out hover:bg-green-500 hover:text-white"
+            className="relative -mr-px inline-flex w-0 flex-1 items-center justify-center gap-x-3 rounded-bl-lg border border-transparent py-4 text-sm font-semibold text-gray-900 transition-colors duration-500 ease-in-out hover:bg-brand-800 hover:text-white"
           >
             Nuova Visita
           </button>

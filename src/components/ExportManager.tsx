@@ -118,7 +118,7 @@ const ExportManager: React.FC = () => {
                       <div className="text-sm text-gray-600">Pazienti</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-secondary">{stats.totalVisits}</div>
+                      <div className="text-2xl font-bold text-primary">{stats.totalVisits}</div>
                       <div className="text-sm text-gray-600">Visite</div>
                     </div>
                     <div className="text-center">
@@ -143,7 +143,7 @@ const ExportManager: React.FC = () => {
                         </div>
                         <div className="flex justify-between">
                           <span>Femmine:</span>
-                          <Chip size="sm" color="secondary">{stats.femalePatients}</Chip>
+                          <Chip size="sm" color="primary">{stats.femalePatients}</Chip>
                         </div>
                       </div>
                     </div>
@@ -160,7 +160,7 @@ const ExportManager: React.FC = () => {
                         </div>
                         <div className="flex justify-between">
                           <span>Ostetriche:</span>
-                          <Chip size="sm" color="secondary">{stats.visitsPerType.ostetrica}</Chip>
+                          <Chip size="sm" color="primary">{stats.visitsPerType.ostetrica}</Chip>
                         </div>
                       </div>
                     </div>
@@ -224,14 +224,14 @@ const ExportManager: React.FC = () => {
                 <Card className="hover:shadow-md transition-shadow">
                   <CardBody className="p-4">
                     <div className="flex items-center gap-3 mb-3">
-                      <FileSpreadsheet className="w-8 h-8 text-success" />
+                      <FileSpreadsheet className="w-8 h-8 text-primary" />
                       <div>
                         <h4 className="font-semibold">Pazienti CSV</h4>
                         <p className="text-sm text-gray-600">Elenco pazienti per Excel</p>
                       </div>
                     </div>
                     <Button
-                      color="success"
+                      color="primary"
                       variant="flat"
                       onPress={handleExportPatientsCSV}
                       isLoading={isLoading}

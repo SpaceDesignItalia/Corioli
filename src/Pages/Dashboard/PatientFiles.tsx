@@ -313,7 +313,7 @@ export default function PatientFiles() {
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       {breadcrumbItems.length > 0 && <Breadcrumb items={breadcrumbItems} />}
 
       <PageHeader
@@ -442,7 +442,7 @@ export default function PatientFiles() {
                     </CardHeader>
                     <CardBody className="pt-0 flex-1 flex flex-col min-h-0">
                       <div className="space-y-3 flex-1 min-h-0">
-                        <Chip color={isImage ? "success" : "secondary"} variant="flat" size="sm">
+                        <Chip color={isImage ? "success" : "primary"} variant="flat" size="sm">
                           {typeLabel}
                         </Chip>
 

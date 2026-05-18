@@ -949,7 +949,7 @@ export default function PatientHistory() {
   };
 
   const getGenderColor = (gender: string) => {
-    return gender === "M" ? "primary" : "secondary";
+    return "primary";
   };
 
   const formatVisitDate = (dateString: string) => {
@@ -958,6 +958,62 @@ export default function PatientHistory() {
     } catch {
       return dateString;
     }
+  };
+
+  const formatCardDateSubtle = (dateString: string) => {
+    try {
+      return format(parseISO(dateString), "d MMMM yyyy", {
+        locale: it,
+      }).toLowerCase();
+    } catch {
+      return dateString;
+    }
+  };
+
+  const hasGynRefertoCompilato = (visit: Visit) => {
+    if (
+      visit.tipo !== "ginecologica" &&
+      visit.tipo !== "ginecologica_pediatrica"
+    ) {
+      return false;
+    }
+    const gyn = visit.ginecologia;
+    if (!gyn) return false;
+    const refertoFields = [
+      gyn.conclusione,
+      gyn.terapiaSpecifica,
+      gyn.esameBimanuale,
+      gyn.speculum,
+      gyn.ecografiaTV,
+      visit.conclusioniDiagnostiche,
+    ];
+    return refertoFields.some((f) => Boolean(f?.trim()));
+  };
+
+  const getGynVisitContextBadges = (
+    visit: Visit,
+  ): Array<"terapia" | "followup"> => {
+    if (!hasGynRefertoCompilato(visit) || !visit.ginecologia) return [];
+    const gyn = visit.ginecologia;
+    const badges: Array<"terapia" | "followup"> = [];
+    if (gyn.terapiaInAtto?.trim()) {
+      badges.push("terapia");
+    }
+    const haystack = [
+      gyn.conclusione,
+      gyn.terapiaSpecifica,
+      gyn.accertamenti,
+      gyn.problemaClinico,
+      visit.anamnesi,
+      visit.terapie,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (/in programma|follow[- ]?up/.test(haystack)) {
+      badges.push("followup");
+    }
+    return badges;
   };
 
   const getPreviewAnamnesi = (visit: Visit) => {
@@ -1331,11 +1387,11 @@ export default function PatientHistory() {
     : [];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="corioli-page space-y-6">
       {breadcrumbItems.length > 0 && <Breadcrumb items={breadcrumbItems} />}
 
       {/* 1. Profilo Paziente Unificato */}
-      <Card className="shadow-md border border-default-100">
+      <Card className="corioli-card">
         <CardBody className="p-6">
           <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
             {/* Avatar & Nome */}
@@ -1346,47 +1402,77 @@ export default function PatientHistory() {
                 color={getGenderColor(patient.sesso)}
                 isBordered
               />
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">
                   {patient.nome} {patient.cognome}
                 </h1>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                  <div className="flex items-center gap-1 bg-default-100 px-2 py-1 rounded-md">
-                    <UserIcon size={14} />
-                    <CodiceFiscaleValue
-                      value={patient.codiceFiscale}
-                      generatedFromImport={Boolean(
-                        patient.codiceFiscaleGenerato,
-                      )}
-                    />
-                  </div>
-                  <span className="hidden md:inline text-default-300">|</span>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-600">
+                  <CodiceFiscaleValue
+                    value={patient.codiceFiscale}
+                    generatedFromImport={Boolean(
+                      patient.codiceFiscaleGenerato,
+                    )}
+                  />
+                  <span className="text-default-300">·</span>
                   <span>
                     {formatVisitDate(patient.dataNascita)}
                     <span className="text-default-400 ml-1">
                       ({calculateAge(patient.dataNascita)} anni)
                     </span>
                   </span>
-                  <span className="hidden md:inline text-default-300">|</span>
-                  <span className="font-medium">
-                    {patient.sesso === "M" ? "Maschio" : "Femmina"}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <span className="patient-clinical-badge">
+                    Gruppo {patient.gruppoSanguigno || "—"}
+                  </span>
+                  <span className="patient-clinical-badge">
+                    {patient.altezza != null && patient.altezza > 0
+                      ? `${patient.altezza} cm`
+                      : "—"}
                   </span>
                 </div>
                 {(patient.telefono ||
                   patient.email ||
                   patient.luogoNascita) && (
-                  <div className="text-sm text-gray-500 pt-1 flex flex-wrap gap-x-4">
+                  <div className="text-sm text-gray-500 pt-1 flex flex-wrap gap-x-4 gap-y-1">
                     {patient.luogoNascita && (
-                      <span>📍 {patient.luogoNascita}</span>
+                      <span className="inline-flex items-center">
+                        <i
+                          className="ti ti-map-pin patient-header-contact-icon"
+                          aria-hidden
+                        />
+                        {patient.luogoNascita}
+                      </span>
                     )}
-                    {patient.telefono && <span>📞 {patient.telefono}</span>}
-                    {patient.email && <span>✉️ {patient.email}</span>}
+                    {patient.telefono && (
+                      <span className="inline-flex items-center">
+                        <i
+                          className="ti ti-phone patient-header-contact-icon"
+                          aria-hidden
+                        />
+                        {patient.telefono}
+                      </span>
+                    )}
+                    {patient.email && (
+                      <span className="inline-flex items-center">
+                        <i
+                          className="ti ti-mail patient-header-contact-icon"
+                          aria-hidden
+                        />
+                        {patient.email}
+                      </span>
+                    )}
                   </div>
                 )}
                 {patient.allergie && patient.allergie.trim() !== "" && (
-                  <div className="text-sm text-danger-500 pt-1 flex items-start gap-1">
-                    <span>⚠️</span>
-                    <span className="whitespace-pre-line">
+                  <div className="text-sm text-danger-500 pt-1 flex items-center gap-1">
+                    <span className="inline-flex shrink-0 items-center">
+                      <i
+                        className="ti ti-alert-triangle patient-header-allergy-icon"
+                        aria-hidden
+                      />
+                    </span>
+                    <span className="whitespace-pre-line leading-snug">
                       Allergie: {patient.allergie}
                     </span>
                   </div>
@@ -1395,27 +1481,24 @@ export default function PatientHistory() {
             </div>
 
             {/* Azioni Rapide */}
-            <div className="flex flex-row md:flex-col gap-2 w-full md:w-auto mt-4 md:mt-0">
+            <div className="flex flex-col items-stretch md:items-end gap-1 w-full md:w-auto mt-4 md:mt-0">
               <Button
-                color="secondary"
-                variant="flat"
-                size="sm"
-                onPress={() => navigate(`/patient-history/${patient.id}/files`)}
-                startContent={<FileTextIcon size={16} />}
-                className="justify-start md:w-40"
-              >
-                File
-              </Button>
-              <Button
-                color="primary"
-                variant="flat"
+                variant="bordered"
                 size="sm"
                 onPress={handleOpenEdit}
-                startContent={<EditIcon size={16} />}
-                className="justify-start md:w-40"
+                startContent={<i className="ti ti-edit text-base" aria-hidden />}
+                className="justify-start md:w-44 border-[0.5px] border-default-300 bg-white px-4 py-2 h-auto min-h-0 font-medium"
               >
                 Modifica Dati
               </Button>
+              <button
+                type="button"
+                onClick={() => navigate(`/patient-history/${patient.id}/files`)}
+                className="patient-header-file-btn md:w-44"
+              >
+                <i className="ti ti-folder" aria-hidden />
+                File
+              </button>
             </div>
           </div>
         </CardBody>
@@ -1490,9 +1573,9 @@ export default function PatientHistory() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* COLONNA SINISTRA: VISITE (2/3) */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-default-100 shadow-sm">
+          <div className="corioli-section-bar">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary-50 text-primary-600 rounded-lg">
+              <div className="p-2 bg-default-100 text-default-600 rounded-lg">
                 <FileTextIcon size={20} />
               </div>
               <div>
@@ -1503,8 +1586,8 @@ export default function PatientHistory() {
               </div>
             </div>
             <Button
-              color="success"
-              className="text-white font-medium shadow-sm"
+              color="primary"
+              className="font-medium shadow-sm"
               size="sm"
               onPress={() => {
                 if (!ensureDoctorProfileComplete()) return;
@@ -1527,9 +1610,8 @@ export default function PatientHistory() {
                   Inizia il percorso clinico.
                 </p>
                 <Button
-                  color="success"
+                  color="primary"
                   size="sm"
-                  className="text-white"
                   onPress={() => {
                     if (!ensureDoctorProfileComplete()) return;
                     navigate(`/add-visit?patientId=${patient.id}`);
@@ -1562,21 +1644,37 @@ export default function PatientHistory() {
                             })}
                           </span>
                         </div>
-                        <Chip
-                          size="sm"
-                          variant="flat"
-                          color={
-                            visit.tipo === "ginecologica" ||
-                            visit.tipo === "ginecologica_pediatrica"
-                              ? "danger"
-                              : visit.tipo === "ostetrica"
-                                ? "secondary"
-                                : "primary"
-                          }
-                          className="capitalize font-semibold"
-                        >
-                          {visit.tipo || "Generale"}
-                        </Chip>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color={
+                              visit.tipo === "ginecologica" ||
+                              visit.tipo === "ginecologica_pediatrica"
+                                ? "danger"
+                                : visit.tipo === "ostetrica"
+                                  ? "primary"
+                                  : "primary"
+                            }
+                            className="capitalize font-semibold"
+                          >
+                            {visit.tipo || "Generale"}
+                          </Chip>
+                          {getGynVisitContextBadges(visit).map((badge) => (
+                            <span
+                              key={badge}
+                              className={`visit-context-badge ${
+                                badge === "terapia"
+                                  ? "visit-context-badge--terapia"
+                                  : "visit-context-badge--followup"
+                              }`}
+                            >
+                              {badge === "terapia"
+                                ? "Terapia attiva"
+                                : "Follow-up"}
+                            </span>
+                          ))}
+                        </div>
                       </div>
 
                       {/* Contenuto Principale */}
@@ -1585,7 +1683,7 @@ export default function PatientHistory() {
                         <div>
                           {visit.tipo === "ostetrica" && visit.ostetricia ? (
                             <div className="mb-2">
-                              <span className="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-1 rounded-full mr-2">
+                              <span className="bg-danger-50 text-danger-700 text-xs font-bold px-2 py-1 rounded-full mr-2">
                                 {visit.ostetricia.settimaneGestazione || "?"}ª
                                 Settimana
                               </span>
@@ -1635,30 +1733,30 @@ export default function PatientHistory() {
                         className="flex md:flex-col gap-2 justify-end md:justify-start border-t md:border-t-0 md:border-l border-default-100 pt-3 md:pt-0 md:pl-4"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Button
-                          isIconOnly
-                          size="sm"
-                          variant="light"
-                          color="primary"
-                          onPress={() => navigate(`/edit-visit/${visit.id}`)}
-                          title="Modifica"
+                        <button
+                          type="button"
+                          className="visit-card-icon-btn"
+                          title="Modifica visita"
+                          onClick={() => navigate(`/edit-visit/${visit.id}`)}
                         >
-                          <EditIcon size={18} />
-                        </Button>
+                          <i className="ti ti-edit" aria-hidden />
+                        </button>
                         {(visit.tipo === "ginecologica" ||
                           visit.tipo === "ginecologica_pediatrica" ||
                           visit.tipo === "ostetrica") && (
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="light"
-                            color="secondary"
-                            onPress={() => handlePrintPdf(visit)}
-                            isLoading={pdfLoading}
-                            title="Stampa Referto"
+                          <button
+                            type="button"
+                            className="visit-card-icon-btn disabled:opacity-50 disabled:pointer-events-none"
+                            title="Stampa"
+                            onClick={() => handlePrintPdf(visit)}
+                            disabled={pdfLoading}
                           >
-                            <Printer size={18} />
-                          </Button>
+                            {pdfLoading ? (
+                              <Spinner size="sm" color="current" />
+                            ) : (
+                              <i className="ti ti-printer" aria-hidden />
+                            )}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -1679,13 +1777,13 @@ export default function PatientHistory() {
                 onClick={() => setRightColumnTab("esami")}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                   rightColumnTab === "esami"
-                    ? "bg-white text-secondary-700 shadow-sm"
-                    : "text-default-600 hover:text-default-800"
+                    ? "corioli-tab-active"
+                    : "corioli-tab-inactive"
                 }`}
               >
                 <FlaskConical size={16} />
                 Esami
-                <span className={`text-xs ${rightColumnTab === "esami" ? "text-secondary-600" : "text-default-500"}`}>
+                <span className={`text-xs ${rightColumnTab === "esami" ? "text-default-700" : "text-default-500"}`}>
                   {richiesteEsami.length}
                 </span>
               </button>
@@ -1707,9 +1805,9 @@ export default function PatientHistory() {
             </div>
             {rightColumnTab === "esami" ? (
               <Button
-                color="secondary"
+                color="primary"
                 size="sm"
-                variant="flat"
+                variant="solid"
                 className="flex-shrink-0 font-medium"
                 onPress={handleOpenNuovaRichiestaEsame}
                 startContent={<PlusIcon size={16} />}
@@ -1738,7 +1836,7 @@ export default function PatientHistory() {
                   <Card className="bg-default-50 border-dashed border-default-300 shadow-none">
                     <CardBody className="text-center py-8 px-4">
                       <p className="text-sm text-gray-500 mb-3">Nessuna prescrizione attiva.</p>
-                      <Button color="secondary" variant="flat" size="sm" onPress={handleOpenNuovaRichiestaEsame}>
+                      <Button color="primary" size="sm" onPress={handleOpenNuovaRichiestaEsame}>
                         Crea Richiesta
                       </Button>
                     </CardBody>
@@ -1749,23 +1847,27 @@ export default function PatientHistory() {
                       key={r.id}
                       isPressable
                       onPress={() => handleOpenEsamePreview(r)}
-                      className="border border-default-200 shadow-sm hover:border-secondary-300 group cursor-pointer w-full min-h-[7.5rem]"
+                      className="border border-default-200 shadow-sm hover:border-primary-300 group cursor-pointer w-full min-h-[7.5rem]"
                     >
                       <CardBody className="p-3 min-h-[7.5rem] flex flex-col">
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                            {formatVisitDate(r.dataRichiesta)}
-                          </span>
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="right-col-card-title break-words">
+                              {r.nome}
+                            </h4>
+                            <p className="right-col-card-date">
+                              {formatCardDateSubtle(r.dataRichiesta)}
+                            </p>
+                          </div>
                           <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                             <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditRichiestaEsame(r)} title="Modifica">
                               <EditIcon size={14} />
                             </Button>
-                            <Button size="sm" color="secondary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handlePrintRichiestaEsame(r)} isLoading={pdfLoading} title="Stampa PDF">
+                            <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handlePrintRichiestaEsame(r)} isLoading={pdfLoading} title="Stampa PDF">
                               <Printer size={14} />
                             </Button>
                           </div>
                         </div>
-                        <h4 className="font-semibold text-gray-800 text-sm leading-snug mb-1 break-words">{r.nome}</h4>
                         {r.note ? (
                           <p className="text-xs text-gray-500 bg-gray-50 p-1.5 rounded border border-gray-100 break-words line-clamp-3">{r.note}</p>
                         ) : (
@@ -1797,23 +1899,43 @@ export default function PatientHistory() {
                       className="border border-default-200 shadow-sm hover:border-warning-300 group cursor-pointer w-full min-h-[5rem]"
                     >
                       <CardBody className="p-3 min-h-[5rem] flex flex-col">
-                        <div className="flex justify-between items-start mb-1 gap-2">
-                          <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
-                            {format(parseISO(c.dataCertificato), "dd MMM yyyy", { locale: it })}
-                          </span>
-                          <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditCertificato(c)} title="Modifica">
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="right-col-card-title break-words">
+                              {getCertificatoTipoLabel(c.tipo)}
+                            </h4>
+                            <p className="right-col-card-date">
+                              {formatCardDateSubtle(c.dataCertificato)}
+                            </p>
+                          </div>
+                          <div
+                            className="flex gap-1 flex-shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Button
+                              size="sm"
+                              color="primary"
+                              variant="light"
+                              isIconOnly
+                              className="h-6 w-6 min-w-0"
+                              onPress={() => handleOpenEditCertificato(c)}
+                              title="Modifica"
+                            >
                               <EditIcon size={14} />
                             </Button>
-                            <Button size="sm" color="warning" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handlePrintCertificato(c)} isLoading={pdfLoading} title="Stampa PDF">
+                            <Button
+                              size="sm"
+                              color="warning"
+                              variant="light"
+                              isIconOnly
+                              className="h-6 w-6 min-w-0"
+                              onPress={() => handlePrintCertificato(c)}
+                              isLoading={pdfLoading}
+                              title="Stampa PDF"
+                            >
                               <Printer size={14} />
                             </Button>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Chip size="sm" variant="flat" color="warning" className="text-[10px]">
-                            {getCertificatoTipoLabel(c.tipo)}
-                          </Chip>
                         </div>
                         <p className="text-xs text-gray-700 line-clamp-2 break-words">{c.descrizione}</p>
                       </CardBody>
@@ -1854,7 +1976,7 @@ export default function PatientHistory() {
                       selectedVisit.tipo === "ginecologica_pediatrica"
                         ? "primary"
                         : selectedVisit.tipo === "ostetrica"
-                          ? "secondary"
+                          ? "primary"
                           : "default"
                     }
                     variant="flat"
@@ -2050,7 +2172,7 @@ export default function PatientHistory() {
                   {previewFullscreen ? "Riduci" : "Espandi"}
                 </Button>
                 <Button
-                  color="secondary"
+                  color="primary"
                   variant="flat"
                   startContent={<Printer size={16} />}
                   onPress={() => handlePrintPdf(selectedVisit)}
@@ -2286,7 +2408,7 @@ export default function PatientHistory() {
                 Annulla
               </Button>
               <Button
-                color="success"
+                color="primary"
                 onPress={handleSavePatient}
                 isLoading={saving}
                 startContent={!saving ? <SaveIcon size={16} /> : undefined}
@@ -2320,7 +2442,7 @@ export default function PatientHistory() {
               <ModalHeader className="flex flex-col gap-1">
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
-                    <FlaskConical size={22} className="text-secondary-600" />
+                    <FlaskConical size={22} className="text-primary-700" />
                     <h2 className="text-xl font-bold">Anteprima esame</h2>
                   </div>
                 </div>
@@ -2347,7 +2469,7 @@ export default function PatientHistory() {
               <ModalFooter className="border-t border-default-200 gap-2 flex-wrap">
                 <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={async () => { if (!selectedRichiestaEsamePreview) return; const deleted = await handleDeleteRichiestaEsame(selectedRichiestaEsamePreview.id); if (deleted) { onEsamePreviewClose(); setSelectedRichiestaEsamePreview(null); } }} aria-label="Elimina richiesta esame" title="Elimina richiesta esame">Elimina</Button>
                 <Button variant="light" startContent={esamePreviewFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} onPress={() => setEsamePreviewFullscreen(!esamePreviewFullscreen)}>{esamePreviewFullscreen ? "Riduci" : "Espandi"}</Button>
-                <Button color="secondary" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedRichiestaEsamePreview && handlePrintRichiestaEsame(selectedRichiestaEsamePreview)} isLoading={pdfLoading}>Stampa PDF</Button>
+                <Button color="primary" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedRichiestaEsamePreview && handlePrintRichiestaEsame(selectedRichiestaEsamePreview)} isLoading={pdfLoading}>Stampa PDF</Button>
                 <Button color="primary" startContent={<EditIcon size={18} />} onPress={handleFromPreviewToEdit}>Modifica</Button>
               </ModalFooter>
             </>
@@ -2406,7 +2528,7 @@ export default function PatientHistory() {
       <Modal isOpen={isEsameOpen} onClose={handleCloseEsameModal} size="2xl">
         <ModalContent>
           <ModalHeader className="flex items-center gap-2 pb-2">
-            <FlaskConical size={22} className="text-secondary-600" />
+            <FlaskConical size={22} className="text-primary-700" />
             <span className="text-lg">
               {editingRichiestaEsame
                 ? "Modifica richiesta esame"
@@ -2506,7 +2628,7 @@ export default function PatientHistory() {
               Annulla
             </Button>
             <Button
-              color="secondary"
+              color="primary"
               onPress={handleSaveRichiestaEsame}
               isDisabled={!nuovaRichiestaNome.trim()}
               isLoading={savingEsame}
