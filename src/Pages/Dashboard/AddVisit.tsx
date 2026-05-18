@@ -1199,6 +1199,31 @@ export default function AddVisit() {
 
   const handleOstetriciaChange = (field: string, value: any) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
+
+    if (field === "settimaneGestazione") {
+      const newGa = parseGestationalWeeks((value as string) ?? "");
+      setOstetriciaData((prev) => {
+        const bio = prev.biometriaFetale;
+        if (newGa == null || !bio) return { ...prev, [field]: value };
+        const pctKeyMap = {
+          bpdMm: "bpdPercentile",
+          hcMm: "hcPercentile",
+          acMm: "acPercentile",
+          flMm: "flPercentile",
+        } as const;
+        const bioUpdates: Record<string, number | undefined> = {};
+        (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach((measField) => {
+          const measVal = bio[measField];
+          if (measVal && measVal > 0) {
+            const p = getBiometryPercentile(measVal, newGa, measField);
+            bioUpdates[pctKeyMap[measField]] = p != null ? Math.round(p) : undefined;
+          }
+        });
+        return { ...prev, [field]: value, biometriaFetale: { ...bio, ...bioUpdates } };
+      });
+      return;
+    }
+
     setOstetriciaData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -1223,6 +1248,26 @@ export default function AddVisit() {
           const edd = subDays(visitDate, gaDays);
           const dpp = addDays(edd, 280);
           next.dataPresunta = format(dpp, "yyyy-MM-dd");
+        }
+        // Ricalcola percentili biometria con la nuova GA
+        const newGaDec = gaDays / 7;
+        const bio = next.biometriaFetale;
+        if (bio) {
+          const pctKeyMap = {
+            bpdMm: "bpdPercentile",
+            hcMm: "hcPercentile",
+            acMm: "acPercentile",
+            flMm: "flPercentile",
+          } as const;
+          const bioUpdates: Record<string, number | undefined> = {};
+          (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach((measField) => {
+            const measVal = bio[measField];
+            if (measVal && measVal > 0) {
+              const p = getBiometryPercentile(measVal, newGaDec, measField);
+              bioUpdates[pctKeyMap[measField]] = p != null ? Math.round(p) : undefined;
+            }
+          });
+          next.biometriaFetale = { ...bio, ...bioUpdates };
         }
         const oldSett = prev.settimaneGestazione || "—";
         const oldDpp = prev.dataPresunta ? format(parseISO(prev.dataPresunta), "dd/MM/yyyy") : "—";

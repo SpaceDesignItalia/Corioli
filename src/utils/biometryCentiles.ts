@@ -26,7 +26,7 @@ const HC_MEAN = (ga: number): number =>
 const AC_MEAN = (ga: number): number =>
   -63.21499 + 8.44699 * ga + 0.170025 * ga * ga + -0.0030702 * ga * ga * ga;
 
-// FL: polinomio Hadlock 1984 originale. Produce p50≈61mm a 32w, ≈71mm a 36w.
+// FL: polinomio Hadlock 1984 originale. Produce p50≈61mm a 32w, ≈69mm a 36w.
 // Non applicare offset: i coefficienti rispecchiano direttamente i valori pubblicati.
 const FL_MEAN = (ga: number): number =>
   -25.01558 + 2.47146 * ga + 0.030357 * ga * ga + -0.0007401 * ga * ga * ga;
@@ -66,6 +66,10 @@ function getBiometryMeanAndSd(
 
 // ─── API pubblica ─────────────────────────────────────────────────────────────
 
+/** Range valido del polinomio Hadlock 1984 (settimane complete). */
+const HADLOCK_GA_MIN = 14;
+const HADLOCK_GA_MAX = 40;
+
 /**
  * Restituisce p5, p50, p95 (in mm) per una misura biometrica a GA decimale.
  * Usato dal PDF per disegnare la barra grafica dei percentili.
@@ -75,6 +79,7 @@ export function getBiometryReferenceAtGa(
   param: BiometryParam,
 ): { p5: number; p50: number; p95: number } | null {
   if (gaWeeks == null || !Number.isFinite(gaWeeks)) return null;
+  if (gaWeeks < HADLOCK_GA_MIN || gaWeeks > HADLOCK_GA_MAX) return null;
   const { mean, sd } = getBiometryMeanAndSd(param);
   const mu = mean(gaWeeks);
   const sigma = sd(gaWeeks);
@@ -88,6 +93,7 @@ export function getBiometryReferenceAtGa(
 /**
  * Restituisce il percentile (0–100) per una misura biometrica a una data GA.
  * Calcolo diretto: z = (value – µ) / σ → normalCDF(z) × 100.
+ * Range valido: 14–40 settimane (Hadlock 1984).
  */
 export function getBiometryPercentile(
   value: number,
@@ -95,6 +101,7 @@ export function getBiometryPercentile(
   param: BiometryParam,
 ): number | null {
   if (gaWeeks == null || !Number.isFinite(value) || value <= 0) return null;
+  if (gaWeeks < HADLOCK_GA_MIN || gaWeeks > HADLOCK_GA_MAX) return null;
   const { mean, sd } = getBiometryMeanAndSd(param);
   const mu = mean(gaWeeks);
   const sigma = sd(gaWeeks);
