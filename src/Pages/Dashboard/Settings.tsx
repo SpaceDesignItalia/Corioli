@@ -33,10 +33,9 @@ import {
   User,
   Users,
   Search,
-  Download,
-  Upload,
   RefreshCw,
   Database,
+  Building2,
   Settings as SettingsIcon,
   FileText,
   Plus,
@@ -52,7 +51,6 @@ import {
   PatientService,
   VisitService,
   DocumentService,
-  BackupService,
   PreferenceService,
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
@@ -100,7 +98,6 @@ const SettingsScreen = () => {
   const [docCount, setDocCount] = useState(0);
   const [dataSize, setDataSize] = useState(0);
   const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
 
   const [ambulatori, setAmbulatori] = useState<any[]>([]);
   const [savingAmbulatori, setSavingAmbulatori] = useState(false);
@@ -253,6 +250,19 @@ const SettingsScreen = () => {
     loadDoctorData();
     loadPreferences();
     loadTemplates();
+  }, []);
+
+  useEffect(() => {
+    const onBackupCompleted = (event: Event) => {
+      const date = (event as CustomEvent<{ lastBackupDate?: string }>).detail
+        ?.lastBackupDate;
+      if (!date) return;
+      setLastBackupDate(date);
+      setPreferences((prev) => ({ ...prev, lastBackupDate: date }));
+    };
+    window.addEventListener('corioli-backup-completed', onBackupCompleted);
+    return () =>
+      window.removeEventListener('corioli-backup-completed', onBackupCompleted);
   }, []);
 
   const checkUpdateAccess = async (): Promise<boolean> => {
@@ -1261,26 +1271,6 @@ const SettingsScreen = () => {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
   };
 
-  const handleQuickBackup = async () => {
-    setIsExporting(true);
-    try {
-      await BackupService.downloadBackup();
-      const now = new Date().toISOString();
-      setLastBackupDate(now);
-
-      const newPrefs = { ...preferences, lastBackupDate: now };
-      setPreferences(newPrefs);
-      await PreferenceService.savePreferences(newPrefs);
-
-      setSuccess("Backup scaricato con successo.");
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e) {
-      setError("Errore durante il download del backup.");
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       {/* Header */}
@@ -1395,10 +1385,16 @@ const SettingsScreen = () => {
       )}
 
       <div className="space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:items-stretch [&>*]:h-full [&>*]:min-h-0">
           {/* Profilo Dottore */}
-          <Card className="shadow-lg h-full">
-            <CardHeader className="pb-2">
+          <Card
+            className="shadow-lg w-full"
+            classNames={{
+              base: "h-full flex flex-col min-h-0",
+              body: "flex flex-1 flex-col gap-5 min-h-0",
+            }}
+          >
+            <CardHeader className="pb-2 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <User className="w-5 h-5 text-primary" />
                 <h2 className="text-xl font-semibold text-gray-900">
@@ -1406,7 +1402,7 @@ const SettingsScreen = () => {
                 </h2>
               </div>
             </CardHeader>
-            <CardBody className="space-y-6">
+            <CardBody>
               <div className="flex items-center gap-4">
                 <Avatar
                   key={profilePic} // Force re-render on change
@@ -1493,7 +1489,7 @@ const SettingsScreen = () => {
 
               <Button
                 color="primary"
-                className="w-full"
+                className="corioli-cta w-full mt-auto"
                 onPress={saveDoctorInfo}
                 isLoading={isLoading}
               >
@@ -1503,67 +1499,86 @@ const SettingsScreen = () => {
           </Card>
 
           {/* Ambulatori */}
-          <Card className="shadow-lg h-full flex flex-col">
+          <Card
+            className="shadow-lg w-full"
+            classNames={{
+              base: "h-full flex flex-col min-h-0",
+              body: "flex flex-1 flex-col gap-3 min-h-0",
+            }}
+          >
             <CardHeader className="pb-2 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-5 h-5 bg-brand-800 rounded"></div>
+                <Building2 className="w-5 h-5 text-primary shrink-0" />
                 <h2 className="text-xl font-semibold text-gray-900">
                   Ambulatori
                 </h2>
               </div>
             </CardHeader>
-            <CardBody className="flex flex-col flex-1 min-h-0 gap-0">
-              {/* Lista ambulatori esistenti */}
-              <div className="overflow-y-auto overflow-x-hidden space-y-3 pr-2 flex-1 min-h-[10rem] rounded-lg border border-default-200 bg-default-50/50 p-2">
+            <CardBody>
+              {/* Lista ambulatori — scroll solo se > 2 sedi */}
+              <div className="rounded-lg border border-default-200 bg-default-50/50 p-3 flex-shrink-0">
                 {ambulatori.length > 0 ? (
                   <>
-                    <h3 className="font-medium text-gray-900">
+                    <h3 className="font-medium text-gray-900 text-sm mb-2 px-0.5">
                       Ambulatori Configurati
                     </h3>
-                    {ambulatori.map((amb) => (
-                      <Card key={amb.id} className="bg-gray-50">
-                        <CardBody className="p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <h4 className="font-semibold text-gray-900">
-                                  {amb.nome}
-                                </h4>
-                                {amb.isPrimario && (
-                                  <Chip
-                                    size="sm"
-                                    color="success"
-                                    variant="flat"
-                                  >
-                                    In uso
-                                  </Chip>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-600">
-                                {amb.indirizzo}, {amb.cap} {amb.citta}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                Tel: {amb.telefono}{" "}
-                                {amb.email && `• Email: ${amb.email}`}
-                              </p>
+                    <div
+                      className={`corioli-scroll space-y-2 pr-1 ${
+                        ambulatori.length > 2
+                          ? "max-h-[14.5rem] overflow-y-auto overflow-x-hidden"
+                          : ""
+                      }`}
+                      aria-label="Lista ambulatori configurati"
+                    >
+                      {ambulatori.map((amb) => (
+                        <Card
+                          key={amb.id}
+                          shadow="none"
+                          className="bg-white border border-default-200 flex-shrink-0"
+                        >
+                          <CardBody className="p-3 gap-2">
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                              <h4 className="font-semibold text-sm text-gray-900 truncate">
+                                {amb.nome}
+                              </h4>
+                              {amb.isPrimario && (
+                                <Chip
+                                  size="sm"
+                                  color="success"
+                                  variant="flat"
+                                  className="flex-shrink-0"
+                                >
+                                  In uso
+                                </Chip>
+                              )}
                             </div>
-                            <div className="flex gap-2">
+                            <p className="text-xs text-gray-600 leading-snug">
+                              {amb.indirizzo}, {amb.cap} {amb.citta}
+                            </p>
+                            <p className="text-xs text-gray-500 leading-snug">
+                              {amb.telefono && `Tel. ${amb.telefono}`}
+                              {amb.telefono && amb.email && " · "}
+                              {amb.email && amb.email}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
                               {!amb.isPrimario && (
                                 <Button
                                   size="sm"
                                   color="primary"
                                   variant="flat"
+                                  className="h-7 min-h-7 text-xs"
                                   onPress={() => setPrimario(amb.id)}
                                   isLoading={savingAmbulatori}
                                   isDisabled={savingAmbulatori}
                                 >
-                                  Imposta come attuale
+                                  Imposta attuale
                                 </Button>
                               )}
                               <Button
                                 size="sm"
                                 color="danger"
                                 variant="flat"
+                                className="h-7 min-h-7 text-xs"
                                 onPress={() => removeAmbulatorio(amb.id)}
                                 isLoading={savingAmbulatori}
                                 isDisabled={savingAmbulatori}
@@ -1571,10 +1586,10 @@ const SettingsScreen = () => {
                                 Rimuovi
                               </Button>
                             </div>
-                          </div>
-                        </CardBody>
-                      </Card>
-                    ))}
+                          </CardBody>
+                        </Card>
+                      ))}
+                    </div>
                   </>
                 ) : (
                   <p className="text-sm text-gray-500">
@@ -1583,25 +1598,27 @@ const SettingsScreen = () => {
                 )}
               </div>
 
-              <Divider className="flex-shrink-0 my-4" />
+              <Divider className="flex-shrink-0" />
 
-              {/* Form nuovo ambulatorio - sempre visibile, non scrolla */}
-              <div className="space-y-4 flex-shrink-0">
-                <h3 className="font-medium text-gray-900">
+              {/* Form nuovo ambulatorio — ancorato in basso */}
+              <div className="flex flex-col gap-2 flex-shrink-0 mt-auto">
+                <h3 className="font-medium text-gray-900 text-sm">
                   Aggiungi Nuovo Ambulatorio
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                   <Input
+                    size="sm"
                     label="Nome Ambulatorio"
                     value={newAmbulatorio.nome}
                     onValueChange={(value) =>
                       setNewAmbulatorio((prev) => ({ ...prev, nome: value }))
                     }
                     variant="bordered"
-                    placeholder="Studio Medico Dott. Rossi"
+                    placeholder="Studio Medico"
                   />
                   <Input
-                    label="Telefono Ambulatorio"
+                    size="sm"
+                    label="Telefono"
                     value={newAmbulatorio.telefono}
                     onValueChange={(value) =>
                       setNewAmbulatorio((prev) => ({
@@ -1614,6 +1631,7 @@ const SettingsScreen = () => {
                   />
                 </div>
                 <Input
+                  size="sm"
                   label="Indirizzo"
                   value={newAmbulatorio.indirizzo}
                   onValueChange={(value) =>
@@ -1622,8 +1640,9 @@ const SettingsScreen = () => {
                   variant="bordered"
                   placeholder="Via Roma 10"
                 />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 gap-2">
                   <Input
+                    size="sm"
                     label="Città"
                     value={newAmbulatorio.citta}
                     onValueChange={(value) =>
@@ -1633,6 +1652,7 @@ const SettingsScreen = () => {
                     placeholder="Roma"
                   />
                   <Input
+                    size="sm"
                     label="CAP"
                     value={newAmbulatorio.cap}
                     onValueChange={(value) =>
@@ -1642,23 +1662,23 @@ const SettingsScreen = () => {
                     placeholder="00100"
                   />
                   <Input
-                    label="Email (Opzionale)"
+                    size="sm"
+                    label="Email"
                     type="email"
                     value={newAmbulatorio.email}
                     onValueChange={(value) =>
                       setNewAmbulatorio((prev) => ({ ...prev, email: value }))
                     }
                     variant="bordered"
-                    placeholder="studio@email.com"
+                    placeholder="Opzionale"
                   />
                 </div>
                 <Button
                   color="primary"
-                  variant="flat"
+                  className="corioli-cta w-full"
                   onPress={addAmbulatorio}
                   isLoading={savingAmbulatori}
                   isDisabled={savingAmbulatori}
-                  className="w-full"
                 >
                   {savingAmbulatori ? "Salvataggio..." : "Aggiungi Ambulatorio"}
                 </Button>
@@ -1672,7 +1692,7 @@ const SettingsScreen = () => {
           <Card className="shadow-lg h-full">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
-                <Download className="w-5 h-5 text-success" />
+                <Database className="w-5 h-5 text-primary shrink-0" />
                 <h2 className="text-xl font-semibold text-gray-900">
                   Backup e Dati
                 </h2>

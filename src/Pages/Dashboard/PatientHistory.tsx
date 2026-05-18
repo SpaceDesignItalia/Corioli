@@ -43,6 +43,7 @@ import {
   Award,
   StickyNote,
 } from "lucide-react";
+import { RefertoTextarea } from "../../components/RefertoTextarea";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { it } from "date-fns/locale";
@@ -78,13 +79,6 @@ import { getDoctorProfileIncompleteMessage, isDoctorProfileComplete } from "../.
 
 const SIEOG_NOTE =
   "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di ciò si informa la persona assistita.";
-
-function getNotaBenePreview(text: string, maxChars: number = 120): string {
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  if (!trimmed) return "";
-  if (trimmed.length <= maxChars) return trimmed;
-  return trimmed.slice(0, maxChars) + "…";
-}
 
 function formatPdfDate(dateString: string): string {
   if (!dateString) return "N/D";
@@ -1518,37 +1512,32 @@ export default function PatientHistory() {
           className="flex items-center gap-2 w-full min-w-0 py-2 px-3 text-left"
         >
           <StickyNote size={14} className="text-default-400 shrink-0" />
-          <span
-            className="text-xs text-default-500 flex-1 min-w-0"
-            style={{
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {!notaBeneLocal.trim() && !isNotaBeneOpen
-              ? "Nota bene (amica, prezzi, familiarità…)"
-              : notaBeneLocal.trim()
-                ? getNotaBenePreview(notaBeneLocal)
-                : "Nota bene"}
-          </span>
+          {isNotaBeneOpen ? (
+            <span className="text-xs font-medium text-default-600 flex-1 min-w-0">
+              Nota bene
+            </span>
+          ) : (
+            <span className="text-xs text-default-500 flex-1 min-w-0 whitespace-pre-wrap break-words">
+              {notaBeneLocal.trim()
+                ? notaBeneLocal.trim()
+                : "Nota bene (amica, prezzi, familiarità…)"}
+            </span>
+          )}
           <span className="text-default-400 shrink-0">
             {isNotaBeneOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </span>
         </button>
         {isNotaBeneOpen && (
           <div className="px-3 pb-3 pt-0 border-t border-default-100">
-            <Textarea
+            <RefertoTextarea
               placeholder="Es. Amica, prezzo speciale · Familiarità cancro · Richiamare al pomeriggio..."
               value={notaBeneLocal}
               onValueChange={setNotaBeneLocal}
               variant="bordered"
               minRows={2}
-              maxRows={4}
               size="sm"
               classNames={{
-                input: "text-sm",
+                input: "!text-sm !leading-normal",
                 inputWrapper: "bg-white border-default-200",
               }}
               className="w-full"
