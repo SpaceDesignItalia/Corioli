@@ -14,6 +14,7 @@ const AddPatient = lazy(() => import("./Pages/Dashboard/AddPatient"));
 const CheckPatient = lazy(() => import("./Pages/Dashboard/CheckPatient"));
 const AddVisit = lazy(() => import("./Pages/Dashboard/AddVisit"));
 const Visite = lazy(() => import("./Pages/Dashboard/Visite"));
+const Gravidanze = lazy(() => import("./Pages/Dashboard/Gravidanze"));
 const Settings = lazy(() => import("./Pages/Dashboard/Settings"));
 const Help = lazy(() => import("./Pages/Dashboard/Help"));
 const PatientHistory = lazy(() => import("./Pages/Dashboard/PatientHistory"));
@@ -95,6 +96,7 @@ const App: React.FC = () => {
                   <Route element={<AddVisit />} path="/add-visit" />
                   <Route element={<AddVisit />} path="/edit-visit/:visitId" />
                   <Route element={<Visite />} path="/visite" />
+                  <Route element={<Gravidanze />} path="/gravidanze" />
                   <Route element={<Documents />} path="/documents" />
                   <Route element={<Settings />} path="/settings" />
                   <Route element={<PatientHistory />} path="/patient-history/:patientId" />

@@ -1391,7 +1391,7 @@ const SettingsScreen = () => {
             className="shadow-lg w-full"
             classNames={{
               base: "h-full flex flex-col min-h-0",
-              body: "flex flex-1 flex-col gap-5 min-h-0",
+              body: "flex flex-1 flex-col gap-6 min-h-0",
             }}
           >
             <CardHeader className="pb-2 flex-shrink-0">
@@ -1403,7 +1403,7 @@ const SettingsScreen = () => {
               </div>
             </CardHeader>
             <CardBody>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-shrink-0">
                 <Avatar
                   key={profilePic} // Force re-render on change
                   src={profilePic || undefined}
@@ -1435,7 +1435,7 @@ const SettingsScreen = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="flex flex-1 flex-col justify-between gap-5 py-1 min-h-0">
                 <Input
                   label="Nome"
                   value={doctorInfo.nome}
@@ -1473,7 +1473,6 @@ const SettingsScreen = () => {
                   }
                   variant="bordered"
                   placeholder="3331234567"
-                  description="Numero di telefono professionale"
                 />
                 <Input
                   label="Specializzazione"
