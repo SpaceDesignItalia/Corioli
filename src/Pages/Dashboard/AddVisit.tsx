@@ -44,6 +44,7 @@ import {
 import {
   parseGestationalWeeks,
   getCentileForWeight,
+  formatCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
 import { getBiometryPercentile } from "../../utils/biometryCentiles";
 import {
@@ -92,6 +93,18 @@ function PercentileBar({ percentile, showText = true }: { percentile: number | n
       {showText && <span className="text-xs text-default-600 tabular-nums shrink-0">{Math.round(percentile)}°</span>}
     </div>
   );
+}
+
+function formatCentileInputValue(percentile: number | null | undefined): string {
+  if (percentile == null || !Number.isFinite(percentile)) return "";
+  return formatCentileLabel(percentile).replace("°", "");
+}
+
+function parseCentileInputValue(value: string): number | undefined {
+  const cleaned = value.trim().replace("°", "").replace(/[<>]/g, "");
+  if (cleaned === "") return undefined;
+  const parsed = parseInt(cleaned, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /** Mostra PI/IR con virgola decimale (locale IT). */
@@ -1199,6 +1212,32 @@ export default function AddVisit() {
 
   const handleOstetriciaChange = (field: string, value: any) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
+
+    if (field === "settimaneGestazione") {
+      const newGa = parseGestationalWeeks((value as string) ?? "");
+      setOstetriciaData((prev) => {
+        const bio = prev.biometriaFetale;
+        if (newGa == null || !bio) return { ...prev, [field]: value };
+        const pctKeyMap = {
+          bpdMm: "bpdPercentile",
+          hcMm: "hcPercentile",
+          acMm: "acPercentile",
+          flMm: "flPercentile",
+        } as const;
+        const bioUpdates: Record<string, number | undefined> = {};
+        (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach((measField) => {
+          const measVal = bio[measField];
+          if (measVal && measVal > 0) {
+            const p = getBiometryPercentile(measVal, newGa, measField);
+            bioUpdates[pctKeyMap[measField]] = p != null ? Math.round(p) : undefined;
+          }
+        });
+        bioUpdates["efwPercentile"] = undefined;
+        return { ...prev, [field]: value, biometriaFetale: { ...bio, ...bioUpdates } };
+      });
+      return;
+    }
+
     setOstetriciaData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -1223,6 +1262,27 @@ export default function AddVisit() {
           const edd = subDays(visitDate, gaDays);
           const dpp = addDays(edd, 280);
           next.dataPresunta = format(dpp, "yyyy-MM-dd");
+        }
+        // Ricalcola percentili biometria con la nuova GA
+        const newGaDec = gaDays / 7;
+        const bio = next.biometriaFetale;
+        if (bio) {
+          const pctKeyMap = {
+            bpdMm: "bpdPercentile",
+            hcMm: "hcPercentile",
+            acMm: "acPercentile",
+            flMm: "flPercentile",
+          } as const;
+          const bioUpdates: Record<string, number | undefined> = {};
+          (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach((measField) => {
+            const measVal = bio[measField];
+            if (measVal && measVal > 0) {
+              const p = getBiometryPercentile(measVal, newGaDec, measField);
+              bioUpdates[pctKeyMap[measField]] = p != null ? Math.round(p) : undefined;
+            }
+          });
+          bioUpdates["efwPercentile"] = undefined;
+          next.biometriaFetale = { ...bio, ...bioUpdates };
         }
         const oldSett = prev.settimaneGestazione || "—";
         const oldDpp = prev.dataPresunta ? format(parseISO(prev.dataPresunta), "dd/MM/yyyy") : "—";
@@ -2780,19 +2840,13 @@ export default function AddVisit() {
                                   </div>
                                   <div className="flex items-center">
                                     <input
-                                      type="number"
+                                      type="text"
+                                      inputMode="numeric"
                                       className="w-7 text-right text-[11px] bg-transparent border-b border-default-200 focus:border-primary outline-none tabular-nums text-default-500 focus:text-primary placeholder:text-default-300"
                                       placeholder="-"
-                                      value={
-                                        currentEfwPct != null
-                                          ? currentEfwPct
-                                          : ""
-                                      }
+                                      value={formatCentileInputValue(currentEfwPct)}
                                       onChange={(e) => {
-                                        const v =
-                                          e.target.value === ""
-                                            ? undefined
-                                            : parseInt(e.target.value);
+                                        const v = parseCentileInputValue(e.target.value);
                                         handleEfwPercentileChange(v);
                                       }}
                                     />
@@ -2938,15 +2992,13 @@ export default function AddVisit() {
                               </div>
                               <div className="flex items-center">
                                 <input
-                                  type="number"
+                                  type="text"
+                                  inputMode="numeric"
                                   className="w-7 text-right text-[11px] bg-transparent border-b border-default-200 focus:border-primary outline-none tabular-nums text-default-500 focus:text-primary placeholder:text-default-300"
                                   placeholder="-"
-                                  value={currentPct ?? ""}
+                                  value={formatCentileInputValue(currentPct)}
                                   onChange={(e) => {
-                                    const v =
-                                      e.target.value === ""
-                                        ? undefined
-                                        : parseInt(e.target.value);
+                                    const v = parseCentileInputValue(e.target.value);
                                     handleFlussimetriaPercentileChange(
                                       item.key as "pi" | "ri",
                                       v,

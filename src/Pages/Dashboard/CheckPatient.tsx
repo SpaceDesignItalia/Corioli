@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, ChangeEvent } from "react";
-import { 
-  Input, 
-  Button, 
-  Card, 
-  CardBody, 
+import {
+  Input,
+  Button,
+  Card,
+  CardBody,
   CardHeader,
   Divider,
-  Chip
+  Chip,
 } from "@nextui-org/react";
 import { useNavigate } from "react-router-dom";
 import { PatientService } from "../../services/OfflineServices";
@@ -35,22 +35,27 @@ export default function CheckPatient() {
 
   const suggestions = useMemo(() => {
     const query = cf.trim().toUpperCase();
-    if (query.length < 4) return [];
+    if (
+      query.length < 4 ||
+      allPatients.some((p) => p.codiceFiscale === undefined)
+    )
+      return [];
 
-    const startsWithMatches = allPatients.filter((p) =>
-      p.codiceFiscale.toUpperCase().startsWith(query)
+    const startsWithMatches = allPatients.filter(
+      (p) => p.codiceFiscale?.toUpperCase().startsWith(query) ?? false,
     );
 
-    const includesMatches = allPatients.filter((p) =>
-      !p.codiceFiscale.toUpperCase().startsWith(query) &&
-      p.codiceFiscale.toUpperCase().includes(query)
+    const includesMatches = allPatients.filter(
+      (p) =>
+        !(p.codiceFiscale?.toUpperCase().startsWith(query) ?? false) &&
+        (p.codiceFiscale?.toUpperCase().includes(query) ?? false),
     );
 
     return [...startsWithMatches, ...includesMatches].slice(0, 6);
   }, [cf, allPatients]);
 
   const handleSuggestionClick = (patient: Patient) => {
-    setCf(patient.codiceFiscale?.toUpperCase() ?? '');
+    setCf(patient.codiceFiscale?.toUpperCase() ?? "");
     if (error) setError(null);
     if (success) setSuccess(null);
     navigate(`/patient-history/${patient.id}`);
@@ -107,7 +112,8 @@ export default function CheckPatient() {
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold text-gray-900">Verifica Paziente</h1>
         <p className="text-gray-600 mt-2">
-          Inserisci il codice fiscale per verificare se il paziente è già registrato
+          Inserisci il codice fiscale per verificare se il paziente è già
+          registrato
         </p>
       </div>
 
@@ -172,7 +178,9 @@ export default function CheckPatient() {
                             <p className="text-sm">
                               <CodiceFiscaleValue
                                 value={patient.codiceFiscale}
-                                generatedFromImport={Boolean(patient.codiceFiscaleGenerato)}
+                                generatedFromImport={Boolean(
+                                  patient.codiceFiscaleGenerato,
+                                )}
                               />
                             </p>
                             <p className="text-xs text-gray-500">
@@ -185,7 +193,6 @@ export default function CheckPatient() {
                   </CardBody>
                 </Card>
               )}
-
             </div>
 
             <Divider />
@@ -215,7 +222,9 @@ export default function CheckPatient() {
           <Divider />
 
           <div className="text-center space-y-4">
-            <p className="text-gray-600">Il paziente non è ancora registrato?</p>
+            <p className="text-gray-600">
+              Il paziente non è ancora registrato?
+            </p>
             <Button
               color="primary"
               variant="flat"

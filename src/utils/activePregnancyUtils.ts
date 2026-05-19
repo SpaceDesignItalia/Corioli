@@ -2,6 +2,8 @@ import { addDays, differenceInDays, parseISO, isValid } from "date-fns";
 import type { Patient, Visit } from "../types/Storage";
 import { normalizeLMP } from "./fetalGrowthChartUtils";
 
+export type PregnancyStatus = "active" | "delivered";
+
 export interface ActivePregnancy {
   patientId: string;
   patientName: string;
@@ -12,8 +14,10 @@ export interface ActivePregnancy {
   days: number;
   gestationLabel: string;
   daysToBirth: number;
+  daysSinceBirth?: number;
   progressPercent: number;
   dppLabel: string;
+  status: PregnancyStatus;
 }
 
 function parseLMPDate(lmp: string): Date | null {
@@ -38,7 +42,7 @@ function getPatientInitials(patient: Patient, displayName: string | null): strin
   return "?";
 }
 
-export function computeActivePregnancies(
+export function computeTrackedPregnancies(
   visits: Visit[],
   patients: Patient[],
   referenceDate: Date = new Date(),
@@ -73,11 +77,44 @@ export function computeActivePregnancies(
 
     const umDay = startOfDay(umDate);
     const dpp = startOfDay(addDays(umDay, 280));
-
-    if (dpp.getTime() <= today.getTime()) continue;
+    const isDelivered = dpp.getTime() <= today.getTime();
 
     const totalDays = differenceInDays(today, umDay);
     if (totalDays < 0) continue;
+
+    const patient = patientMap.get(patientId);
+    const displayName = patient
+      ? `${patient.nome ?? ""} ${patient.cognome ?? ""}`.trim() || null
+      : null;
+    const patientName = displayName ?? "Paziente senza nome";
+
+    const dppLabel = dpp.toLocaleDateString("it-IT", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+
+    if (isDelivered) {
+      const daysSinceBirth = differenceInDays(today, dpp);
+      results.push({
+        patientId,
+        patientName,
+        initials: patient
+          ? getPatientInitials(patient, displayName)
+          : patientName.slice(0, 2).toUpperCase(),
+        umDate: umDay,
+        dpp,
+        weeks: 40,
+        days: 0,
+        gestationLabel: "40+0",
+        daysToBirth: 0,
+        daysSinceBirth,
+        progressPercent: 100,
+        dppLabel,
+        status: "delivered",
+      });
+      continue;
+    }
 
     const weeks = Math.floor(totalDays / 7);
     const days = totalDays % 7;
@@ -85,12 +122,6 @@ export function computeActivePregnancies(
       (dpp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
     );
     const progressPercent = Math.min(100, (weeks / 40) * 100);
-
-    const patient = patientMap.get(patientId);
-    const displayName = patient
-      ? `${patient.nome ?? ""} ${patient.cognome ?? ""}`.trim() || null
-      : null;
-    const patientName = displayName ?? "Paziente senza nome";
 
     results.push({
       patientId,
@@ -105,19 +136,31 @@ export function computeActivePregnancies(
       gestationLabel: `${weeks}+${days}`,
       daysToBirth,
       progressPercent,
-      dppLabel: dpp.toLocaleDateString("it-IT", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
+      dppLabel,
+      status: "active",
     });
   }
 
-  // Più vicine al parto per prime (meno giorni al parto → DPP più prossima)
   return results.sort((a, b) => {
-    if (a.daysToBirth !== b.daysToBirth) {
-      return a.daysToBirth - b.daysToBirth;
+    if (a.status !== b.status) {
+      return a.status === "active" ? -1 : 1;
     }
-    return a.dpp.getTime() - b.dpp.getTime();
+    if (a.status === "active") {
+      if (a.daysToBirth !== b.daysToBirth) {
+        return a.daysToBirth - b.daysToBirth;
+      }
+      return a.dpp.getTime() - b.dpp.getTime();
+    }
+    return (a.daysSinceBirth ?? 0) - (b.daysSinceBirth ?? 0);
   });
+}
+
+export function computeActivePregnancies(
+  visits: Visit[],
+  patients: Patient[],
+  referenceDate: Date = new Date(),
+): ActivePregnancy[] {
+  return computeTrackedPregnancies(visits, patients, referenceDate).filter(
+    (p) => p.status === "active",
+  );
 }

@@ -26,6 +26,20 @@ import {
 import { PageHeader } from "../../components/PageHeader";
 import { VoiceWaveform, extractWaveformFromBlob, generatePlaceholderWaveform } from "../../components/chat/VoiceWaveform";
 import { VoiceMessagePlayer } from "../../components/chat/VoiceMessagePlayer";
+import { DoctorService } from "../../services/OfflineServices";
+import axios from "axios";
+import {
+  fetchSupportMessages,
+  sendSupportMessage,
+  deleteSupportConversation,
+  mapToUiMessage,
+  type SupportChatMessageDto,
+} from "../../services/SupportChatService";
+import type { Doctor } from "../../types/Storage";
+
+const CHAT_POLL_MS = 4000;
+const MAX_IMAGE_MB = 10;
+const MAX_VIDEO_MB = 25;
 
 type AttachmentType = "audio" | "file";
 
@@ -37,19 +51,19 @@ interface ChatAttachment {
   size?: number;
   durationSec?: number;
   waveform?: number[];
+  file?: File;
 }
 
 interface ChatMessage {
-  id: number;
+  id: string;
   role: "user" | "operator";
   text?: string;
   attachments?: ChatAttachment[];
   time: string;
+  createdAt?: string;
 }
 
-const ACCEPTED_FILES =
-  "image/*,.pdf,.xls,.xlsx,.doc,.docx,.csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv";
-const MAX_FILE_SIZE_MB = 15;
+const ACCEPTED_FILES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -69,14 +83,12 @@ function getFileIcon(mimeType: string) {
 }
 
 export default function HelpAndFeedback() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
-      role: "operator",
-      text: "Ciao! Benvenuto nell'assistenza di Corioli. Come possiamo aiutarti oggi?",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [doctor, setDoctor] = useState<Doctor | null>(null);
+  const [chatLoading, setChatLoading] = useState(true);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [endingChat, setEndingChat] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [openCategories, setOpenCategories] = useState<Set<string>>(
@@ -100,6 +112,8 @@ export default function HelpAndFeedback() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const levelAnimRef = useRef<number | null>(null);
   const recordingCancelledRef = useRef(false);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = messages;
 
   const scrollToBottom = useCallback(() => {
     const el = messagesScrollRef.current;
@@ -118,48 +132,148 @@ export default function HelpAndFeedback() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const simulateOperatorReply = useCallback(() => {
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          role: "operator",
-          text: "Grazie per la tua segnalazione. Un operatore ha preso in carico la richiesta e ti risponderà al più presto.",
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        },
-      ]);
-      setIsSubmitting(false);
-    }, 1500);
+  useEffect(() => {
+    let cancelled = false;
+
+    const init = async () => {
+      try {
+        const d = await DoctorService.getDoctor();
+        if (cancelled) return;
+        if (!d) {
+          setChatError("Profilo medico non configurato. Completa la registrazione.");
+          setChatLoading(false);
+          return;
+        }
+        setDoctor(d);
+        const { messages: remote, conversationId: convId } = await fetchSupportMessages(d.id);
+        if (!cancelled) {
+          setConversationId(convId);
+          setMessages(remote.map(mapToUiMessage));
+          setChatError(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setChatError("Impossibile caricare la chat. Verifica la connessione al server.");
+        }
+      } finally {
+        if (!cancelled) setChatLoading(false);
+      }
+    };
+
+    init();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  useEffect(() => {
+    if (!doctor) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const prev = messagesRef.current;
+        const since = prev.length > 0 ? prev[prev.length - 1].createdAt : undefined;
+        const { messages: remote, conversationId: convId } = await fetchSupportMessages(
+          doctor.id,
+          since,
+          false,
+        );
+        if (cancelled) return;
+        if (convId) setConversationId(convId);
+        if (remote.length === 0) return;
+        setMessages((current) => {
+          const ids = new Set(current.map((m) => m.id));
+          const mapped = remote.map(mapToUiMessage);
+          const added = mapped.filter((m) => !ids.has(m.id));
+          return added.length ? [...current, ...added] : current;
+        });
+        setChatError(null);
+      } catch {
+        // polling silenzioso
+      }
+    };
+
+    const interval = setInterval(poll, CHAT_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [doctor]);
+
   const sendUserMessage = useCallback(
-    (text?: string, attachments?: ChatAttachment[]) => {
+    async (text?: string, attachments?: ChatAttachment[]) => {
       const hasText = Boolean(text?.trim());
-      const hasAttachments = Boolean(attachments?.length);
-      if (!hasText && !hasAttachments) return;
+      const files = (attachments ?? []).filter((a) => a.file);
+      if (!hasText && files.length === 0) return;
 
-      const newMsg: ChatMessage = {
-        id: Date.now(),
-        role: "user",
-        text: hasText ? text!.trim() : undefined,
-        attachments: attachments?.length ? attachments : undefined,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
+      if (!doctor) {
+        setChatError("Profilo medico non disponibile.");
+        return;
+      }
 
-      setMessages((prev) => [...prev, newMsg]);
+      setIsSubmitting(true);
+      setChatError(null);
+      try {
+        const sentMessages: SupportChatMessageDto[] = [];
+        let newConvId: string | null = conversationId;
+        if (hasText) {
+          const res = await sendSupportMessage(doctor.id, { text: text!.trim() });
+          sentMessages.push(res.message);
+          newConvId = res.conversationId;
+        }
+        for (const att of files) {
+          if (att.file) {
+            const res = await sendSupportMessage(doctor.id, { file: att.file });
+            sentMessages.push(res.message);
+            newConvId = res.conversationId;
+          }
+        }
+        if (newConvId) setConversationId(newConvId);
+        setMessages((prev) => [...prev, ...sentMessages.map(mapToUiMessage)]);
+        setInputValue("");
+        setPendingAttachments([]);
+      } catch (e) {
+        const msg = axios.isAxiosError(e)
+          ? (e.response?.data as { error?: string })?.error
+          : null;
+        setChatError(msg || "Invio non riuscito. Riprova tra poco.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [doctor, conversationId],
+  );
+
+  const handleEndChat = useCallback(async () => {
+    if (!doctor || !conversationId || endingChat) return;
+    const ok = window.confirm(
+      "Terminare la chat? Tutti i messaggi e gli allegati verranno eliminati definitivamente.",
+    );
+    if (!ok) return;
+
+    setEndingChat(true);
+    setChatError(null);
+    try {
+      await deleteSupportConversation(doctor.id);
+      setConversationId(null);
+      setMessages([]);
       setInputValue("");
       setPendingAttachments([]);
-      simulateOperatorReply();
-    },
-    [simulateOperatorReply],
-  );
+    } catch {
+      setChatError("Impossibile terminare la chat. Riprova.");
+    } finally {
+      setEndingChat(false);
+    }
+  }, [doctor, conversationId, endingChat]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (isRecording) return;
-    sendUserMessage(inputValue, pendingAttachments.length ? pendingAttachments : undefined);
+    void sendUserMessage(
+      inputValue,
+      pendingAttachments.length ? pendingAttachments : undefined,
+    );
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -168,8 +282,15 @@ export default function HelpAndFeedback() {
 
     const newAttachments: ChatAttachment[] = [];
     for (const file of Array.from(files)) {
-      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-        alert(`"${file.name}" supera ${MAX_FILE_SIZE_MB} MB e non può essere allegato.`);
+      const isVideo = file.type.startsWith("video/");
+      const isImage = file.type.startsWith("image/");
+      if (!isVideo && !isImage) {
+        alert(`"${file.name}" non è supportato. Usa immagini o video.`);
+        continue;
+      }
+      const maxMb = isVideo ? MAX_VIDEO_MB : MAX_IMAGE_MB;
+      if (file.size > maxMb * 1024 * 1024) {
+        alert(`"${file.name}" supera ${maxMb} MB.`);
         continue;
       }
       newAttachments.push({
@@ -178,6 +299,7 @@ export default function HelpAndFeedback() {
         url: URL.createObjectURL(file),
         mimeType: file.type || "application/octet-stream",
         size: file.size,
+        file,
       });
     }
 
@@ -448,8 +570,8 @@ export default function HelpAndFeedback() {
       );
     }
 
-    const Icon = getFileIcon(att.mimeType);
     const isImage = att.mimeType.startsWith("image/");
+    const isVideo = att.mimeType.startsWith("video/");
 
     return (
       <div className="mt-1">
@@ -461,21 +583,23 @@ export default function HelpAndFeedback() {
               className="max-w-[200px] max-h-[140px] rounded-lg object-cover border border-white/20"
             />
           </a>
+        ) : isVideo ? (
+          <video
+            src={att.url}
+            controls
+            className="max-w-[260px] max-h-[180px] rounded-lg border border-white/20 bg-black/80"
+          />
         ) : (
           <a
             href={att.url}
-            download={att.name}
+            target="_blank"
+            rel="noopener noreferrer"
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${
               isUser ? "bg-white/15 hover:bg-white/25" : "bg-gray-50 hover:bg-gray-100 border border-gray-100"
             }`}
           >
-            <Icon size={16} className="flex-shrink-0" />
+            <FileText size={16} className="flex-shrink-0" />
             <span className="truncate max-w-[160px] font-medium">{att.name}</span>
-            {att.size != null && (
-              <span className={`flex-shrink-0 ${isUser ? "text-white/60" : "text-gray-400"}`}>
-                {formatFileSize(att.size)}
-              </span>
-            )}
           </a>
         )}
       </div>
@@ -513,7 +637,9 @@ export default function HelpAndFeedback() {
   const canSend =
     !isSubmitting &&
     !isRecording &&
-    (inputValue.trim() || pendingAttachments.length > 0);
+    !chatLoading &&
+    Boolean(doctor) &&
+    (Boolean(inputValue.trim()) || pendingAttachments.length > 0);
 
   return (
     <div className="corioli-page space-y-6 animate-in fade-in duration-500 flex flex-col min-h-0">
@@ -630,10 +756,30 @@ export default function HelpAndFeedback() {
               <div className="flex flex-col min-w-0">
                 <p className="text-md font-bold text-gray-800">Chat con Operatore</p>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-success-500 shrink-0" />
-                  <p className="text-xs text-default-500 font-medium">Online adesso</p>
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      chatError ? "bg-warning-500" : "bg-success-500"
+                    }`}
+                  />
+                  <p className="text-xs text-default-500 font-medium">
+                    {chatLoading ? "Connessione…" : chatError ? "Problema connessione" : "Assistenza attiva"}
+                  </p>
                 </div>
               </div>
+              {conversationId && (
+                <Tooltip content="Elimina chat e tutti i messaggi">
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color="danger"
+                    isLoading={endingChat}
+                    isDisabled={isSubmitting || endingChat}
+                    onPress={() => void handleEndChat()}
+                  >
+                    Termina chat
+                  </Button>
+                </Tooltip>
+              )}
             </CardHeader>
             <Divider />
 
@@ -642,7 +788,22 @@ export default function HelpAndFeedback() {
                 ref={messagesScrollRef}
                 className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4"
               >
-                {messages.map(renderMessage)}
+                {chatLoading && (
+                  <p className="text-center text-sm text-default-400 py-8">Caricamento chat…</p>
+                )}
+                {!chatLoading && chatError && (
+                  <p className="text-center text-sm text-warning-600 py-2 px-2">{chatError}</p>
+                )}
+                {!chatLoading && messages.length === 0 && !chatError && (
+                  <div className="flex flex-col items-center justify-center py-10 text-center px-4">
+                    <LifeBuoy className="w-10 h-10 text-default-300 mb-3" />
+                    <p className="text-sm font-medium text-default-600">Nessun messaggio ancora</p>
+                    <p className="text-xs text-default-400 mt-1 max-w-[240px]">
+                      Scrivi per primo per contattare il team assistenza Corioli.
+                    </p>
+                  </div>
+                )}
+                {!chatLoading && messages.map(renderMessage)}
                 {isSubmitting && (
                   <div className="flex items-start animate-in fade-in">
                     <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm flex gap-1.5 items-center">
@@ -694,7 +855,7 @@ export default function HelpAndFeedback() {
 
                   {!isRecording ? (
                     <>
-                      <Tooltip content="Allega file (PDF, Excel, immagini…)">
+                      <Tooltip content="Allega immagine o video">
                         <Button
                           isIconOnly
                           type="button"
@@ -705,20 +866,6 @@ export default function HelpAndFeedback() {
                           onPress={() => fileInputRef.current?.click()}
                         >
                           <Paperclip size={18} />
-                        </Button>
-                      </Tooltip>
-
-                      <Tooltip content="Messaggio vocale">
-                        <Button
-                          isIconOnly
-                          type="button"
-                          variant="flat"
-                          radius="lg"
-                          className="flex-shrink-0 text-default-500"
-                          isDisabled={isSubmitting}
-                          onPress={startRecording}
-                        >
-                          <Mic size={18} />
                         </Button>
                       </Tooltip>
 
@@ -793,7 +940,7 @@ export default function HelpAndFeedback() {
                   )}
                 </form>
                 <p className="text-[10px] text-center text-gray-400 mt-2">
-                  PDF, Excel, Word, immagini e messaggi vocali fino a {MAX_FILE_SIZE_MB} MB
+                  Immagini fino a {MAX_IMAGE_MB} MB · video fino a {MAX_VIDEO_MB} MB
                 </p>
               </div>
             </CardBody>

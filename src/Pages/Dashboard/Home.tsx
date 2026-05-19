@@ -38,6 +38,7 @@ import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
+import { PregnancyListRow } from "../../components/PregnancyListRow";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -209,60 +210,6 @@ const buildDashboardSubtitle = (
 
   return "Ecco il riepilogo della tua attività";
 };
-
-const PREGNANCY_TOTAL_WEEKS = 40;
-
-function isPregnancySegmentCompleted(
-  segmentIndex: number,
-  weeks: number,
-  days: number,
-): boolean {
-  if (weeks >= PREGNANCY_TOTAL_WEEKS) return true;
-  return segmentIndex < weeks || (segmentIndex === weeks && days > 0);
-}
-
-function PregnancyWeekSegments({
-  weeks,
-  days,
-}: {
-  weeks: number;
-  days: number;
-}) {
-  return (
-    <div className="dashboard-pregnancy-segments" aria-hidden>
-      {Array.from({ length: PREGNANCY_TOTAL_WEEKS }, (_, i) => (
-        <span
-          key={i}
-          className={`dashboard-pregnancy-segment${
-            isPregnancySegmentCompleted(i, weeks, days)
-              ? " dashboard-pregnancy-segment--done"
-              : ""
-          }`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function PregnancyDaysText({ daysToBirth }: { daysToBirth: number }) {
-  const label =
-    daysToBirth === 1 ? "giorno al parto" : "giorni al parto";
-
-  if (daysToBirth <= 14) {
-    const color = daysToBirth <= 7 ? "#A32D2D" : "#854F0B";
-    return (
-      <span style={{ color, fontWeight: 500 }}>
-        ⚠ {daysToBirth} {label}
-      </span>
-    );
-  }
-
-  return (
-    <span>
-      {daysToBirth} {label}
-    </span>
-  );
-}
 
 export default function Home() {
   const navigate = useNavigate();
@@ -760,7 +707,7 @@ export default function Home() {
               variant="light"
               color="primary"
               endContent={<ChevronRight size={16} />}
-              onPress={() => navigate("/visite?tipo=ostetrica")}
+              onPress={() => navigate("/gravidanze")}
             >
               Vedi tutte
             </Button>
@@ -769,69 +716,15 @@ export default function Home() {
             {activePregnancies.length > 0 ? (
               <>
                 <div>
-                  {visiblePregnancies.map((pregnancy) => {
-                    const urgencyClass =
-                      pregnancy.daysToBirth <= 7
-                        ? "dashboard-pregnancy-row--urgent-red"
-                        : pregnancy.daysToBirth <= 14
-                          ? "dashboard-pregnancy-row--urgent-amber"
-                          : "";
-
-                    return (
-                      <div
-                        key={pregnancy.patientId}
-                        className={`dashboard-pregnancy-row group ${urgencyClass}`}
-                        onClick={() =>
-                          navigate(`/patient-history/${pregnancy.patientId}`)
-                        }
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            navigate(
-                              `/patient-history/${pregnancy.patientId}`,
-                            );
-                          }
-                        }}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="dashboard-pregnancy-avatar">
-                            {pregnancy.initials}
-                          </div>
-                          <p
-                            className="flex-1 min-w-0 truncate group-hover:text-brand-600 transition-colors"
-                            style={{
-                              fontSize: "13px",
-                              fontWeight: 500,
-                              color: "var(--color-text-primary)",
-                            }}
-                          >
-                            {pregnancy.patientName}
-                          </p>
-                          <span className="dashboard-pregnancy-badge">
-                            {pregnancy.gestationLabel}
-                          </span>
-                          <ArrowRight
-                            size={14}
-                            className="text-gray-300 group-hover:text-brand-600 transition-colors shrink-0"
-                          />
-                        </div>
-                        <div className="dashboard-pregnancy-timeline ml-[42px]">
-                          <PregnancyWeekSegments
-                            weeks={pregnancy.weeks}
-                            days={pregnancy.days}
-                          />
-                          <p className="dashboard-pregnancy-meta truncate">
-                            Settimana {pregnancy.gestationLabel} · DPP:{" "}
-                            {pregnancy.dppLabel} ·{" "}
-                            <PregnancyDaysText
-                              daysToBirth={pregnancy.daysToBirth}
-                            />
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {visiblePregnancies.map((pregnancy) => (
+                    <PregnancyListRow
+                      key={pregnancy.patientId}
+                      pregnancy={pregnancy}
+                      onClick={(patientId) =>
+                        navigate(`/patient-history/${patientId}`)
+                      }
+                    />
+                  ))}
                 </div>
               </>
             ) : (

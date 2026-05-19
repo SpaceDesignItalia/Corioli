@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh pr create --repo SpaceDesignItalia/Corioli --base develop --title 'fix: correggi 3 bug nei calcolatori percentili visita ostetrica' --body ' *)",
+      "Bash(node -e ' *)"
+    ]
+  }
+}

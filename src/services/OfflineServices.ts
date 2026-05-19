@@ -223,6 +223,13 @@ export class PreferenceService {
     await storageService.setPreference('preferences', JSON.stringify(prefs));
   }
 
+  static async recordLastBackup(): Promise<string> {
+    const now = new Date().toISOString();
+    const prefs = (await this.getPreferences()) ?? {};
+    await this.savePreferences({ ...prefs, lastBackupDate: now });
+    return now;
+  }
+
   static async getRecentPatientSearches(): Promise<string | null> {
     return await storageService.getPreference('recent_patient_searches');
   }
@@ -264,6 +271,13 @@ export class BackupService {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+
+    const lastBackupDate = await PreferenceService.recordLastBackup();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('corioli-backup-completed', { detail: { lastBackupDate } }),
+      );
+    }
   }
 
   static async uploadBackup(file: File, mode: BackupImportMode = 'replace'): Promise<void> {
