@@ -1,5 +1,11 @@
 import axios from "axios";
-import { Doctor } from "../types/Storage";
+
+export interface SupportAttachmentDto {
+  url: string;
+  mimeType: string;
+  name: string;
+  size: number | null;
+}
 
 export interface SupportChatMessageDto {
   id: string;
@@ -8,42 +14,69 @@ export interface SupportChatMessageDto {
   createdAt: string;
   operatorId: string | null;
   operatorName: string | null;
+  attachment: SupportAttachmentDto | null;
 }
 
 const baseUrl = () => import.meta.env.VITE_API_URL as string;
 
-function doctorParams(doctor: Doctor) {
-  return {
-    nome: doctor.nome,
-    cognome: doctor.cognome,
-    email: doctor.email,
-    numero_telefono: doctor.telefono ?? "",
-    specializzazione: doctor.specializzazione ?? "",
-  };
+export function resolveAttachmentUrl(url: string): string {
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const api = baseUrl().replace(/\/$/, "");
+  const origin = api.replace(/\/api\/v1$/i, "");
+  const path = url.startsWith("/") ? url : `/${url}`;
+  return `${origin}${path}`;
+}
+
+function clientPath(clientId: string, suffix: string) {
+  return `${baseUrl()}/support/client/${encodeURIComponent(clientId)}${suffix}`;
 }
 
 export async function fetchSupportMessages(
-  doctor: Doctor,
+  clientId: string,
   since?: string,
-): Promise<SupportChatMessageDto[]> {
+  markRead = !since,
+): Promise<{ conversationId: string | null; messages: SupportChatMessageDto[]; unreadCount: number }> {
   const { data } = await axios.get<{
-    conversationId: string;
+    conversationId: string | null;
     messages: SupportChatMessageDto[];
-  }>(`${baseUrl()}/support/client/${encodeURIComponent(doctor.id)}/messages`, {
-    params: { ...doctorParams(doctor), ...(since ? { since } : {}) },
+    unreadCount: number;
+  }>(clientPath(clientId, "/messages"), {
+    params: {
+      ...(since ? { since } : {}),
+      markRead: markRead ? "true" : "false",
+    },
   });
-  return data.messages;
+  return {
+    conversationId: data.conversationId,
+    messages: data.messages,
+    unreadCount: data.unreadCount ?? 0,
+  };
+}
+
+export async function fetchClientUnreadCount(clientId: string): Promise<number> {
+  const { data } = await axios.get<{ unreadCount: number }>(
+    clientPath(clientId, "/unread-count"),
+  );
+  return data.unreadCount ?? 0;
 }
 
 export async function sendSupportMessage(
-  doctor: Doctor,
-  text: string,
-): Promise<SupportChatMessageDto> {
-  const { data } = await axios.post<{ message: SupportChatMessageDto }>(
-    `${baseUrl()}/support/client/${encodeURIComponent(doctor.id)}/messages`,
-    { text, ...doctorParams(doctor) },
-  );
-  return data.message;
+  clientId: string,
+  options: { text?: string; file?: File },
+): Promise<{ message: SupportChatMessageDto; conversationId: string }> {
+  const form = new FormData();
+  if (options.text?.trim()) form.append("text", options.text.trim());
+  if (options.file) form.append("file", options.file);
+
+  const { data } = await axios.post<{
+    message: SupportChatMessageDto;
+    conversationId: string;
+  }>(clientPath(clientId, "/messages"), form);
+  return { message: data.message, conversationId: data.conversationId };
+}
+
+export async function deleteSupportConversation(clientId: string): Promise<void> {
+  await axios.delete(clientPath(clientId, "/conversation"));
 }
 
 export function formatChatTime(iso: string): string {
@@ -51,10 +84,23 @@ export function formatChatTime(iso: string): string {
 }
 
 export function mapToUiMessage(msg: SupportChatMessageDto) {
+  const attachments = msg.attachment
+    ? [
+        {
+          type: "file" as const,
+          name: msg.attachment.name,
+          url: resolveAttachmentUrl(msg.attachment.url),
+          mimeType: msg.attachment.mimeType,
+          size: msg.attachment.size ?? undefined,
+        },
+      ]
+    : undefined;
+
   return {
     id: msg.id,
     role: msg.senderType === "client" ? ("user" as const) : ("operator" as const),
-    text: msg.body,
+    text: msg.body || undefined,
+    attachments,
     time: formatChatTime(msg.createdAt),
     createdAt: msg.createdAt,
   };

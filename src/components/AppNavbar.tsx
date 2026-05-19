@@ -11,13 +11,17 @@ import {
   Tooltip,
   Button,
   Spinner,
+  Badge,
 } from "@nextui-org/react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { DoctorService } from "../services/OfflineServices";
 import { Download, RefreshCw } from "lucide-react";
 import { storageService } from "../services/StorageServiceFallback";
 import { sendHeartbeat } from "../services/HeartbeatService";
+import { fetchClientUnreadCount } from "../services/SupportChatService";
 import axios from "axios";
+
+const SUPPORT_UNREAD_POLL_MS = 45_000;
 
 const menuItems = [
   { label: "Dashboard", href: "/" },
@@ -38,6 +42,7 @@ export default function AppNavbar() {
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateDownloading, setUpdateDownloading] = useState(false);
+  const [supportUnread, setSupportUnread] = useState(0);
 
   const loadDoctor = async () => {
     try {
@@ -205,6 +210,28 @@ export default function AppNavbar() {
     void checkUpdateIfAllowed();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const pollUnread = async () => {
+      try {
+        const doctor = await DoctorService.getDoctor();
+        if (!doctor?.id || cancelled) return;
+        const count = await fetchClientUnreadCount(doctor.id);
+        if (!cancelled) setSupportUnread(count);
+      } catch {
+        // silenzioso
+      }
+    };
+
+    pollUnread();
+    const interval = setInterval(pollUnread, SUPPORT_UNREAD_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [location.pathname]);
+
   const handleReloadApp = () => {
     window.location.reload();
   };
@@ -255,14 +282,23 @@ export default function AppNavbar() {
         {/* Navigation Items */}
         {menuItems.map((item) => {
           const isActive = location.pathname === item.href;
+          const link = (
+            <Link
+              to={item.href}
+              className={`text-sm ${isActive ? "text-foreground font-semibold" : "text-default-500"} hover:text-foreground transition-colors`}
+            >
+              {item.label}
+            </Link>
+          );
           return (
             <NavbarItem key={item.href} className="hidden md:flex">
-              <Link
-                to={item.href}
-                className={`text-sm ${isActive ? "text-foreground font-semibold" : "text-default-500"} hover:text-foreground transition-colors`}
-              >
-                {item.label}
-              </Link>
+              {item.href === "/help" && supportUnread > 0 ? (
+                <Badge content={supportUnread > 99 ? "99+" : supportUnread} color="danger" size="sm">
+                  {link}
+                </Badge>
+              ) : (
+                link
+              )}
             </NavbarItem>
           );
         })}
