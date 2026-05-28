@@ -1,4 +1,5 @@
 import axios from "axios";
+import { appendClientFileAccessToken } from "../utils/configureClientApi";
 
 export interface SupportAttachmentDto {
   url: string;
@@ -20,11 +21,16 @@ export interface SupportChatMessageDto {
 const baseUrl = () => import.meta.env.VITE_API_URL as string;
 
 export function resolveAttachmentUrl(url: string): string {
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  const api = baseUrl().replace(/\/$/, "");
-  const origin = api.replace(/\/api\/v1$/i, "");
-  const path = url.startsWith("/") ? url : `/${url}`;
-  return `${origin}${path}`;
+  let resolved: string;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    resolved = url;
+  } else {
+    const api = baseUrl().replace(/\/$/, "");
+    const origin = api.replace(/\/api\/v1$/i, "");
+    const path = url.startsWith("/") ? url : `/${url}`;
+    resolved = `${origin}${path}`;
+  }
+  return appendClientFileAccessToken(resolved);
 }
 
 function clientPath(clientId: string, suffix: string) {
