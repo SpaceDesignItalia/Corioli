@@ -513,7 +513,7 @@ export default function HelpAndFeedback() {
         {
           title: "I miei dati sono al sicuro? Dove vengono salvati?",
           content:
-            "Sì, Corioli funziona completamente offline (Local First). I dati vengono salvati in un database locale criptato sul tuo computer. Nessun dato viene inviato a server esterni o cloud, garantendo la massima privacy e conformità GDPR per l'uso locale.",
+            "Corioli è progettato Local First: cartella clinica, visite e documenti restano sul tuo computer in un database locale (proteggi il dispositivo con password di sistema e backup sicuri). Per licenze, assistenza e aggiornamenti l'app comunica in modo limitato con i server Corioli (dati del medico e statistiche aggregate, mai l'intera cartella clinica). La decodifica del codice fiscale può usare un servizio esterno solo se abilitata nelle impostazioni. Consulta l'informativa privacy per i dettagli sui trattamenti e i tuoi diritti.",
         },
         {
           title: "Come faccio il backup dei dati?",

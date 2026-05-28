@@ -174,6 +174,10 @@ class LocalStorageFallbackService implements StorageService {
     const filteredCertificati = certificati.filter(c => c.patientId !== id);
     await this.saveToStorage('certificati_paziente', filteredCertificati);
 
+    const documents = await this.getDocuments();
+    const filteredDocuments = documents.filter(d => d.patientId !== id);
+    await this.saveToStorage('documents', filteredDocuments);
+
     const filteredPatients = patients.filter(p => p.id !== id);
     await this.saveToStorage('patients', filteredPatients);
   }

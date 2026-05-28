@@ -6,6 +6,9 @@ import "./index.css";
 import { seedDemoDataIfNeeded } from "./services/seed";
 import { ToastProvider } from "./contexts/ToastContext";
 import { OrbytProvider } from "@orbytapp/orbyt-sdk/react";
+import { configureClientApiAuth } from "./utils/configureClientApi";
+
+configureClientApiAuth();
 
 // Seed dati demo all'avvio (non bloccante)
 seedDemoDataIfNeeded();
