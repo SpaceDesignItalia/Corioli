@@ -20,6 +20,7 @@ import { storageService } from "../services/StorageServiceFallback";
 import { sendHeartbeat } from "../services/HeartbeatService";
 import { fetchClientUnreadCount } from "../services/SupportChatService";
 import axios from "axios";
+import { useUnsavedChanges } from "../contexts/UnsavedChangesContext";
 
 const SUPPORT_UNREAD_POLL_MS = 45_000;
 
@@ -35,6 +36,19 @@ const menuItems = [
 export default function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { requestNavigation } = useUnsavedChanges();
+
+  const goTo = (href: string) => {
+    if (requestNavigation(href)) navigate(href);
+  };
+
+  const onGuardedNavClick = (
+    event: React.MouseEvent,
+    href: string,
+  ) => {
+    if (location.pathname === href) return;
+    if (!requestNavigation(href)) event.preventDefault();
+  };
   const [primaryAmbulatorio, setPrimaryAmbulatorio] = useState<string | null>(
     null,
   );
@@ -265,6 +279,7 @@ export default function AppNavbar() {
         <NavbarBrand className="mr-4 min-w-0 max-w-[min(56vw,260px)] shrink md:max-w-[220px] lg:max-w-[260px]">
           <Link
             to="/"
+            onClick={(e) => onGuardedNavClick(e, "/")}
             className="flex min-w-0 items-center outline-none ring-offset-2 ring-offset-background rounded-md focus-visible:ring-2 focus-visible:ring-primary"
             aria-label="Corioli — vai alla dashboard"
           >
@@ -285,6 +300,7 @@ export default function AppNavbar() {
           const link = (
             <Link
               to={item.href}
+              onClick={(e) => onGuardedNavClick(e, item.href)}
               className={`text-sm ${isActive ? "text-foreground font-semibold" : "text-default-500"} hover:text-foreground transition-colors`}
             >
               {item.label}
@@ -310,7 +326,7 @@ export default function AppNavbar() {
               <button
                 type="button"
                 className="navbar-ambulatorio-set"
-                onClick={() => navigate("/settings")}
+                onClick={() => goTo("/settings")}
               >
                 <i className="ti ti-map-pin" aria-hidden />
                 {primaryAmbulatorio}
@@ -321,7 +337,7 @@ export default function AppNavbar() {
               <button
                 type="button"
                 className="navbar-ambulatorio-cta"
-                onClick={() => navigate("/settings")}
+                onClick={() => goTo("/settings")}
               >
                 <i className="ti ti-alert-triangle" aria-hidden />
                 Imposta ambulatorio
@@ -370,7 +386,7 @@ export default function AppNavbar() {
                   color="primary"
                   variant="flat"
                   className="cursor-pointer font-medium hover:opacity-90 transition-opacity"
-                  onClick={() => navigate("/settings")}
+                  onClick={() => goTo("/settings")}
                   role="button"
                 >
                   Aggiornamento disponibile
@@ -414,7 +430,7 @@ export default function AppNavbar() {
             <button
               type="button"
               className="navbar-ambulatorio-set w-full text-left"
-              onClick={() => navigate("/settings")}
+              onClick={() => goTo("/settings")}
             >
               <i className="ti ti-map-pin" aria-hidden />
               <span>
@@ -425,7 +441,7 @@ export default function AppNavbar() {
             <button
               type="button"
               className="navbar-ambulatorio-cta"
-              onClick={() => navigate("/settings")}
+              onClick={() => goTo("/settings")}
             >
               <i className="ti ti-alert-triangle" aria-hidden />
               Imposta ambulatorio
@@ -473,7 +489,7 @@ export default function AppNavbar() {
               <button
                 type="button"
                 className="flex items-center gap-2 text-primary text-sm w-full text-left hover:opacity-80"
-                onClick={() => navigate("/settings")}
+                onClick={() => goTo("/settings")}
               >
                 <Download size={16} className="flex-shrink-0" />
                 <span>Aggiornamento disponibile</span>
@@ -485,6 +501,7 @@ export default function AppNavbar() {
           <NavbarMenuItem key={`${item.label}-${index}`}>
             <Link
               to={item.href}
+              onClick={(e) => onGuardedNavClick(e, item.href)}
               className="text-default-500 w-full text-md hover:text-primary transition-colors"
             >
               {item.label}

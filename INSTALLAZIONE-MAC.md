@@ -1,6 +1,6 @@
 # Installazione su Mac (Apple)
 
-L'app **Corioli** (AppDottori) può essere installata su un computer Mac come applicazione desktop.
+L'app **Corioli** può essere installata su un computer Mac come applicazione desktop.
 
 ## Requisiti
 
@@ -34,7 +34,7 @@ Se non l’hai già fatto, installa Node.js da [nodejs.org](https://nodejs.org) 
 ### 3. Apri il terminale e vai nella cartella del progetto
 
 ```bash
-cd /percorso/dove/hai/AppDottori-FE
+cd /percorso/dove/hai/Corioli
 ```
 
 ### 4. Installa le dipendenze

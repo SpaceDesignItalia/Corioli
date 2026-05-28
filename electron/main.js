@@ -10,6 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.env.NODE_ENV === "development";
 
+app.setName("Corioli");
+
 let kvReady = null;
 let mainWindowRef = null;
 
@@ -72,6 +74,7 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    title: "Corioli",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -181,7 +184,7 @@ function createWindow() {
 ipcMain.handle("open-pdf-for-print", async (_event, pdfBase64) => {
   if (!pdfBase64 || typeof pdfBase64 !== "string") return;
   const tempDir = app.getPath("temp");
-  const tempPath = path.join(tempDir, `AppDottori_stampa_${Date.now()}.pdf`);
+  const tempPath = path.join(tempDir, `Corioli_stampa_${Date.now()}.pdf`);
   const buffer = Buffer.from(pdfBase64, "base64");
   fs.writeFileSync(tempPath, buffer);
   try {

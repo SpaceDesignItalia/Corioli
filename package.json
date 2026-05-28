@@ -1,10 +1,10 @@
 {
   "name": "appdottori",
   "private": true,
-  "version": "1.2.1",
+  "version": "1.2.3",
   "type": "module",
   "description": "Gestione pazienti e visite - Corioli",
-  "author": "Pablo",
+  "author": "Corioli",
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {
@@ -17,6 +17,9 @@
     "electron:build": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder --publish=never",
     "dist:win": "npm run build && electron-builder --win --publish=never",
+    "dist:appx": "npm run build && electron-builder --win appx --publish=never",
+    "icons:appx": "python scripts/gen-appx-icons.py",
+    "icons:appx:check": "python -c \"from pathlib import Path; d=Path('build/appx'); [print(f.name) for f in sorted(d.iterdir())]\"",
     "dist:all": "npm run build && electron-builder --mac --win --publish=never",
     "dist:publish": "npm run build && electron-builder --mac --win --publish always"
   },
@@ -75,7 +78,8 @@
     "appId": "com.appdottori.desktop",
     "productName": "Corioli",
     "directories": {
-      "output": "dist-electron"
+      "output": "dist-electron",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
@@ -89,15 +93,42 @@
             "x64",
             "arm64"
           ]
+        },
+        {
+          "target": "msi",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "appx",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
-      "icon": "public/dottoressa.png",
+      "icon": "build/icon.ico",
       "forceCodeSigning": false,
       "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "msi": {
+      "oneClick": false,
+      "perMachine": false,
+      "artifactName": "${productName} Setup ${version} ${arch}.${ext}"
+    },
+    "appx": {
+      "applicationId": "Corioli",
+      "identityName": "Corioli.Corioli",
+      "publisher": "CN=60C71725-B223-4BD2-95C5-CC3C7EE03443",
+      "publisherDisplayName": "Corioli",
+      "displayName": "Corioli",
+      "backgroundColor": "#000000"
     },
     "mac": {
       "target": [

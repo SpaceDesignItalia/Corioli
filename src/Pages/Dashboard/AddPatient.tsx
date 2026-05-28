@@ -28,7 +28,19 @@ import { UserPlus, Pencil, ExternalLink, Check, ChevronDown } from "lucide-react
 import { parseDate } from "@internationalized/date";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
+import {
+  useRegisterUnsavedChanges,
+  useUnsavedChanges,
+} from "../../contexts/UnsavedChangesContext";
 import { calculateAge } from "../../utils/dateUtils";
+import {
+  MAX_HEIGHT_CM,
+  MIN_BIRTH_YEAR,
+  MIN_HEIGHT_CM,
+  parseOptionalHeight,
+  todayIsoDate,
+  validateBirthDate,
+} from "../../utils/formValidation";
 import {
   decodeCfToPatientFields,
   isValidCodiceFiscaleFormat,
@@ -124,6 +136,8 @@ export default function AddPatient() {
   const [patientId, setPatientId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const { guardAction } = useUnsavedChanges();
+  useRegisterUnsavedChanges("add-patient", hasUnsavedChanges);
   const initialLoadDone = useRef(false);
   const lastDecodedCfRef = useRef<string | null>(null);
   const [cfDecoding, setCfDecoding] = useState(false);
@@ -273,6 +287,11 @@ export default function AddPatient() {
     clearCfAutofillFlag("birthday");
     if (date) {
       const formattedDate = dayjs(date.toString()).format("YYYY-MM-DD");
+      const birthErr = validateBirthDate(formattedDate);
+      if (birthErr) {
+        setError(birthErr);
+        return;
+      }
       setRegisterData((prevData) => ({
         ...prevData,
         birthday: formattedDate,
@@ -417,6 +436,20 @@ export default function AddPatient() {
       setError("Email non valida");
       return;
     }
+    if (registerData.birthday) {
+      const birthErr = validateBirthDate(registerData.birthday);
+      if (birthErr) {
+        setError(birthErr);
+        return;
+      }
+    }
+    if (registerData.height.trim()) {
+      const h = parseOptionalHeight(registerData.height);
+      if (h == null) {
+        setError(`Altezza non valida (${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM} cm)`);
+        return;
+      }
+    }
 
     setIsLoading(true);
 
@@ -434,7 +467,9 @@ export default function AddPatient() {
         indirizzo: registerData.address.trim() || undefined,
         gruppoSanguigno: registerData.bloodType || undefined,
         allergie: registerData.allergies || undefined,
-        altezza: registerData.height ? parseFloat(registerData.height) : undefined,
+        altezza: registerData.height
+          ? parseOptionalHeight(registerData.height)
+          : undefined,
       };
       if (isEditMode && patientId) {
         await PatientService.updatePatient(patientId, payload);
@@ -670,6 +705,8 @@ export default function AddPatient() {
                         e.preventDefault();
                         refBirthplace.current?.focus();
                       }}
+                      maxValue={parseDate(todayIsoDate())}
+                      minValue={parseDate(`${MIN_BIRTH_YEAR}-01-01`)}
                       value={
                         registerData.birthday &&
                         /^\d{4}-\d{2}-\d{2}$/.test(registerData.birthday)
@@ -880,7 +917,8 @@ export default function AddPatient() {
                     handleEnterAdvance(e, () => refAllergies.current?.focus())
                   }
                   variant="bordered"
-                  min={0}
+                  min={MIN_HEIGHT_CM}
+                  max={MAX_HEIGHT_CM}
                   classNames={{ label: "text-gray-700 font-medium" }}
                   description="Usata nella visita per calcolare il BMI insieme al peso rilevato"
                 />
@@ -916,15 +954,11 @@ export default function AddPatient() {
               <button
                 type="button"
                 className="add-patient-cancel-btn"
-                onClick={() => {
-                  if (
-                    hasUnsavedChanges &&
-                    !window.confirm("Modifiche non salvate. Uscire comunque?")
-                  ) {
-                    return;
-                  }
-                  navigate(isEditMode ? "/pazienti" : "/");
-                }}
+                onClick={() =>
+                  guardAction(() =>
+                    navigate(isEditMode ? "/pazienti" : "/"),
+                  )
+                }
               >
                 ← Annulla
               </button>
