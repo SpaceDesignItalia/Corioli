@@ -76,6 +76,14 @@ import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { getDoctorProfileIncompleteMessage, isDoctorProfileComplete } from "../../utils/doctorProfile";
+import {
+  MAX_HEIGHT_CM,
+  MIN_BIRTH_YEAR,
+  MIN_HEIGHT_CM,
+  parseOptionalHeight,
+  todayIsoDate,
+  validateBirthDate,
+} from "../../utils/formValidation";
 
 const SIEOG_NOTE =
   "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di ciò si informa la persona assistita.";
@@ -896,10 +904,34 @@ export default function PatientHistory() {
 
   const handleSavePatient = async () => {
     if (!patient) return;
+
+    if (!editData.nome?.trim() || !editData.cognome?.trim()) {
+      setError("Nome e cognome sono obbligatori.");
+      return;
+    }
+    if (editData.dataNascita) {
+      const birthErr = validateBirthDate(editData.dataNascita);
+      if (birthErr) {
+        setError(birthErr);
+        return;
+      }
+    }
+    let altezza = editData.altezza;
+    if (altezza != null && altezza > 0) {
+      const clamped = parseOptionalHeight(String(altezza));
+      if (clamped == null) {
+        setError(`Altezza non valida (${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM} cm)`);
+        return;
+      }
+      altezza = clamped;
+    }
+
     setSaving(true);
+    setError(null);
     try {
       await PatientService.updatePatient(patient.id, {
         ...editData,
+        altezza,
         codiceFiscaleGenerato: false,
         updatedAt: new Date().toISOString(),
       });
@@ -2260,6 +2292,8 @@ export default function PatientHistory() {
                 onValueChange={(v) =>
                   setEditData((prev) => ({ ...prev, dataNascita: v }))
                 }
+                min={`${MIN_BIRTH_YEAR}-01-01`}
+                max={todayIsoDate()}
                 variant="bordered"
                 isRequired
               />
@@ -2349,14 +2383,18 @@ export default function PatientHistory() {
               <Input
                 label="Altezza (cm)"
                 type="number"
-                min={0}
+                min={MIN_HEIGHT_CM}
+                max={MAX_HEIGHT_CM}
                 value={
                   editData.altezza != null ? String(editData.altezza) : ""
                 }
                 onValueChange={(v) =>
                   setEditData((prev) => ({
                     ...prev,
-                    altezza: v === "" ? undefined : parseFloat(v) || undefined,
+                    altezza:
+                      v === ""
+                        ? undefined
+                        : parseOptionalHeight(v),
                   }))
                 }
                 variant="bordered"

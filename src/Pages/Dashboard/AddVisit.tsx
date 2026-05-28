@@ -25,6 +25,10 @@ import {
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 
 import { RefertoTextarea } from "../../components/RefertoTextarea";
+import {
+  useRegisterUnsavedChanges,
+  useUnsavedChanges,
+} from "../../contexts/UnsavedChangesContext";
 import { addDays, differenceInDays, parseISO, isValid, format, subDays } from "date-fns";
 import {
   PatientService,
@@ -36,6 +40,21 @@ import {
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, MedicalTemplate } from "../../types/Storage";
 import { calculateAge } from "../../utils/dateUtils";
+import {
+  MAX_OBSTETRIC_COUNT,
+  MIN_WEIGHT_KG,
+  MAX_WEIGHT_KG,
+  OBSTETRIC_COUNT_FIELDS,
+  clampObstetricCount,
+  clampWeightKg,
+  ginecologiaAnamnesiErrors,
+  ostetriciaAnamnesiErrors,
+  todayIsoDate,
+  validateDateNotAfter,
+  validateObstetricWeights,
+  validatePastOrSameDate,
+  validateVisitDate,
+} from "../../utils/formValidation";
 import {
   calcolaStimePesoFetale,
   FORMULA_BIOMETRIA_FIELDS,
@@ -132,64 +151,6 @@ function parseFlussimetriaFieldBlur(raw: string): number | undefined {
   if (t === "") return undefined;
   const n = parseFloat(t.replace(",", "."));
   return Number.isFinite(n) ? n : undefined;
-}
-
-/** Controlli anamnesi ginecologica */
-function ginecologiaAnamnesiErrors(g: {
-  gravidanze: number;
-  parti: number;
-  partiSpontanei?: number;
-  partiCesarei?: number;
-  aborti: number;
-  abortiSpontanei?: number;
-  ivg?: number;
-}) {
-  const parti = g.parti ?? 0;
-  const gravidanze = g.gravidanze ?? 0;
-  const ps = g.partiSpontanei ?? 0;
-  const tc = g.partiCesarei ?? 0;
-  const aborti = g.aborti ?? 0;
-  const as = g.abortiSpontanei ?? 0;
-  const ivg = g.ivg ?? 0;
-  const errors: string[] = [];
-  if (parti > gravidanze) errors.push("Parti > Gravidanze");
-  if (parti + aborti > gravidanze) errors.push("P + A > G");
-  if (ps + tc > parti && (ps > 0 || tc > 0)) errors.push("PS + TC > P");
-  if (as + ivg > aborti && (as > 0 || ivg > 0))
-    errors.push("AS + IVG > Aborti");
-  if (aborti < 0) errors.push("Aborti < 0");
-  if (gravidanze < 0 || parti < 0 || as < 0 || ivg < 0)
-    errors.push("Valori negativi");
-  return errors;
-}
-
-/** Controlli anamnesi ostetrica */
-function ostetriciaAnamnesiErrors(o: {
-  gravidanzePrec: number;
-  partiPrec: number;
-  partiPrecSpontanei?: number;
-  partiPrecCesarei?: number;
-  abortiPrec: number;
-  abortiPrecSpontanei?: number;
-  ivgPrec?: number;
-}) {
-  const parti = o.partiPrec ?? 0;
-  const gravidanze = o.gravidanzePrec ?? 0;
-  const ps = o.partiPrecSpontanei ?? 0;
-  const tc = o.partiPrecCesarei ?? 0;
-  const aborti = o.abortiPrec ?? 0;
-  const as = o.abortiPrecSpontanei ?? 0;
-  const ivg = o.ivgPrec ?? 0;
-  const errors: string[] = [];
-  if (parti > gravidanze) errors.push("Parti Prec > Gravidanze Prec");
-  if (parti + aborti > gravidanze) errors.push("P + A > G");
-  if (ps + tc > parti && (ps > 0 || tc > 0)) errors.push("PS + TC > P");
-  if (as + ivg > aborti && (as > 0 || ivg > 0))
-    errors.push("AS + IVG > Aborti");
-  if (aborti < 0) errors.push("Aborti < 0");
-  if (gravidanze < 0 || parti < 0 || as < 0 || ivg < 0)
-    errors.push("Valori negativi");
-  return errors;
 }
 
 // Helper Component for Templates
@@ -377,6 +338,8 @@ export default function AddVisit() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const { guardAction } = useUnsavedChanges();
+  useRegisterUnsavedChanges("add-visit", hasUnsavedChanges);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [isPediatricVisitEnabled, setIsPediatricVisitEnabled] = useState(false);
   const [fetalFormula, setFetalFormula] = useState("hadlock4");
@@ -728,6 +691,84 @@ export default function AddVisit() {
         setError(message);
         showToast(message, "error");
         return false;
+      }
+
+      const visitDateErr = validateVisitDate(visitData.dataVisita);
+      if (visitDateErr) {
+        setError(visitDateErr);
+        showToast(visitDateErr, "error");
+        return false;
+      }
+
+      if (
+        visitData.tipo === "ginecologica" ||
+        visitData.tipo === "ginecologica_pediatrica"
+      ) {
+        const lmpErr =
+          validatePastOrSameDate(
+            ginecologiaData.ultimaMestruazione,
+            "Ultima mestruazione",
+          ) ??
+          validateDateNotAfter(
+            ginecologiaData.ultimaMestruazione,
+            visitData.dataVisita,
+            "Ultima mestruazione",
+          );
+        if (lmpErr) {
+          setError(lmpErr);
+          showToast(lmpErr, "error");
+          return false;
+        }
+        const gynErrs = ginecologiaAnamnesiErrors(ginecologiaData);
+        if (gynErrs.length > 0) {
+          const message = gynErrs.join(". ");
+          setError(message);
+          showToast(message, "error");
+          return false;
+        }
+      }
+
+      if (visitData.tipo === "ostetrica") {
+        const lmpErr =
+          validatePastOrSameDate(
+            ostetriciaData.ultimaMestruazione,
+            "Ultima mestruazione",
+          ) ??
+          validateDateNotAfter(
+            ostetriciaData.ultimaMestruazione,
+            visitData.dataVisita,
+            "Ultima mestruazione",
+          );
+        if (lmpErr) {
+          setError(lmpErr);
+          showToast(lmpErr, "error");
+          return false;
+        }
+        const dppErr = validatePastOrSameDate(
+          ostetriciaData.dataPresunta,
+          "Data presunta parto",
+        );
+        if (dppErr) {
+          setError(dppErr);
+          showToast(dppErr, "error");
+          return false;
+        }
+        const obsErrs = ostetriciaAnamnesiErrors(ostetriciaData);
+        if (obsErrs.length > 0) {
+          const message = obsErrs.join(". ");
+          setError(message);
+          showToast(message, "error");
+          return false;
+        }
+        const weightErr = validateObstetricWeights(
+          ostetriciaData.pesoPreGravidanza,
+          ostetriciaData.pesoAttuale,
+        );
+        if (weightErr) {
+          setError(weightErr);
+          showToast(weightErr, "error");
+          return false;
+        }
       }
 
       const ostetriciaForSave =
@@ -1207,11 +1248,30 @@ export default function AddVisit() {
 
   const handleGinecologiaChange = (field: string, value: any) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
-    setGinecologiaData((prev) => ({ ...prev, [field]: value }));
+    let nextValue = value;
+    if (OBSTETRIC_COUNT_FIELDS.has(field)) {
+      nextValue = clampObstetricCount(Number(value) || 0);
+    }
+    setGinecologiaData((prev) => ({ ...prev, [field]: nextValue }));
   };
 
   const handleOstetriciaChange = (field: string, value: any) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
+
+    if (OBSTETRIC_COUNT_FIELDS.has(field)) {
+      const clamped = clampObstetricCount(Number(value) || 0);
+      setOstetriciaData((prev) => ({ ...prev, [field]: clamped }));
+      return;
+    }
+
+    if (field === "pesoPreGravidanza" || field === "pesoAttuale") {
+      const n = parseFloat(String(value)) || 0;
+      setOstetriciaData((prev) => ({
+        ...prev,
+        [field]: n <= 0 ? 0 : clampWeightKg(n),
+      }));
+      return;
+    }
 
     if (field === "settimaneGestazione") {
       const newGa = parseGestationalWeeks((value as string) ?? "");
@@ -1439,12 +1499,7 @@ export default function AddVisit() {
   ]);
 
   const handleNavigateCronologia = () => {
-    if (
-      hasUnsavedChanges &&
-      !window.confirm("Modifiche non salvate. Uscire comunque?")
-    )
-      return;
-    navigate(`/patient-history/${patient?.id}`);
+    guardAction(() => navigate(`/patient-history/${patient?.id}`));
   };
 
   if (!patient) {
@@ -1548,6 +1603,7 @@ export default function AddVisit() {
               label="Data Visita"
               value={visitData.dataVisita}
               onValueChange={(value) => handleInputChange("dataVisita", value)}
+              max={todayIsoDate()}
               variant="bordered"
               size="sm"
               labelPlacement="outside-left"
@@ -1640,6 +1696,7 @@ export default function AddVisit() {
                       onValueChange={(value) =>
                         handleGinecologiaChange("ultimaMestruazione", value)
                       }
+                      max={visitData.dataVisita || todayIsoDate()}
                       variant="bordered"
                       labelPlacement="outside"
                       placeholder="Seleziona data"
@@ -1663,6 +1720,7 @@ export default function AddVisit() {
                         variant="bordered"
                         size="sm"
                         min={0}
+                        max={MAX_OBSTETRIC_COUNT}
                         labelPlacement="outside"
                         classNames={{ input: "text-center font-semibold" }}
                       />
@@ -1677,6 +1735,7 @@ export default function AddVisit() {
                         variant="bordered"
                         size="sm"
                         min={0}
+                        max={MAX_OBSTETRIC_COUNT}
                         labelPlacement="outside"
                         classNames={{ input: "text-center font-semibold" }}
                       />
@@ -1691,6 +1750,7 @@ export default function AddVisit() {
                         variant="bordered"
                         size="sm"
                         min={0}
+                        max={MAX_OBSTETRIC_COUNT}
                         labelPlacement="outside"
                         classNames={{ input: "text-center font-semibold" }}
                       />
@@ -1716,6 +1776,8 @@ export default function AddVisit() {
                               parseInt(v) || 0,
                             )
                           }
+                          min={0}
+                          max={MAX_OBSTETRIC_COUNT}
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -1732,6 +1794,8 @@ export default function AddVisit() {
                               parseInt(v) || 0,
                             )
                           }
+                          min={0}
+                          max={MAX_OBSTETRIC_COUNT}
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -1748,6 +1812,8 @@ export default function AddVisit() {
                               parseInt(v) || 0,
                             )
                           }
+                          min={0}
+                          max={MAX_OBSTETRIC_COUNT}
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -1761,6 +1827,8 @@ export default function AddVisit() {
                           onValueChange={(v) =>
                             handleGinecologiaChange("ivg", parseInt(v) || 0)
                           }
+                          min={0}
+                          max={MAX_OBSTETRIC_COUNT}
                           classNames={{ input: "text-center" }}
                         />
                       </div>
@@ -2261,6 +2329,7 @@ export default function AddVisit() {
                       onValueChange={(value) =>
                         handleOstetriciaChange("ultimaMestruazione", value)
                       }
+                      max={visitData.dataVisita || todayIsoDate()}
                       variant="bordered"
                       labelPlacement="outside"
                       classNames={{ input: "text-base", label: "pb-1" }}
@@ -2351,6 +2420,8 @@ export default function AddVisit() {
                           )
                         }
                         placeholder="0"
+                        min={MIN_WEIGHT_KG}
+                        max={MAX_WEIGHT_KG}
                         className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
@@ -2405,6 +2476,8 @@ export default function AddVisit() {
                           )
                         }
                         placeholder="0"
+                        min={MIN_WEIGHT_KG}
+                        max={MAX_WEIGHT_KG}
                         className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
@@ -2527,6 +2600,7 @@ export default function AddVisit() {
                         size="sm"
                         labelPlacement="outside"
                         min={0}
+                        max={MAX_OBSTETRIC_COUNT}
                         classNames={{ input: "text-center" }}
                       />
                       <Input
@@ -2540,6 +2614,7 @@ export default function AddVisit() {
                         size="sm"
                         labelPlacement="outside"
                         min={0}
+                        max={MAX_OBSTETRIC_COUNT}
                         classNames={{ input: "text-center" }}
                       />
                       <Input
@@ -2553,6 +2628,9 @@ export default function AddVisit() {
                         size="sm"
                         labelPlacement="outside"
                         min={0}
+                        max={MAX_OBSTETRIC_COUNT}
+                        min={0}
+                        max={MAX_OBSTETRIC_COUNT}
                         classNames={{ input: "text-center" }}
                       />
                     </div>
@@ -2575,6 +2653,8 @@ export default function AddVisit() {
                               parseInt(v) || 0,
                             )
                           }
+                          min={0}
+                          max={MAX_OBSTETRIC_COUNT}
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -2590,6 +2670,8 @@ export default function AddVisit() {
                               parseInt(v) || 0,
                             )
                           }
+                          min={0}
+                          max={MAX_OBSTETRIC_COUNT}
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -2607,6 +2689,8 @@ export default function AddVisit() {
                               parseInt(v) || 0,
                             )
                           }
+                          min={0}
+                          max={MAX_OBSTETRIC_COUNT}
                           classNames={{ input: "text-center" }}
                         />
                         <Input
@@ -2619,6 +2703,8 @@ export default function AddVisit() {
                           onValueChange={(v) =>
                             handleOstetriciaChange("ivgPrec", parseInt(v) || 0)
                           }
+                          min={0}
+                          max={MAX_OBSTETRIC_COUNT}
                           classNames={{ input: "text-center" }}
                         />
                       </div>
