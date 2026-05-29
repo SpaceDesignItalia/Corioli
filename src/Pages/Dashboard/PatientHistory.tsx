@@ -75,7 +75,7 @@ import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "..
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
-import { getDoctorProfileIncompleteMessage, isDoctorProfileComplete } from "../../utils/doctorProfile";
+import { useDoctorProfileIncompleteModal } from "../../components/DoctorProfileIncompleteModal";
 import {
   MAX_HEIGHT_CM,
   MIN_BIRTH_YEAR,
@@ -228,6 +228,10 @@ export default function PatientHistory() {
   const [rightColumnTab, setRightColumnTab] = useState<"esami" | "certificati">("esami");
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const {
+    ensureComplete: ensureDoctorProfileComplete,
+    modal: doctorProfileIncompleteModal,
+  } = useDoctorProfileIncompleteModal();
 
   const loadData = async () => {
     if (!patientIdParam) {
@@ -525,21 +529,13 @@ export default function PatientHistory() {
     };
   }, [isCertificatoPreviewOpen, selectedCertificatoPreview?.id, patient?.id]);
 
-  const ensureDoctorProfileComplete = () => {
-    if (isDoctorProfileComplete(doctor)) return true;
-    const message = getDoctorProfileIncompleteMessage(doctor);
-    showToast(message, "error");
-    navigate("/settings");
-    return false;
-  };
-
   const handleVisitClick = (visit: Visit) => {
     setSelectedVisit(visit);
     onOpen();
   };
 
   const handleOpenNuovaRichiestaEsame = () => {
-    if (!ensureDoctorProfileComplete()) return;
+    if (!ensureDoctorProfileComplete(doctor)) return;
     setEditingRichiestaEsame(null);
     setModelloEsameSelezionato("");
     setNuovaRichiestaNome("");
@@ -583,7 +579,7 @@ export default function PatientHistory() {
   };
 
   const handleSaveRichiestaEsame = async () => {
-    if (!ensureDoctorProfileComplete()) return;
+    if (!ensureDoctorProfileComplete(doctor)) return;
     if (!patient || !nuovaRichiestaNome.trim()) return;
     setSavingEsame(true);
     try {
@@ -692,7 +688,7 @@ export default function PatientHistory() {
   };
 
   const handleOpenNuovoCertificato = () => {
-    if (!ensureDoctorProfileComplete()) return;
+    if (!ensureDoctorProfileComplete(doctor)) return;
     setEditingCertificato(null);
     setCertTipo("assenza_lavoro");
     setCertData(new Date().toISOString().slice(0, 10));
@@ -1611,7 +1607,7 @@ export default function PatientHistory() {
               className="font-medium shadow-sm"
               size="sm"
               onPress={() => {
-                if (!ensureDoctorProfileComplete()) return;
+                if (!ensureDoctorProfileComplete(doctor)) return;
                 navigate(`/add-visit?patientId=${patient.id}`);
               }}
               startContent={<PlusIcon size={16} />}
@@ -1634,7 +1630,7 @@ export default function PatientHistory() {
                   color="primary"
                   size="sm"
                   onPress={() => {
-                    if (!ensureDoctorProfileComplete()) return;
+                    if (!ensureDoctorProfileComplete(doctor)) return;
                     navigate(`/add-visit?patientId=${patient.id}`);
                   }}
                 >
@@ -2842,6 +2838,8 @@ export default function PatientHistory() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {doctorProfileIncompleteModal}
     </div>
   );
 }

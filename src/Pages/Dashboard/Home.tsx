@@ -39,6 +39,7 @@ import Alert from "@mui/material/Alert";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { PregnancyListRow } from "../../components/PregnancyListRow";
+import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -213,6 +214,7 @@ const buildDashboardSubtitle = (
 
 export default function Home() {
   const navigate = useNavigate();
+  const { openCheckPatientModal } = useCheckPatientModal();
   const [doctorName, setDoctorName] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats>({
     totalPatients: 0,
@@ -366,7 +368,7 @@ export default function Home() {
       <Button
         variant="bordered"
         startContent={<Calendar size={18} />}
-        onPress={() => navigate("/check-patient")}
+        onPress={openCheckPatientModal}
         className="font-medium flex-1 md:flex-none border-default-300 text-default-700 bg-white"
       >
         Nuova Visita
@@ -680,7 +682,7 @@ export default function Home() {
                   size="sm"
                   color="primary"
                   variant="flat"
-                  onPress={() => navigate("/check-patient")}
+                  onPress={openCheckPatientModal}
                   startContent={<Calendar size={14} />}
                 >
                   Inizia

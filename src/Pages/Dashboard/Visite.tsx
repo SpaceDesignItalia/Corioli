@@ -3,29 +3,44 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
   CardBody,
+  CardHeader,
   Input,
   Button,
   Chip,
   Spinner,
-  Pagination,
+  Avatar,
   Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
-  Divider,
   useDisclosure,
   Select,
   SelectItem,
 } from "@nextui-org/react";
-import { FileText, ChevronRight, Calendar, Eye, Printer, Maximize2, Minimize2, DownloadIcon, Trash2Icon } from "lucide-react";
+import {
+  FileText,
+  ChevronRight,
+  ChevronLeft,
+  Calendar,
+  Eye,
+  Printer,
+  Maximize2,
+  Minimize2,
+  DownloadIcon,
+  Trash2Icon,
+  Stethoscope,
+  Baby,
+  ArrowRight,
+} from "lucide-react";
+import { SearchIcon } from "../../components/navbar/SearchIcon";
 import { PatientService, VisitService, PreferenceService, DoctorService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Visit, Patient, Doctor } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useToast } from "../../contexts/ToastContext";
-import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
+import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
 import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -41,35 +56,6 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-// Helper for search icon
-const SearchIcon = (props: any) => (
-  <svg
-    aria-hidden="true"
-    fill="none"
-    focusable="false"
-    height="1em"
-    role="presentation"
-    viewBox="0 0 24 24"
-    width="1em"
-    {...props}
-  >
-    <path
-      d="M11.5 21C16.7467 21 21 16.7467 21 11.5C21 6.25329 16.7467 2 11.5 2C6.25329 2 2 6.25329 2 11.5C2 16.7467 6.25329 21 11.5 21Z"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-    />
-    <path
-      d="M22 22L20 20"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-    />
-  </svg>
-);
-
 interface EnrichedVisit extends Visit {
   patientName: string;
   patientCf: string;
@@ -82,8 +68,59 @@ const VISIT_TYPE_FILTERS = new Set([
   "ostetrica",
 ]);
 
+const getVisitTypeLabel = (tipo?: Visit["tipo"]) => {
+  if (tipo === "ginecologica") return "Ginecologica";
+  if (tipo === "ginecologica_pediatrica") return "Ginec. pediatrica";
+  if (tipo === "ostetrica") return "Ostetrica";
+  return "Generale";
+};
+
+const getVisitTypeColor = (
+  tipo?: Visit["tipo"],
+): "danger" | "warning" | "primary" => {
+  if (tipo === "ginecologica" || tipo === "ginecologica_pediatrica")
+    return "danger";
+  if (tipo === "ostetrica") return "warning";
+  return "primary";
+};
+
+const getVisitTypeIconClass = (tipo?: Visit["tipo"]) => {
+  if (tipo === "ginecologica" || tipo === "ginecologica_pediatrica")
+    return "bg-danger-50 text-danger-700";
+  if (tipo === "ostetrica") return "bg-warning-50 text-warning-700";
+  return "bg-default-100 text-default-700";
+};
+
+const getVisitDescription = (visit: EnrichedVisit): string => {
+  if (visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica") {
+    return (
+      visit.ginecologia?.prestazione ||
+      visit.ginecologia?.problemaClinico ||
+      visit.descrizioneClinica ||
+      "Nessuna descrizione"
+    );
+  }
+  if (visit.tipo === "ostetrica") {
+    return (
+      visit.ostetricia?.prestazione ||
+      visit.ostetricia?.problemaClinico ||
+      visit.descrizioneClinica ||
+      "Nessuna descrizione"
+    );
+  }
+  return visit.descrizioneClinica || visit.anamnesi || "Nessuna descrizione";
+};
+
+const getPatientInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
+};
+
 export default function Visite() {
   const navigate = useNavigate();
+  const { openCheckPatientModal } = useCheckPatientModal();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [visits, setVisits] = useState<EnrichedVisit[]>([]);
@@ -274,24 +311,6 @@ export default function Visite() {
   const openPreview = (visit: EnrichedVisit) => {
     setSelectedVisit(visit);
     onOpen();
-  };
-
-  const getVisitTypeLabel = (tipo?: Visit["tipo"]) => {
-    if (tipo === "ginecologica") return "Ginecologia";
-    if (tipo === "ginecologica_pediatrica") return "Ginecologia Pediatrica";
-    if (tipo === "ostetrica") return "Ostetricia";
-    return "Generale";
-  };
-
-  const formatDate = (date: string) => {
-    const parsed = new Date(date);
-    if (Number.isNaN(parsed.getTime())) return date;
-    return parsed.toLocaleDateString("it-IT");
-  };
-
-  const formatMultiLine = (value?: string) => {
-    if (!value || !value.trim()) return "Non compilato";
-    return value;
   };
 
   function formatPdfDate(dateString: string): string {
@@ -532,8 +551,8 @@ export default function Visite() {
     <Button
       variant="bordered"
       startContent={<Calendar size={18} />}
-      onPress={() => navigate("/check-patient")}
-      className="font-medium border-default-300 text-default-700 bg-white"
+      onPress={openCheckPatientModal}
+      className="font-medium flex-1 md:flex-none border-default-300 text-default-700 bg-white"
     >
       Nuova Visita
     </Button>
@@ -543,147 +562,276 @@ export default function Visite() {
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
         title="Gestione Visite"
-        subtitle="Visualizza lo storico completo delle visite effettuate."
-        icon={Calendar}
+        subtitle="Cerca e gestisci le tue visite"
+        icon={FileText}
         iconColor="primary"
         actions={HeaderActions}
       />
 
-      <Card className="shadow-sm">
+      <Card className="corioli-card">
+        <CardHeader className="corioli-card-header flex justify-between items-center gap-2">
+          <div className="dashboard-column-header-title min-w-0">
+            <FileText className="text-blue-600 shrink-0" size={16} />
+            <h3 className="text-base font-semibold text-gray-900 truncate">
+              Storico visite
+            </h3>
+          </div>
+          {totalPages > 1 && (
+            <span
+              className="text-xs shrink-0"
+              style={{ color: "var(--color-text-tertiary)" }}
+            >
+              Pagina {page} di {totalPages}
+            </span>
+          )}
+        </CardHeader>
         <CardBody className="p-4 gap-4">
-          <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
-            <Input
-              isClearable
-              className="w-full sm:max-w-[280px]"
-              placeholder="Cerca per nome, CF o data..."
-              startContent={<SearchIcon className="text-default-300" />}
-              value={searchTerm}
-              onValueChange={setSearchTerm}
-              onClear={() => setSearchTerm("")}
-              variant="bordered"
-            />
+          <div className="flex w-full flex-col gap-3 md:flex-row md:items-end">
+            <div className="min-w-0 w-full md:flex-[1_1_58%]">
+              <Input
+                isClearable
+                placeholder="Cerca per nome, CF o descrizione..."
+                startContent={
+                  <SearchIcon size={20} className="text-default-400" />
+                }
+                value={searchTerm}
+                onValueChange={(v) => {
+                  setSearchTerm(v);
+                  setPage(1);
+                }}
+                onClear={() => {
+                  setSearchTerm("");
+                  setPage(1);
+                }}
+                variant="bordered"
+                classNames={{
+                  base: "w-full max-w-full",
+                  mainWrapper: "w-full",
+                  input: "text-base",
+                  inputWrapper:
+                    "w-full max-w-full h-12 border-default-200 shadow-none",
+                }}
+              />
+            </div>
             <Select
-              className="w-full sm:max-w-[180px]"
+              className="w-full md:w-[10.5rem] md:shrink-0"
               label="Tipo visita"
+              labelPlacement="outside"
               selectedKeys={filterTipo === "tutti" ? ["tutti"] : [filterTipo]}
-              onSelectionChange={(keys) => setFilterTipo(Array.from(keys)[0] as string)}
+              onSelectionChange={(keys) => {
+                setFilterTipo(Array.from(keys)[0] as string);
+                setPage(1);
+              }}
               variant="bordered"
+              classNames={{
+                base: "w-full",
+                trigger: "h-12 min-h-12",
+              }}
             >
               <SelectItem key="tutti">Tutti</SelectItem>
               <SelectItem key="ginecologica">Ginecologica</SelectItem>
-              <SelectItem key="ginecologica_pediatrica">Ginecologica Pediatrica</SelectItem>
+              <SelectItem key="ginecologica_pediatrica">
+                Ginec. ped.
+              </SelectItem>
               <SelectItem key="ostetrica">Ostetrica</SelectItem>
             </Select>
             <Input
               type="date"
-              className="w-full sm:max-w-[160px]"
-              label="Da data"
+              className="w-full md:w-[8.75rem] md:shrink-0"
+              label="Da"
+              labelPlacement="outside"
               value={filterDateFrom}
-              onValueChange={setFilterDateFrom}
+              onValueChange={(v) => {
+                setFilterDateFrom(v);
+                setPage(1);
+              }}
               variant="bordered"
+              classNames={{
+                base: "w-full",
+                inputWrapper: "h-12 min-h-12",
+              }}
             />
             <Input
               type="date"
-              className="w-full sm:max-w-[160px]"
-              label="A data"
+              className="w-full md:w-[8.75rem] md:shrink-0"
+              label="A"
+              labelPlacement="outside"
               value={filterDateTo}
-              onValueChange={setFilterDateTo}
+              onValueChange={(v) => {
+                setFilterDateTo(v);
+                setPage(1);
+              }}
               variant="bordered"
+              classNames={{
+                base: "w-full",
+                inputWrapper: "h-12 min-h-12",
+              }}
             />
           </div>
-        </CardBody>
-      </Card>
 
-      <Card className="shadow-md">
-        <CardBody className="p-0">
           {filteredVisits.length > 0 ? (
-            <div className="divide-y divide-gray-100">
-              <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                <div className="col-span-3">Paziente</div>
-                <div className="col-span-2">Data</div>
-                <div className="col-span-2">Tipo</div>
-                <div className="col-span-4">Descrizione</div>
-                <div className="col-span-1 text-right">Azioni</div>
-              </div>
-
+            <div className="rounded-lg border border-default-200 overflow-hidden divide-y divide-default-100">
               {items.map((visit) => (
                 <div
                   key={visit.id}
-                  className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-gray-50 transition-colors cursor-pointer"
+                  className="flex items-center justify-between gap-3 p-4 hover:bg-default-50 transition-colors cursor-pointer group"
                   onClick={() => openPreview(visit)}
                 >
-                  <div className="col-span-3">
-                    <p className="font-semibold text-gray-900 truncate">{visit.patientName}</p>
-                    <p className="text-xs text-gray-500 font-mono truncate">{visit.patientCf}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-sm text-gray-600">{new Date(visit.dataVisita).toLocaleDateString("it-IT")}</span>
-                  </div>
-                  <div className="col-span-2">
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      color={(visit.tipo === 'ginecologica' || visit.tipo === 'ginecologica_pediatrica') ? 'primary' : visit.tipo === 'ostetrica' ? 'warning' : 'primary'}
-                      className="capitalize"
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div
+                      className={`p-1.5 rounded-lg flex-shrink-0 ${getVisitTypeIconClass(visit.tipo)}`}
                     >
-                      {visit.tipo}
-                    </Chip>
-                  </div>
-                  <div className="col-span-4">
-                    <p className="text-sm text-gray-500 truncate">{visit.descrizioneClinica || "Nessuna descrizione"}</p>
-                  </div>
-                  <div className="col-span-1 flex justify-end">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openPreview(visit);
-                        }}
-                        aria-label="Visualizza visita"
-                      >
-                        <Eye size={16} className="text-gray-500" />
-                      </Button>
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/edit-visit/${visit.id}`);
-                        }}
-                        aria-label="Modifica visita"
-                      >
-                      <ChevronRight size={18} className="text-gray-400" />
-                      </Button>
+                      {visit.tipo === "ostetrica" ? (
+                        <Baby size={14} />
+                      ) : (
+                        <Stethoscope size={14} />
+                      )}
                     </div>
+                    <Avatar
+                      name={getPatientInitials(visit.patientName)}
+                      size="sm"
+                      color="default"
+                      className="flex-shrink-0 transition-transform group-hover:scale-105"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-gray-900 group-hover:text-[var(--brand-cta)] transition-colors truncate text-sm">
+                        {visit.patientName}
+                      </p>
+                      <p className="text-xs text-default-500 truncate flex items-center gap-1.5 flex-wrap mt-0.5">
+                        <Chip
+                          size="sm"
+                          variant="flat"
+                          color={getVisitTypeColor(visit.tipo)}
+                          className="text-xs h-5"
+                        >
+                          {getVisitTypeLabel(visit.tipo)}
+                        </Chip>
+                        <span className="text-default-300">·</span>
+                        <span>
+                          {new Date(visit.dataVisita).toLocaleDateString(
+                            "it-IT",
+                          )}
+                        </span>
+                      </p>
+                      {visit.patientCf && (
+                        <p className="text-xs text-default-400 font-mono truncate mt-0.5">
+                          <CodiceFiscaleValue value={visit.patientCf} />
+                        </p>
+                      )}
+                      <p className="text-xs text-default-400 truncate mt-1">
+                        {getVisitDescription(visit)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant="light"
+                      className="opacity-70 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openPreview(visit);
+                      }}
+                      aria-label="Anteprima referto"
+                    >
+                      <Eye size={16} className="text-default-500" />
+                    </Button>
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant="light"
+                      className="opacity-70 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/edit-visit/${visit.id}`);
+                      }}
+                      aria-label="Modifica visita"
+                    >
+                      <ChevronRight size={18} className="text-default-400" />
+                    </Button>
+                    <ArrowRight
+                      size={14}
+                      className="text-default-300 group-hover:text-[var(--brand-cta)] transition-colors hidden sm:block ml-0.5"
+                    />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="p-12 text-center text-gray-500">
-              <FileText size={48} className="mx-auto mb-4 text-gray-300" />
-              <p className="text-lg font-medium">Nessuna visita trovata</p>
-              <p className="text-sm mt-1">Prova a modificare i filtri di ricerca.</p>
+            <div className="flex flex-col items-center justify-center px-6 py-12 text-center gap-3">
+              <FileText
+                size={32}
+                style={{ color: "var(--color-text-tertiary)" }}
+              />
+              <p
+                className="text-sm font-medium"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                {searchTerm ||
+                filterTipo !== "tutti" ||
+                filterDateFrom ||
+                filterDateTo
+                  ? "Nessuna visita trovata"
+                  : "Nessuna visita registrata"}
+              </p>
+              <p
+                className="text-xs max-w-[320px]"
+                style={{ color: "var(--color-text-tertiary)" }}
+              >
+                {searchTerm ||
+                filterTipo !== "tutti" ||
+                filterDateFrom ||
+                filterDateTo
+                  ? "Prova a modificare i filtri di ricerca."
+                  : "Le visite effettuate appariranno qui. Avvia una nuova visita dal pulsante in alto."}
+              </p>
+              {!searchTerm &&
+                filterTipo === "tutti" &&
+                !filterDateFrom &&
+                !filterDateTo && (
+                  <Button
+                    size="sm"
+                    color="primary"
+                    variant="flat"
+                    onPress={openCheckPatientModal}
+                    startContent={<Calendar size={14} />}
+                  >
+                    Nuova visita
+                  </Button>
+                )}
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 pt-2 border-t border-default-100">
+              <Button
+                size="sm"
+                variant="flat"
+                isDisabled={page <= 1}
+                onPress={() => setPage((p) => Math.max(1, p - 1))}
+                startContent={<ChevronLeft size={16} />}
+              >
+                Precedente
+              </Button>
+              <span
+                className="text-sm"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                Pagina {page} di {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="flat"
+                isDisabled={page >= totalPages}
+                onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+                endContent={<ChevronRight size={16} />}
+              >
+                Successiva
+              </Button>
             </div>
           )}
         </CardBody>
-
-        {totalPages > 1 && (
-          <div className="flex justify-center p-4 border-t border-gray-100">
-            <Pagination
-              total={totalPages}
-              page={page}
-              onChange={setPage}
-              color="primary"
-              variant="light"
-              showControls
-            />
-          </div>
-        )}
       </Card>
 
       <Modal

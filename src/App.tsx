@@ -11,7 +11,7 @@ const Home = lazy(() => import("./Pages/Dashboard/Home"));
 const PatientList = lazy(() => import("./Pages/Dashboard/Dashboard"));
 const AboutUs = lazy(() => import("./Pages/About/About"));
 const AddPatient = lazy(() => import("./Pages/Dashboard/AddPatient"));
-const CheckPatient = lazy(() => import("./Pages/Dashboard/CheckPatient"));
+import { CheckPatientOpener } from "./contexts/CheckPatientModalContext";
 const AddVisit = lazy(() => import("./Pages/Dashboard/AddVisit"));
 const Visite = lazy(() => import("./Pages/Dashboard/Visite"));
 const Gravidanze = lazy(() => import("./Pages/Dashboard/Gravidanze"));
@@ -57,15 +57,9 @@ const App: React.FC = () => {
 
       const hasCmdOrCtrl = e.ctrlKey || e.metaKey;
       const noExtraModifiers = !e.altKey && !e.shiftKey;
-      if (hasCmdOrCtrl && noExtraModifiers) {
-        const key = e.key.toLowerCase();
-        if (key === "n") {
-          e.preventDefault();
-          navigate("/check-patient");
-        } else if (key === "p") {
-          e.preventDefault();
-          navigate("/add-patient");
-        }
+      if (hasCmdOrCtrl && noExtraModifiers && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        navigate("/add-patient");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -92,7 +86,7 @@ const App: React.FC = () => {
                   <Route element={<PatientList />} path="/pazienti" />
                   <Route element={<AboutUs />} path="/about-us" />
                   <Route element={<AddPatient />} path="/add-patient" />
-                  <Route element={<CheckPatient />} path="/check-patient" />
+                  <Route element={<CheckPatientOpener />} path="/check-patient" />
                   <Route element={<AddVisit />} path="/add-visit" />
                   <Route element={<AddVisit />} path="/edit-visit/:visitId" />
                   <Route element={<Visite />} path="/visite" />

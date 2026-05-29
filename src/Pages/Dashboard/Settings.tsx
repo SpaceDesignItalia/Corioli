@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardBody,
@@ -11,7 +12,6 @@ import {
   Divider,
   Input,
   Chip,
-  Textarea,
   Tabs,
   Tab,
   Table,
@@ -28,6 +28,7 @@ import {
   useDisclosure,
   Progress,
   Spinner,
+  Tooltip,
 } from "@nextui-org/react";
 import {
   User,
@@ -43,11 +44,15 @@ import {
   Edit,
   Shield,
   ExternalLink,
+  Circle,
+  CheckCircle2,
+  HelpCircle,
 } from "lucide-react";
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
 import { ExportService } from "../../services/ExportService";
 import { PageHeader } from "../../components/PageHeader";
 import BackupManager from "../../components/BackupManager";
+import { TemplateEditorModal } from "../../components/TemplateEditorModal";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import {
   DoctorService,
@@ -61,6 +66,7 @@ import { MedicalTemplate } from "../../types/Storage";
 import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
 
 const SettingsScreen = () => {
+  const navigate = useNavigate();
   // ... state declarations ...
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [pdfTheme, setPdfTheme] = useState("light");
@@ -86,6 +92,11 @@ const SettingsScreen = () => {
     onOpen: onTemplateModalOpen,
     onClose: onTemplateModalClose,
   } = useDisclosure();
+  const {
+    isOpen: isDeleteTemplateOpen,
+    onOpen: onDeleteTemplateOpen,
+    onClose: onDeleteTemplateClose,
+  } = useDisclosure();
   const [currentTemplate, setCurrentTemplate] = useState<
     Partial<MedicalTemplate>
   >({
@@ -94,6 +105,12 @@ const SettingsScreen = () => {
     category: "ginecologia",
     section: "prestazione",
   });
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [templateToDelete, setTemplateToDelete] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
+  const [isDeletingTemplate, setIsDeletingTemplate] = useState(false);
 
   // Data stats
   const [patientCount, setPatientCount] = useState(0);
@@ -114,6 +131,29 @@ const SettingsScreen = () => {
     email: "",
     isPrimario: false,
   });
+  const {
+    isOpen: isEditAmbulatorioOpen,
+    onOpen: onEditAmbulatorioOpen,
+    onClose: onEditAmbulatorioClose,
+  } = useDisclosure();
+  const {
+    isOpen: isDeleteAmbulatorioOpen,
+    onOpen: onDeleteAmbulatorioOpen,
+    onClose: onDeleteAmbulatorioClose,
+  } = useDisclosure();
+  const [editAmbulatorio, setEditAmbulatorio] = useState<{
+    id: string;
+    nome: string;
+    indirizzo: string;
+    citta: string;
+    cap: string;
+    telefono: string;
+    email: string;
+  } | null>(null);
+  const [ambulatorioToDelete, setAmbulatorioToDelete] = useState<{
+    id: string;
+    nome: string;
+  } | null>(null);
 
   const [preferences, setPreferences] = useState({
     nuoviPazienti: true,
@@ -125,7 +165,6 @@ const SettingsScreen = () => {
     formulaPesoFetale: 'hadlock4', // hadlock4, shepard, hadlock3
     showDoctorPhoneInPdf: true,
     showDoctorEmailInPdf: true,
-    cfDecodeRemoteEnabled: false,
   });
   const [duplicateGroups, setDuplicateGroups] = useState<
     Array<{ key: string; patients: any[] }>
@@ -335,16 +374,14 @@ const SettingsScreen = () => {
     onTemplateModalOpen();
   };
 
-  const handleSaveTemplate = async () => {
+  const handleSaveTemplate = async (template: Partial<MedicalTemplate>) => {
+    setIsSavingTemplate(true);
     try {
-      if (currentTemplate.id) {
-        await TemplateService.updateTemplate(
-          currentTemplate.id,
-          currentTemplate,
-        );
+      if (template.id) {
+        await TemplateService.updateTemplate(template.id, template);
       } else {
         await TemplateService.addTemplate(
-          currentTemplate as Omit<MedicalTemplate, "id">,
+          template as Omit<MedicalTemplate, "id">,
         );
       }
       await loadTemplates();
@@ -353,19 +390,30 @@ const SettingsScreen = () => {
       setTimeout(() => setSuccess(null), 3000);
     } catch (e) {
       setError("Errore salvataggio template");
+    } finally {
+      setIsSavingTemplate(false);
     }
   };
 
-  const handleDeleteTemplate = async (id: string) => {
-    if (confirm("Sei sicuro di voler eliminare questo modello?")) {
-      try {
-        await TemplateService.deleteTemplate(id);
-        await loadTemplates();
-        setSuccess("Modello eliminato");
-        setTimeout(() => setSuccess(null), 3000);
-      } catch (e) {
-        setError("Errore eliminazione template");
-      }
+  const requestDeleteTemplate = (template: MedicalTemplate) => {
+    setTemplateToDelete({ id: template.id, label: template.label });
+    onDeleteTemplateOpen();
+  };
+
+  const confirmDeleteTemplate = async () => {
+    if (!templateToDelete) return;
+    setIsDeletingTemplate(true);
+    try {
+      await TemplateService.deleteTemplate(templateToDelete.id);
+      await loadTemplates();
+      onDeleteTemplateClose();
+      setTemplateToDelete(null);
+      setSuccess("Modello eliminato");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e) {
+      setError("Errore eliminazione template");
+    } finally {
+      setIsDeletingTemplate(false);
     }
   };
 
@@ -1073,7 +1121,14 @@ const SettingsScreen = () => {
   };
 
   const removeAmbulatorio = async (id: string) => {
-    const newList = ambulatori.filter((amb) => amb.id !== id);
+    const removed = ambulatori.find((amb) => amb.id === id);
+    let newList = ambulatori.filter((amb) => amb.id !== id);
+    if (removed?.isPrimario && newList.length > 0) {
+      newList = newList.map((amb, index) => ({
+        ...amb,
+        isPrimario: index === 0,
+      }));
+    }
     setAmbulatori(newList);
     setSavingAmbulatori(true);
     try {
@@ -1085,6 +1140,58 @@ const SettingsScreen = () => {
     } finally {
       setSavingAmbulatori(false);
     }
+  };
+
+  const openEditAmbulatorio = (amb: (typeof ambulatori)[number]) => {
+    setEditAmbulatorio({
+      id: amb.id,
+      nome: amb.nome,
+      indirizzo: amb.indirizzo,
+      citta: amb.citta || "",
+      cap: amb.cap || "",
+      telefono: amb.telefono || "",
+      email: amb.email || "",
+    });
+    onEditAmbulatorioOpen();
+  };
+
+  const saveEditAmbulatorio = async () => {
+    if (!editAmbulatorio) return;
+    if (!editAmbulatorio.nome.trim() || !editAmbulatorio.indirizzo.trim()) {
+      setError("Nome e indirizzo ambulatorio sono obbligatori");
+      return;
+    }
+    setError(null);
+
+    const newList = ambulatori.map((amb) =>
+      amb.id === editAmbulatorio.id ? { ...amb, ...editAmbulatorio } : amb,
+    );
+    setAmbulatori(newList);
+    setSavingAmbulatori(true);
+    try {
+      await saveDoctorData(newList);
+      setSuccess("Ambulatorio aggiornato.");
+      setTimeout(() => setSuccess(null), 3000);
+      onEditAmbulatorioClose();
+      setEditAmbulatorio(null);
+    } catch {
+      setAmbulatori(ambulatori);
+    } finally {
+      setSavingAmbulatori(false);
+    }
+  };
+
+  const requestDeleteAmbulatorio = (amb: { id: string; nome: string }) => {
+    setAmbulatorioToDelete(amb);
+    onDeleteAmbulatorioOpen();
+  };
+
+  const confirmDeleteAmbulatorio = async () => {
+    if (!ambulatorioToDelete) return;
+    const { id } = ambulatorioToDelete;
+    onDeleteAmbulatorioClose();
+    setAmbulatorioToDelete(null);
+    await removeAmbulatorio(id);
   };
 
   const setPrimario = async (id: string) => {
@@ -1363,57 +1470,102 @@ const SettingsScreen = () => {
                         <Card
                           key={amb.id}
                           shadow="none"
-                          className="bg-white border border-default-200 flex-shrink-0"
+                          className={`bg-white border flex-shrink-0 transition-colors ${
+                            amb.isPrimario
+                              ? "border-success/60 ring-1 ring-success/20"
+                              : "border-default-200 hover:border-primary/40"
+                          }`}
                         >
                           <CardBody className="p-3 gap-2">
-                            <div className="flex items-center justify-between gap-2 min-w-0">
-                              <h4 className="font-semibold text-sm text-gray-900 truncate">
-                                {amb.nome}
-                              </h4>
-                              {amb.isPrimario && (
-                                <Chip
-                                  size="sm"
-                                  color="success"
-                                  variant="flat"
-                                  className="flex-shrink-0"
-                                >
-                                  In uso
-                                </Chip>
-                              )}
-                            </div>
-                            <p className="text-xs text-gray-600 leading-snug">
-                              {amb.indirizzo}, {amb.cap} {amb.citta}
-                            </p>
-                            <p className="text-xs text-gray-500 leading-snug">
-                              {amb.telefono && `Tel. ${amb.telefono}`}
-                              {amb.telefono && amb.email && " · "}
-                              {amb.email && amb.email}
-                            </p>
-                            <div className="flex flex-wrap gap-1.5 pt-0.5">
-                              {!amb.isPrimario && (
-                                <Button
-                                  size="sm"
-                                  color="primary"
-                                  variant="flat"
-                                  className="h-7 min-h-7 text-xs"
-                                  onPress={() => setPrimario(amb.id)}
-                                  isLoading={savingAmbulatori}
-                                  isDisabled={savingAmbulatori}
-                                >
-                                  Imposta attuale
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                color="danger"
-                                variant="flat"
-                                className="h-7 min-h-7 text-xs"
-                                onPress={() => removeAmbulatorio(amb.id)}
-                                isLoading={savingAmbulatori}
-                                isDisabled={savingAmbulatori}
+                            <div className="flex items-start gap-2 min-w-0">
+                              <Tooltip
+                                content={
+                                  amb.isPrimario
+                                    ? "Sede attualmente in uso"
+                                    : "Usa questa sede"
+                                }
                               >
-                                Rimuovi
-                              </Button>
+                                <button
+                                  type="button"
+                                  className={`mt-0.5 shrink-0 rounded-full p-0.5 transition-colors ${
+                                    amb.isPrimario
+                                      ? "text-success cursor-default"
+                                      : "text-default-300 hover:text-primary cursor-pointer"
+                                  }`}
+                                  onClick={() =>
+                                    !amb.isPrimario && setPrimario(amb.id)
+                                  }
+                                  disabled={savingAmbulatori || amb.isPrimario}
+                                  aria-label={
+                                    amb.isPrimario
+                                      ? "Sede in uso"
+                                      : "Imposta come sede in uso"
+                                  }
+                                >
+                                  {amb.isPrimario ? (
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  ) : (
+                                    <Circle className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </Tooltip>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <h4 className="font-semibold text-sm text-gray-900 truncate">
+                                    {amb.nome}
+                                  </h4>
+                                  {amb.isPrimario && (
+                                    <Chip
+                                      size="sm"
+                                      color="success"
+                                      variant="flat"
+                                      className="flex-shrink-0"
+                                    >
+                                      In uso
+                                    </Chip>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-600 leading-snug mt-1">
+                                  {amb.indirizzo}, {amb.cap} {amb.citta}
+                                </p>
+                                <p className="text-xs text-gray-500 leading-snug">
+                                  {amb.telefono && `Tel. ${amb.telefono}`}
+                                  {amb.telefono && amb.email && " · "}
+                                  {amb.email && amb.email}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 gap-0.5">
+                                <Tooltip content="Modifica">
+                                  <Button
+                                    isIconOnly
+                                    size="sm"
+                                    variant="light"
+                                    onPress={() => openEditAmbulatorio(amb)}
+                                    isDisabled={savingAmbulatori}
+                                    aria-label="Modifica ambulatorio"
+                                  >
+                                    <Edit size={16} />
+                                  </Button>
+                                </Tooltip>
+                                <Tooltip content="Elimina">
+                                  <Button
+                                    isIconOnly
+                                    size="sm"
+                                    variant="light"
+                                    color="danger"
+                                    onPress={() =>
+                                      requestDeleteAmbulatorio({
+                                        id: amb.id,
+                                        nome: amb.nome,
+                                      })
+                                    }
+                                    isDisabled={savingAmbulatori}
+                                    aria-label="Elimina ambulatorio"
+                                  >
+                                    <Trash2 size={16} />
+                                  </Button>
+                                </Tooltip>
+                              </div>
                             </div>
                           </CardBody>
                         </Card>
@@ -1601,21 +1753,6 @@ const SettingsScreen = () => {
                     Informativa <ExternalLink className="w-3 h-3" />
                   </a>
                 </p>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-default-700">Decodifica CF via servizio esterno</p>
-                    <p className="text-xs text-default-400 mt-0.5">
-                      Disattivata di default. Se attiva, il CF viene inviato a un provider terzo.
-                    </p>
-                  </div>
-                  <Switch
-                    aria-label="Decodifica codice fiscale remota"
-                    isSelected={Boolean(preferences.cfDecodeRemoteEnabled)}
-                    onValueChange={(value) =>
-                      handlePreferenceChange("cfDecodeRemoteEnabled", value)
-                    }
-                  />
-                </div>
                 <Button
                   size="sm"
                   variant="bordered"
@@ -1785,7 +1922,7 @@ const SettingsScreen = () => {
                 >
                   {duplicateCheckProgress
                     ? `Analisi: ${duplicateCheckProgress.current} / ${duplicateCheckProgress.total}`
-                    : "Aggiorna"}
+                    : "Controlla"}
                 </Button>
                 <Button
                   size="sm"
@@ -1946,24 +2083,36 @@ const SettingsScreen = () => {
       {/* Gestione Modelli */}
       <Card className="shadow-lg">
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-3">
-              <FileText className="w-5 h-5 text-primary" />
-              <h2 className="text-xl font-semibold text-gray-900">
-                Gestione Modelli Referti
-              </h2>
-            </div>
-            <Button
-              size="sm"
-              color="primary"
-              startContent={<Plus size={16} />}
-              onPress={handleNewTemplate}
-            >
-              Nuovo Modello
-            </Button>
+          <div className="flex items-center gap-3">
+            <FileText className="w-5 h-5 text-primary shrink-0" />
+            <h2 className="text-xl font-semibold text-gray-900">
+              Gestione Modelli Referti
+            </h2>
           </div>
         </CardHeader>
         <CardBody className="space-y-6">
+          <div className="flex flex-col gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 min-w-0">
+              <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  Come funzionano i modelli referti?
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-default-600">
+                  Guida rapida su uso e creazione.
+                </p>
+              </div>
+            </div>
+            <Button
+              color="primary"
+              variant="solid"
+              className="corioli-cta shrink-0 sm:ml-4"
+              startContent={<HelpCircle size={16} />}
+              onPress={() => navigate("/help?topic=modelli-referti")}
+            >
+              Vai alla guida
+            </Button>
+          </div>
           <Tabs
             aria-label="Categorie Template"
             selectedKey={selectedCategory}
@@ -1976,9 +2125,29 @@ const SettingsScreen = () => {
             <Tab key="certificato" title="Certificati" />
           </Tabs>
 
-          <p className="text-sm text-default-500 mb-3">
-            I modelli compaiono nei pulsanti &quot;Modello&quot; / &quot;Modelli Esame&quot; / &quot;Modelli Certificato&quot; durante la compilazione. Il <strong>nome in menu</strong> è ciò che vedi quando cerchi; il <strong>contenuto inserito</strong> è il testo che va nel referto quando lo selezioni.
-          </p>
+          <div className="flex flex-col gap-4 rounded-xl border border-default-200 bg-default-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-medium text-gray-800">
+                Testi pronti da inserire con un clic durante visite, esami o certificati.
+              </p>
+              <p className="text-xs leading-relaxed text-default-500">
+                <span className="font-semibold text-default-700">Nome in menu</span>{" "}
+                → titolo nel menu{" "}
+                <span className="text-default-400">·</span>{" "}
+                <span className="font-semibold text-default-700">Contenuto</span>{" "}
+                → testo inserito nel referto
+              </p>
+            </div>
+            <Button
+              color="primary"
+              size="md"
+              className="corioli-cta w-full shrink-0 px-6 sm:w-auto sm:min-w-[168px]"
+              startContent={<Plus size={18} />}
+              onPress={handleNewTemplate}
+            >
+              Nuovo modello
+            </Button>
+          </div>
           <Table aria-label="Tabella Modelli">
             <TableHeader>
               <TableColumn>Nome in menu</TableColumn>
@@ -2030,7 +2199,7 @@ const SettingsScreen = () => {
                           size="sm"
                           variant="light"
                           color="danger"
-                          onPress={() => handleDeleteTemplate(template.id)}
+                          onPress={() => requestDeleteTemplate(template)}
                         >
                           <Trash2 size={16} />
                         </Button>
@@ -2201,154 +2370,224 @@ const SettingsScreen = () => {
         </ModalContent>
       </Modal>
 
-      <Modal
+      <TemplateEditorModal
         isOpen={isTemplateModalOpen}
         onClose={onTemplateModalClose}
-        size="2xl"
+        initialTemplate={currentTemplate}
+        onSave={handleSaveTemplate}
+        isSaving={isSavingTemplate}
+      />
+
+      <Modal
+        isOpen={isDeleteTemplateOpen}
+        onClose={() => {
+          if (isDeletingTemplate) return;
+          onDeleteTemplateClose();
+          setTemplateToDelete(null);
+        }}
+        size="md"
+        placement="center"
+        backdrop="blur"
+        classNames={{
+          base: "border border-danger-200",
+          header: "border-b border-default-200",
+          footer: "border-t border-default-200",
+        }}
       >
         <ModalContent>
-          <ModalHeader>
-            {currentTemplate.id ? "Modifica Modello" : "Nuovo Modello"}
-          </ModalHeader>
-          <ModalBody onContextMenu={(e) => e.stopPropagation()}>
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {currentTemplate.id ? (
-                  <Select
-                    label="Categoria"
-                    selectedKeys={
-                      currentTemplate.category ? [currentTemplate.category] : []
-                    }
-                    onSelectionChange={(keys) =>
-                      setCurrentTemplate((prev) => ({
-                        ...prev,
-                        category: Array.from(keys)[0] as any,
-                      }))
-                    }
-                  >
-                    <SelectItem key="ginecologia" value="ginecologia">
-                      Ginecologia
-                    </SelectItem>
-                    <SelectItem key="ostetricia" value="ostetricia">
-                      Ostetricia
-                    </SelectItem>
-                    <SelectItem key="terapie" value="terapie">
-                      Terapie
-                    </SelectItem>
-                    <SelectItem
-                      key="esame_complementare"
-                      value="esame_complementare"
-                    >
-                      Esami
-                    </SelectItem>
-                    <SelectItem key="certificato" value="certificato">
-                      Certificati
-                    </SelectItem>
-                  </Select>
-                ) : (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm text-default-500 font-medium">
-                      Categoria
-                    </span>
-                    <p className="text-default-700 font-medium capitalize">
-                      {currentTemplate.category === "esame_complementare"
-                        ? "Esami"
-                        : currentTemplate.category === "certificato"
-                          ? "Certificati"
-                          : currentTemplate.category}
-                    </p>
-                  </div>
-                )}
-                <Select
-                  label="Sezione"
-                  selectedKeys={
-                    currentTemplate.section ? [currentTemplate.section] : []
-                  }
-                  onSelectionChange={(keys) =>
-                    setCurrentTemplate((prev) => ({
-                      ...prev,
-                      section: Array.from(keys)[0] as any,
-                    }))
-                  }
-                  isDisabled={currentTemplate.category === "certificato"}
-                  description={currentTemplate.category === "certificato" ? "Per i certificati si usa sempre la sezione Testo." : undefined}
-                >
-                  <SelectItem key="prestazione" value="prestazione">
-                    Anamnesi / Prestazione
-                  </SelectItem>
-                  <SelectItem key="esameObiettivo" value="esameObiettivo">
-                    Esame Obiettivo / Eco
-                  </SelectItem>
-                  <SelectItem key="conclusioni" value="conclusioni">
-                    Conclusioni
-                  </SelectItem>
-                  <SelectItem key="generale" value="generale">
-                    {currentTemplate.category === "certificato" ? "Testo certificato" : "Generale"}
-                  </SelectItem>
-                  <SelectItem key="nome" value="nome">
-                    Nome esame
-                  </SelectItem>
-                </Select>
-              </div>
-
-              <Input
-                label="Nome in menu"
-                placeholder="Es. Emocromo, Eco addome..."
-                value={currentTemplate.label}
-                onValueChange={(val) =>
-                  setCurrentTemplate((prev) => ({ ...prev, label: val }))
-                }
-                description="Titolo che vedi quando cerchi o selezioni il modello (nel menu a tendina)"
-              />
-              <Textarea
-                label="Contenuto inserito"
-                placeholder={
-                  currentTemplate.category === "esame_complementare"
-                    ? "Es. Emocromo con formula, Ecografia addome completo..."
-                    : currentTemplate.category === "certificato"
-                      ? "Testo del certificato (puoi usare ___ per campi da compilare)..."
-                      : "Testo che verrà inserito nel referto..."
-                }
-                value={currentTemplate.text}
-                onValueChange={(val) =>
-                  setCurrentTemplate((prev) => ({ ...prev, text: val }))
-                }
-                minRows={
-                  currentTemplate.category === "esame_complementare" ? 2 : currentTemplate.category === "certificato" ? 4 : 5
-                }
-                description={
-                  currentTemplate.category === "esame_complementare"
-                    ? "Nome dell'esame che compare nella richiesta quando lo selezioni"
-                    : currentTemplate.category === "certificato"
-                      ? "Testo che viene inserito nella descrizione del certificato quando selezioni questo modello"
-                      : "Testo che viene inserito nel referto quando selezioni questo modello"
-                }
-                spellCheck
-              />
-              {currentTemplate.category === "esame_complementare" && (
-                <Textarea
-                  label="Note (opzionale)"
-                  placeholder="Es. preparazione, dettagli clinici..."
-                  value={currentTemplate.note || ""}
-                  onValueChange={(val) =>
-                    setCurrentTemplate((prev) => ({ ...prev, note: val }))
-                  }
-                  minRows={2}
-                  description="Note aggiuntive per la richiesta esame"
-                />
-              )}
+          <ModalHeader className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-danger-100">
+              <Trash2 size={18} className="text-danger" />
+            </span>
+            <div>
+              <p className="text-base font-semibold text-gray-900">
+                Elimina modello
+              </p>
+              <p className="text-sm font-normal text-default-500">
+                L&apos;operazione non può essere annullata
+              </p>
             </div>
+          </ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-default-600">
+              Sei sicuro di voler eliminare{" "}
+              <strong>{templateToDelete?.label}</strong>?
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="flat"
+              onPress={() => {
+                onDeleteTemplateClose();
+                setTemplateToDelete(null);
+              }}
+              isDisabled={isDeletingTemplate}
+            >
+              Annulla
+            </Button>
+            <Button
+              color="danger"
+              onPress={() => void confirmDeleteTemplate()}
+              isLoading={isDeletingTemplate}
+            >
+              Elimina modello
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Modifica ambulatorio */}
+      <Modal
+        isOpen={isEditAmbulatorioOpen}
+        onClose={() => {
+          onEditAmbulatorioClose();
+          setEditAmbulatorio(null);
+        }}
+        size="lg"
+      >
+        <ModalContent>
+          <ModalHeader>Modifica ambulatorio</ModalHeader>
+          <ModalBody>
+            {editAmbulatorio && (
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    size="sm"
+                    label="Nome Ambulatorio"
+                    value={editAmbulatorio.nome}
+                    onValueChange={(value) =>
+                      setEditAmbulatorio((prev) =>
+                        prev ? { ...prev, nome: value } : prev,
+                      )
+                    }
+                    variant="bordered"
+                    placeholder="Studio Medico"
+                  />
+                  <Input
+                    size="sm"
+                    label="Telefono"
+                    value={editAmbulatorio.telefono}
+                    onValueChange={(value) =>
+                      setEditAmbulatorio((prev) =>
+                        prev ? { ...prev, telefono: value } : prev,
+                      )
+                    }
+                    variant="bordered"
+                    placeholder="0612345678"
+                  />
+                </div>
+                <Input
+                  size="sm"
+                  label="Indirizzo"
+                  value={editAmbulatorio.indirizzo}
+                  onValueChange={(value) =>
+                    setEditAmbulatorio((prev) =>
+                      prev ? { ...prev, indirizzo: value } : prev,
+                    )
+                  }
+                  variant="bordered"
+                  placeholder="Via Roma 10"
+                />
+                <div className="grid grid-cols-3 gap-2">
+                  <Input
+                    size="sm"
+                    label="Città"
+                    value={editAmbulatorio.citta}
+                    onValueChange={(value) =>
+                      setEditAmbulatorio((prev) =>
+                        prev ? { ...prev, citta: value } : prev,
+                      )
+                    }
+                    variant="bordered"
+                    placeholder="Roma"
+                  />
+                  <Input
+                    size="sm"
+                    label="CAP"
+                    value={editAmbulatorio.cap}
+                    onValueChange={(value) =>
+                      setEditAmbulatorio((prev) =>
+                        prev ? { ...prev, cap: value } : prev,
+                      )
+                    }
+                    variant="bordered"
+                    placeholder="00100"
+                  />
+                  <Input
+                    size="sm"
+                    label="Email"
+                    type="email"
+                    value={editAmbulatorio.email}
+                    onValueChange={(value) =>
+                      setEditAmbulatorio((prev) =>
+                        prev ? { ...prev, email: value } : prev,
+                      )
+                    }
+                    variant="bordered"
+                    placeholder="Opzionale"
+                  />
+                </div>
+              </div>
+            )}
           </ModalBody>
           <ModalFooter>
             <Button
               color="danger"
               variant="light"
-              onPress={onTemplateModalClose}
+              onPress={() => {
+                onEditAmbulatorioClose();
+                setEditAmbulatorio(null);
+              }}
             >
               Annulla
             </Button>
-            <Button color="primary" onPress={handleSaveTemplate}>
-              Salva Modello
+            <Button
+              color="primary"
+              onPress={saveEditAmbulatorio}
+              isLoading={savingAmbulatori}
+              isDisabled={savingAmbulatori}
+            >
+              Salva modifiche
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Conferma eliminazione ambulatorio */}
+      <Modal
+        isOpen={isDeleteAmbulatorioOpen}
+        onClose={() => {
+          onDeleteAmbulatorioClose();
+          setAmbulatorioToDelete(null);
+        }}
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>Elimina ambulatorio</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-default-600">
+              Sei sicuro di voler eliminare{" "}
+              <strong>{ambulatorioToDelete?.nome}</strong>? L&apos;operazione
+              non può essere annullata.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="light"
+              onPress={() => {
+                onDeleteAmbulatorioClose();
+                setAmbulatorioToDelete(null);
+              }}
+            >
+              Annulla
+            </Button>
+            <Button
+              color="danger"
+              onPress={confirmDeleteAmbulatorio}
+              isLoading={savingAmbulatori}
+              isDisabled={savingAmbulatori}
+            >
+              Elimina
             </Button>
           </ModalFooter>
         </ModalContent>

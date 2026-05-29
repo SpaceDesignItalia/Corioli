@@ -49,16 +49,9 @@ import type { Patient } from "../../types/Storage";
 
 const CF_DUPLICATE_DEBOUNCE_MS = 450;
 
-type CfAutofillField =
-  | "firstName"
-  | "lastName"
-  | "birthday"
-  | "birthplace"
-  | "gender";
+type CfAutofillField = "birthday" | "birthplace" | "gender";
 
 const EMPTY_CF_AUTOFILL: Record<CfAutofillField, boolean> = {
-  firstName: false,
-  lastName: false,
   birthday: false,
   birthplace: false,
   gender: false,
@@ -264,11 +257,7 @@ export default function AddPatient() {
         : value;
     if (name === "cf") {
       setCfAutofilledFields(EMPTY_CF_AUTOFILL);
-    } else if (
-      name === "firstName" ||
-      name === "lastName" ||
-      name === "birthplace"
-    ) {
+    } else if (name === "birthplace") {
       clearCfAutofillFlag(name);
     }
     setRegisterData((prevData) => ({ ...prevData, [name]: next }));
@@ -333,12 +322,6 @@ export default function AddPatient() {
             nextAutofill.birthplace = true;
           }
           if (decoded.sesso) nextAutofill.gender = true;
-          if (decoded.nomeGuess && !prev.firstName.trim()) {
-            nextAutofill.firstName = true;
-          }
-          if (decoded.cognomeGuess && !prev.lastName.trim()) {
-            nextAutofill.lastName = true;
-          }
           setCfAutofilledFields((flags) => ({ ...flags, ...nextAutofill }));
           return {
             ...prev,
@@ -350,14 +333,6 @@ export default function AddPatient() {
                 ? decoded.luogoNascita
                 : prev.birthplace,
             gender: decoded.sesso || prev.gender,
-            firstName:
-              decoded.nomeGuess && !prev.firstName.trim()
-                ? decoded.nomeGuess
-                : prev.firstName,
-            lastName:
-              decoded.cognomeGuess && !prev.lastName.trim()
-                ? decoded.cognomeGuess
-                : prev.lastName,
           };
         });
       } catch {
@@ -652,7 +627,7 @@ export default function AddPatient() {
             <div>
               <StepHeader step={2} title="Dati Anagrafici" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className={cfAutofillWrapperClass(cfAutofilledFields.firstName)}>
+                <div className="w-full">
                   <Input
                     ref={refFirstName}
                     name="firstName"
@@ -667,7 +642,7 @@ export default function AddPatient() {
                     classNames={baseLabelClassNames}
                   />
                 </div>
-                <div className={cfAutofillWrapperClass(cfAutofilledFields.lastName)}>
+                <div className="w-full">
                   <Input
                     ref={refLastName}
                     name="lastName"

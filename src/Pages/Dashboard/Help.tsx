@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Accordion,
   AccordionItem,
@@ -83,6 +84,7 @@ function getFileIcon(mimeType: string) {
 }
 
 export default function HelpAndFeedback() {
+  const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [chatLoading, setChatLoading] = useState(true);
@@ -438,6 +440,24 @@ export default function HelpAndFeedback() {
 
   const faqGroups = [
     {
+      category: "Modelli Referti",
+      topicId: "modelli-referti",
+      items: [
+        {
+          id: "modelli-referti-uso",
+          title: "Come si usano?",
+          content:
+            "Clicca Modello accanto al campo e scegli il testo.\n\n• Visite → pulsante Modello\n• Esami → Modelli Esame (scheda paziente)\n• Certificati → Modelli Certificato\n\nPuoi modificare il testo dopo l'inserimento.",
+        },
+        {
+          id: "modelli-referti-gestione",
+          title: "Come se ne crea uno?",
+          content:
+            "Impostazioni → Gestione Modelli Referti → Nuovo Modello.\n\nScegli categoria (scheda in alto) e sezione giusta — altrimenti non compare nel menu.\n\nMatita = modifica · Cestino = elimina.",
+        },
+      ],
+    },
+    {
       category: "Gestione Pazienti",
       items: [
         {
@@ -476,11 +496,6 @@ export default function HelpAndFeedback() {
             "Nella visita Ostetrica, inserendo la 'Data Ultima Mestruazione' (LMP), il sistema calcola automaticamente la Data Presunta del Parto (DPP) e le Settimane di Gestazione attuali (es. 15+3). Puoi comunque modificare manualmente questi valori.",
         },
         {
-          title: "Come uso i modelli (template) nei referti?",
-          content:
-            "Nei campi di testo (es. Anamnesi, Esame Obiettivo), trovi un pulsante 'Modello'. Cliccandolo puoi inserire testi predefiniti. Puoi creare nuovi modelli in 'Impostazioni > Modelli Referti'. La categoria del modello viene selezionata automaticamente in base alla sezione in cui ti trovi.",
-        },
-        {
           title: "Come stampo o salvo il referto in PDF?",
           content:
             "Dalla schermata di compilazione visita o dallo storico, clicca su 'Stampa'. Verrà generato un PDF professionale con l'intestazione del medico, i dati del paziente e il referto completo, pronto per essere stampato o salvato.",
@@ -513,7 +528,7 @@ export default function HelpAndFeedback() {
         {
           title: "I miei dati sono al sicuro? Dove vengono salvati?",
           content:
-            "Corioli è progettato Local First: cartella clinica, visite e documenti restano sul tuo computer in un database locale (proteggi il dispositivo con password di sistema e backup sicuri). Per licenze, assistenza e aggiornamenti l'app comunica in modo limitato con i server Corioli (dati del medico e statistiche aggregate, mai l'intera cartella clinica). La decodifica del codice fiscale può usare un servizio esterno solo se abilitata in Impostazioni. Per richieste privacy scrivi a privacy@corioli.it o consulta l'informativa sul sito corioli.it.",
+            "Corioli è progettato Local First: cartella clinica, visite e documenti restano sul tuo computer in un database locale (proteggi il dispositivo con password di sistema e backup sicuri). Per licenze, assistenza e aggiornamenti l'app comunica in modo limitato con i server Corioli (dati del medico e statistiche aggregate, mai l'intera cartella clinica). La decodifica del codice fiscale avviene interamente in locale sul tuo dispositivo. Per richieste privacy scrivi a privacy@corioli.it o consulta l'informativa sul sito corioli.it.",
         },
         {
           title: "Come faccio il backup dei dati?",
@@ -555,6 +570,25 @@ export default function HelpAndFeedback() {
       setOpenCategories(new Set(filteredFaqGroups.map((g) => g.category)));
     }
   }, [searchQuery, filteredFaqGroups.length]);
+
+  useEffect(() => {
+    const topic = searchParams.get("topic");
+    if (!topic) return;
+
+    const group = faqGroups.find((g) => g.topicId === topic);
+    if (!group) return;
+
+    setOpenCategories((prev) => new Set([...prev, group.category]));
+
+    const scrollTimer = window.setTimeout(() => {
+      document.getElementById(`faq-topic-${topic}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 150);
+
+    return () => window.clearTimeout(scrollTimer);
+  }, [searchParams]);
 
   const renderAttachment = (att: ChatAttachment, isUser: boolean) => {
     if (att.type === "audio") {
@@ -693,6 +727,7 @@ export default function HelpAndFeedback() {
                   {filteredFaqGroups.map((group) => (
                     <AccordionItem
                       key={group.category}
+                      id={"topicId" in group && group.topicId ? `faq-topic-${group.topicId}` : undefined}
                       aria-label={group.category}
                       title={
                         <div className="flex items-center justify-between w-full pr-2 gap-2">
@@ -715,14 +750,14 @@ export default function HelpAndFeedback() {
                       <Accordion selectionMode="multiple" variant="light" className="px-0">
                         {group.items.map((item, index) => (
                           <AccordionItem
-                            key={`${group.category}-${index}`}
+                            key={"id" in item && item.id ? item.id : `${group.category}-${index}`}
                             aria-label={item.title}
                             title={
                               <span className="font-medium text-gray-700 text-sm">{item.title}</span>
                             }
                             classNames={{ title: "text-sm", content: "text-sm text-gray-600 px-2" }}
                           >
-                            <p className="pb-2 pl-1">{item.content}</p>
+                            <p className="pb-2 pl-1 whitespace-pre-line leading-relaxed">{item.content}</p>
                           </AccordionItem>
                         ))}
                       </Accordion>

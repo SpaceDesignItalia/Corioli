@@ -98,10 +98,8 @@ import {
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
-import {
-  getDoctorProfileIncompleteMessage,
-  isDoctorProfileComplete,
-} from "../../utils/doctorProfile";
+import { useDoctorProfileIncompleteModal } from "../../components/DoctorProfileIncompleteModal";
+import { getMissingDoctorProfileFields, isDoctorProfileComplete } from "../../utils/doctorProfile";
 
 /** Barra grafica percentile (5°–95°): linea con rombo alla posizione del percentile */
 function PercentileBar({
@@ -359,6 +357,8 @@ export default function AddVisit() {
   const { visitId } = useParams<{ visitId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { open: openDoctorProfileIncompleteModal, modal: doctorProfileIncompleteModal } =
+    useDoctorProfileIncompleteModal();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [patientVisits, setPatientVisits] = useState<Visit[]>([]);
   const [existingVisit, setExistingVisit] = useState<Visit | null>(null);
@@ -728,9 +728,7 @@ export default function AddVisit() {
     try {
       const doctor = await DoctorService.getDoctor();
       if (!isDoctorProfileComplete(doctor)) {
-        const message = getDoctorProfileIncompleteMessage(doctor);
-        setError(message);
-        showToast(message, "error");
+        openDoctorProfileIncompleteModal(getMissingDoctorProfileFields(doctor));
         return false;
       }
 
@@ -3504,6 +3502,8 @@ export default function AddVisit() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {doctorProfileIncompleteModal}
     </div>
   );
 }

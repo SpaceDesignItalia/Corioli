@@ -1,5 +1,6 @@
 import React from "react";
 import AppNavbar from "./AppNavbar";
+import { CheckPatientModalProvider } from "../contexts/CheckPatientModalContext";
 import { UnsavedChangesProvider } from "../contexts/UnsavedChangesContext";
 
 type DesktopShellProps = {
@@ -12,13 +13,15 @@ const SHELL_CLASS = "mx-auto w-full max-w-7xl px-6";
 export default function DesktopShell({ children }: DesktopShellProps) {
   return (
     <UnsavedChangesProvider>
-      <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-slate-50">
-        <header className={`sticky top-0 z-50 pt-6 ${SHELL_CLASS}`}>
-          <AppNavbar />
-        </header>
+      <CheckPatientModalProvider>
+        <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-slate-50">
+          <header className={`sticky top-0 z-50 pt-6 ${SHELL_CLASS}`}>
+            <AppNavbar />
+          </header>
 
-        <main className={`py-8 ${SHELL_CLASS}`}>{children}</main>
-      </div>
+          <main className={`py-8 ${SHELL_CLASS}`}>{children}</main>
+        </div>
+      </CheckPatientModalProvider>
     </UnsavedChangesProvider>
   );
 }
