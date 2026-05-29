@@ -2,9 +2,6 @@ import { app, BrowserWindow, Menu, ipcMain, shell } from "electron";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import pkg from "electron-updater";
-const { autoUpdater } = pkg;
-import log from "electron-log";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -237,60 +234,10 @@ ipcMain.handle("kv:clearAppDottori", async () => {
   }
 });
 
-// Auto-update (GitHub Releases: https://github.com/SpaceDesignItalia/Corioli)
-function setupAutoUpdater() {
-  if (isDev) return;
-
-  autoUpdater.logger = log;
-  autoUpdater.logger.transports.file.level = "info";
-
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on("checking-for-update", () => {
-    mainWindowRef?.webContents?.send("updater:checking");
-  });
-  autoUpdater.on("update-available", (info) => {
-    mainWindowRef?.webContents?.send("updater:available", info);
-  });
-  autoUpdater.on("update-not-available", (info) => {
-    mainWindowRef?.webContents?.send("updater:not-available", info);
-  });
-  autoUpdater.on("download-progress", (progress) => {
-    mainWindowRef?.webContents?.send("updater:progress", progress);
-  });
-  autoUpdater.on("update-downloaded", (info) => {
-    mainWindowRef?.webContents?.send("updater:downloaded", info);
-  });
-  autoUpdater.on("error", (err) => {
-    mainWindowRef?.webContents?.send(
-      "updater:error",
-      err?.message || String(err),
-    );
-  });
-}
-
-ipcMain.handle("updater:check", async () => {
-  if (isDev) return { error: "Dev mode" };
-  try {
-    const result = await autoUpdater.checkForUpdates();
-    return result?.updateInfo
-      ? { version: result.updateInfo.version }
-      : { noUpdate: true };
-  } catch (e) {
-    return { error: e?.message || String(e) };
-  }
-});
-
-ipcMain.handle("updater:quitAndInstall", () => {
-  autoUpdater.quitAndInstall(false, true);
-});
-
 ipcMain.handle("app:version", () => app.getVersion());
 
 app.whenReady().then(() => {
   createWindow();
-  setTimeout(setupAutoUpdater, 3000);
 });
 
 app.on("window-all-closed", () => {

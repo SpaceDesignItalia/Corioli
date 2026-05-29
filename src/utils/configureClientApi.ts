@@ -30,10 +30,19 @@ export function configureClientApiAuth(): void {
   });
 }
 
-/** Token query per allegati support (img/video non inviano header Authorization). */
+/**
+ * Allegati support: il backend restituisce URL con `file_token` temporaneo.
+ * Fallback legacy `access_token` solo se assente (deprecato).
+ */
 export function appendClientFileAccessToken(url: string): string {
+  if (!url.includes("/support/files/")) {
+    return url;
+  }
+  if (url.includes("file_token=")) {
+    return url;
+  }
   const secret = import.meta.env.VITE_CLIENT_API_SECRET;
-  if (!secret || !url.includes("/support/files/")) {
+  if (!secret) {
     return url;
   }
   const sep = url.includes("?") ? "&" : "?";

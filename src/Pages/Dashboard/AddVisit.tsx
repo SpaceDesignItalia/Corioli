@@ -29,7 +29,14 @@ import {
   useRegisterUnsavedChanges,
   useUnsavedChanges,
 } from "../../contexts/UnsavedChangesContext";
-import { addDays, differenceInDays, parseISO, isValid, format, subDays } from "date-fns";
+import {
+  addDays,
+  differenceInDays,
+  parseISO,
+  isValid,
+  format,
+  subDays,
+} from "date-fns";
 import {
   PatientService,
   VisitService,
@@ -70,7 +77,10 @@ import {
   getUmbilicalPiPercentile,
   getUmbilicalRiPercentile,
 } from "../../utils/flussimetriaUtils";
-import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
+import {
+  getFetalGrowthDataPointsFromVisits,
+  getVisitsOfSamePregnancy,
+} from "../../utils/fetalGrowthChartUtils";
 import {
   ArrowLeft,
   Printer,
@@ -94,27 +104,46 @@ import {
 } from "../../utils/doctorProfile";
 
 /** Barra grafica percentile (5°–95°): linea con rombo alla posizione del percentile */
-function PercentileBar({ percentile, showText = true }: { percentile: number | null, showText?: boolean }) {
-  if (percentile == null) return <span className="text-default-400 text-xs">—</span>;
+function PercentileBar({
+  percentile,
+  showText = true,
+}: {
+  percentile: number | null;
+  showText?: boolean;
+}) {
+  if (percentile == null)
+    return <span className="text-default-400 text-xs">—</span>;
   const clamped = Math.max(5, Math.min(95, percentile));
   const leftPct = ((clamped - 5) / 90) * 100;
   return (
     <div className="inline-flex items-center gap-2 w-full">
       <div className="relative flex-1 h-4 flex items-center shrink-0 min-w-[40px]">
         <div className="absolute left-0 right-0 top-1/2 -translate-y-px h-px bg-default-300" />
-        <div className="absolute left-0 top-0 w-px h-3 bg-default-400 rounded-px" style={{ top: "2px" }} />
-        <div className="absolute right-0 top-0 w-px h-3 bg-default-400 rounded-px" style={{ top: "2px" }} />
+        <div
+          className="absolute left-0 top-0 w-px h-3 bg-default-400 rounded-px"
+          style={{ top: "2px" }}
+        />
+        <div
+          className="absolute right-0 top-0 w-px h-3 bg-default-400 rounded-px"
+          style={{ top: "2px" }}
+        />
         <div
           className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-default-600 border border-default-500 shrink-0"
           style={{ left: `calc(${leftPct}% - 4px)` }}
         />
       </div>
-      {showText && <span className="text-xs text-default-600 tabular-nums shrink-0">{Math.round(percentile)}°</span>}
+      {showText && (
+        <span className="text-xs text-default-600 tabular-nums shrink-0">
+          {Math.round(percentile)}°
+        </span>
+      )}
     </div>
   );
 }
 
-function formatCentileInputValue(percentile: number | null | undefined): string {
+function formatCentileInputValue(
+  percentile: number | null | undefined,
+): string {
   if (percentile == null || !Number.isFinite(percentile)) return "";
   return formatCentileLabel(percentile).replace("°", "");
 }
@@ -346,17 +375,19 @@ export default function AddVisit() {
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] =
     useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
-  const [isIncludeFetalGrowthChartModalOpen, setIsIncludeFetalGrowthChartModalOpen] =
-    useState(false);
+  const [
+    isIncludeFetalGrowthChartModalOpen,
+    setIsIncludeFetalGrowthChartModalOpen,
+  ] = useState(false);
   const [copiedPreviousType, setCopiedPreviousType] = useState<
     "ginecologica" | "ginecologica_pediatrica" | "ostetrica" | null
   >(null);
   const includeImagesResolverRef = useRef<((value: boolean) => void) | null>(
     null,
   );
-  const includeFetalGrowthChartResolverRef = useRef<((value: boolean) => void) | null>(
-    null,
-  );
+  const includeFetalGrowthChartResolverRef = useRef<
+    ((value: boolean) => void) | null
+  >(null);
   const initialLoadDone = useRef(false);
 
   // Templates state
@@ -456,16 +487,20 @@ export default function AddVisit() {
                 abortiPrecSpontanei: visit.ostetricia?.abortiPrecSpontanei ?? 0,
                 ivgPrec: visit.ostetricia?.ivgPrec ?? 0,
                 fumaInGravidanza: visit.ostetricia?.fumaInGravidanza ?? "",
-                pacchettiSigaretteAlGiorno: visit.ostetricia?.pacchettiSigaretteAlGiorno ?? 0,
-                assunzioneAcidoFolico: visit.ostetricia?.assunzioneAcidoFolico ?? "",
-                modalitaConcepimento: visit.ostetricia?.modalitaConcepimento ?? "",
+                pacchettiSigaretteAlGiorno:
+                  visit.ostetricia?.pacchettiSigaretteAlGiorno ?? 0,
+                assunzioneAcidoFolico:
+                  visit.ostetricia?.assunzioneAcidoFolico ?? "",
+                modalitaConcepimento:
+                  visit.ostetricia?.modalitaConcepimento ?? "",
                 biometriaFetale: visit.ostetricia?.biometriaFetale ?? {
                   bpdMm: 0,
                   hcMm: 0,
                   acMm: 0,
                   flMm: 0,
                 },
-                flussimetriaOmbelicale: visit.ostetricia?.flussimetriaOmbelicale,
+                flussimetriaOmbelicale:
+                  visit.ostetricia?.flussimetriaOmbelicale,
               }));
             } else if (visit.tipo === "ostetrica") {
               // Visita importata da CSV o salvata solo con campi piatti
@@ -633,7 +668,8 @@ export default function AddVisit() {
       // Settimane
       if (isValid(visitDate)) {
         const diffDays = differenceInDays(visitDate, lmp);
-        if (diffDays > 0 && diffDays < 300) { // sanity check
+        if (diffDays > 0 && diffDays < 300) {
+          // sanity check
           const weeks = Math.floor(diffDays / 7);
           const days = diffDays % 7;
           const gestStr = `${weeks}+${days}`;
@@ -644,10 +680,15 @@ export default function AddVisit() {
       }
     }
     setSuggestions(newState);
-  }, [ostetriciaData.ultimaMestruazione, visitData.dataVisita, ostetriciaData.dataPresunta, ostetriciaData.settimaneGestazione, visitData.tipo]);
+  }, [
+    ostetriciaData.ultimaMestruazione,
+    visitData.dataVisita,
+    ostetriciaData.dataPresunta,
+    ostetriciaData.settimaneGestazione,
+    visitData.tipo,
+  ]);
 
   // Calcolo automatico gravidanza spostato negli handler onChange per evitare sovrascritture indesiderate al mount.
-
 
   const handleTemplateSelect = (
     category: "ginecologia" | "ostetrica",
@@ -1144,8 +1185,12 @@ export default function AddVisit() {
               flussimetriaOmbelicale: ostetriciaData.flussimetriaOmbelicale
                 ? {
                     ...ostetriciaData.flussimetriaOmbelicale,
-                    piPercentile: flussimetriaCalcoli?.piPercentile ?? ostetriciaData.flussimetriaOmbelicale.piPercentile,
-                    riPercentile: flussimetriaCalcoli?.riPercentile ?? ostetriciaData.flussimetriaOmbelicale.riPercentile,
+                    piPercentile:
+                      flussimetriaCalcoli?.piPercentile ??
+                      ostetriciaData.flussimetriaOmbelicale.piPercentile,
+                    riPercentile:
+                      flussimetriaCalcoli?.riPercentile ??
+                      ostetriciaData.flussimetriaOmbelicale.riPercentile,
                   }
                 : undefined,
             }
@@ -1170,15 +1215,23 @@ export default function AddVisit() {
       includeFetalGrowthChart = await askIncludeFetalGrowthChart();
     }
 
-    let fetalGrowthDataPoints: { gaWeeks: number; pesoGrammi: number }[] | undefined;
+    let fetalGrowthDataPoints:
+      | { gaWeeks: number; pesoGrammi: number }[]
+      | undefined;
     if (visitData.tipo === "ostetrica" && includeFetalGrowthChart) {
       const allVisits = await VisitService.getVisitsByPatientId(patient.id);
       // Solo visite fino a questa (inclusa) e stessa gravidanza (stessa LMP): tabelle/grafici si resettano per nuova gravidanza
       const fino = allVisits.filter(
-        (v) => v.tipo === "ostetrica" && new Date(v.dataVisita).getTime() <= new Date(currentVisit.dataVisita).getTime(),
+        (v) =>
+          v.tipo === "ostetrica" &&
+          new Date(v.dataVisita).getTime() <=
+            new Date(currentVisit.dataVisita).getTime(),
       );
       const stessaGravidanza = getVisitsOfSamePregnancy(fino, currentVisit);
-      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(stessaGravidanza, fetalFormula);
+      fetalGrowthDataPoints = getFetalGrowthDataPointsFromVisits(
+        stessaGravidanza,
+        fetalFormula,
+      );
     } else {
       fetalGrowthDataPoints = undefined;
     }
@@ -1285,15 +1338,22 @@ export default function AddVisit() {
           flMm: "flPercentile",
         } as const;
         const bioUpdates: Record<string, number | undefined> = {};
-        (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach((measField) => {
-          const measVal = bio[measField];
-          if (measVal && measVal > 0) {
-            const p = getBiometryPercentile(measVal, newGa, measField);
-            bioUpdates[pctKeyMap[measField]] = p != null ? Math.round(p) : undefined;
-          }
-        });
+        (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach(
+          (measField) => {
+            const measVal = bio[measField];
+            if (measVal && measVal > 0) {
+              const p = getBiometryPercentile(measVal, newGa, measField);
+              bioUpdates[pctKeyMap[measField]] =
+                p != null ? Math.round(p) : undefined;
+            }
+          },
+        );
         bioUpdates["efwPercentile"] = undefined;
-        return { ...prev, [field]: value, biometriaFetale: { ...bio, ...bioUpdates } };
+        return {
+          ...prev,
+          [field]: value,
+          biometriaFetale: { ...bio, ...bioUpdates },
+        };
       });
       return;
     }
@@ -1312,9 +1372,13 @@ export default function AddVisit() {
       const weeks = Math.floor(gaDays / 7);
       const days = Math.round(gaDays % 7);
       const newSettimane = `${weeks}+${days}`;
-      const currentWeeksDec = parseGestationalWeeks(prev.settimaneGestazione ?? "");
-      const currentGaDays = currentWeeksDec != null ? currentWeeksDec * 7 : null;
-      const diffDays = currentGaDays != null ? Math.abs(gaDays - currentGaDays) : 999;
+      const currentWeeksDec = parseGestationalWeeks(
+        prev.settimaneGestazione ?? "",
+      );
+      const currentGaDays =
+        currentWeeksDec != null ? currentWeeksDec * 7 : null;
+      const diffDays =
+        currentGaDays != null ? Math.abs(gaDays - currentGaDays) : 999;
       if (diffDays >= 1) {
         next.settimaneGestazione = newSettimane;
         const visitDate = parseISO(visitData.dataVisita);
@@ -1334,18 +1398,23 @@ export default function AddVisit() {
             flMm: "flPercentile",
           } as const;
           const bioUpdates: Record<string, number | undefined> = {};
-          (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach((measField) => {
-            const measVal = bio[measField];
-            if (measVal && measVal > 0) {
-              const p = getBiometryPercentile(measVal, newGaDec, measField);
-              bioUpdates[pctKeyMap[measField]] = p != null ? Math.round(p) : undefined;
-            }
-          });
+          (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach(
+            (measField) => {
+              const measVal = bio[measField];
+              if (measVal && measVal > 0) {
+                const p = getBiometryPercentile(measVal, newGaDec, measField);
+                bioUpdates[pctKeyMap[measField]] =
+                  p != null ? Math.round(p) : undefined;
+              }
+            },
+          );
           bioUpdates["efwPercentile"] = undefined;
           next.biometriaFetale = { ...bio, ...bioUpdates };
         }
         const oldSett = prev.settimaneGestazione || "—";
-        const oldDpp = prev.dataPresunta ? format(parseISO(prev.dataPresunta), "dd/MM/yyyy") : "—";
+        const oldDpp = prev.dataPresunta
+          ? format(parseISO(prev.dataPresunta), "dd/MM/yyyy")
+          : "—";
         setTimeout(() => {
           showToast(
             `In base al CRL (${num} mm): settimane da ${oldSett} a ${newSettimane}; data presunta parto da ${oldDpp} a ${next.dataPresunta ? format(parseISO(next.dataPresunta), "dd/MM/yyyy") : "—"}.`,
@@ -1362,7 +1431,7 @@ export default function AddVisit() {
     value: number,
   ) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
-    
+
     // Calcola il percentile automatico se abbiamo GA
     let autoPct: number | undefined = undefined;
     const ga = parseGestationalWeeks(ostetriciaData.settimaneGestazione ?? "");
@@ -1474,12 +1543,12 @@ export default function AddVisit() {
   const flussimetriaCalcoli = useMemo(
     () => computeFlussimetriaCalcoliSnapshot(ostetriciaData),
     [
-    ostetriciaData.flussimetriaOmbelicale?.pi,
-    ostetriciaData.flussimetriaOmbelicale?.ri,
-    ostetriciaData.flussimetriaOmbelicale?.psv,
-    ostetriciaData.flussimetriaOmbelicale?.edv,
-    ostetriciaData.flussimetriaOmbelicale?.velocitaMedia,
-    ostetriciaData.settimaneGestazione,
+      ostetriciaData.flussimetriaOmbelicale?.pi,
+      ostetriciaData.flussimetriaOmbelicale?.ri,
+      ostetriciaData.flussimetriaOmbelicale?.psv,
+      ostetriciaData.flussimetriaOmbelicale?.edv,
+      ostetriciaData.flussimetriaOmbelicale?.velocitaMedia,
+      ostetriciaData.settimaneGestazione,
     ],
   );
 
@@ -1710,7 +1779,11 @@ export default function AddVisit() {
                         type="number"
                         label="Gravidanze"
                         placeholder="0"
-                        value={ginecologiaData.gravidanze === 0 ? "" : String(ginecologiaData.gravidanze)}
+                        value={
+                          ginecologiaData.gravidanze === 0
+                            ? ""
+                            : String(ginecologiaData.gravidanze)
+                        }
                         onValueChange={(v) =>
                           handleGinecologiaChange(
                             "gravidanze",
@@ -1728,7 +1801,11 @@ export default function AddVisit() {
                         type="number"
                         label="Parti"
                         placeholder="0"
-                        value={ginecologiaData.parti === 0 ? "" : String(ginecologiaData.parti)}
+                        value={
+                          ginecologiaData.parti === 0
+                            ? ""
+                            : String(ginecologiaData.parti)
+                        }
                         onValueChange={(v) =>
                           handleGinecologiaChange("parti", parseInt(v) || 0)
                         }
@@ -1743,7 +1820,11 @@ export default function AddVisit() {
                         type="number"
                         label="Aborti"
                         placeholder="0"
-                        value={ginecologiaData.aborti === 0 ? "" : String(ginecologiaData.aborti)}
+                        value={
+                          ginecologiaData.aborti === 0
+                            ? ""
+                            : String(ginecologiaData.aborti)
+                        }
                         onValueChange={(v) =>
                           handleGinecologiaChange("aborti", parseInt(v) || 0)
                         }
@@ -1769,7 +1850,11 @@ export default function AddVisit() {
                           variant="bordered"
                           labelPlacement="outside"
                           placeholder="0"
-                          value={(ginecologiaData.partiSpontanei ?? 0) === 0 ? "" : String(ginecologiaData.partiSpontanei ?? 0)}
+                          value={
+                            (ginecologiaData.partiSpontanei ?? 0) === 0
+                              ? ""
+                              : String(ginecologiaData.partiSpontanei ?? 0)
+                          }
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "partiSpontanei",
@@ -1787,7 +1872,11 @@ export default function AddVisit() {
                           variant="bordered"
                           labelPlacement="outside"
                           placeholder="0"
-                          value={(ginecologiaData.partiCesarei ?? 0) === 0 ? "" : String(ginecologiaData.partiCesarei ?? 0)}
+                          value={
+                            (ginecologiaData.partiCesarei ?? 0) === 0
+                              ? ""
+                              : String(ginecologiaData.partiCesarei ?? 0)
+                          }
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "partiCesarei",
@@ -1805,7 +1894,11 @@ export default function AddVisit() {
                           variant="bordered"
                           labelPlacement="outside"
                           placeholder="0"
-                          value={(ginecologiaData.abortiSpontanei ?? 0) === 0 ? "" : String(ginecologiaData.abortiSpontanei ?? 0)}
+                          value={
+                            (ginecologiaData.abortiSpontanei ?? 0) === 0
+                              ? ""
+                              : String(ginecologiaData.abortiSpontanei ?? 0)
+                          }
                           onValueChange={(v) =>
                             handleGinecologiaChange(
                               "abortiSpontanei",
@@ -1823,7 +1916,11 @@ export default function AddVisit() {
                           variant="bordered"
                           labelPlacement="outside"
                           placeholder="0"
-                          value={(ginecologiaData.ivg ?? 0) === 0 ? "" : String(ginecologiaData.ivg ?? 0)}
+                          value={
+                            (ginecologiaData.ivg ?? 0) === 0
+                              ? ""
+                              : String(ginecologiaData.ivg ?? 0)
+                          }
                           onValueChange={(v) =>
                             handleGinecologiaChange("ivg", parseInt(v) || 0)
                           }
@@ -2354,13 +2451,14 @@ export default function AddVisit() {
                             variant="flat"
                             className="cursor-pointer hover:bg-primary/20 h-6 px-1"
                             onClick={() =>
-                              handleOstetriciaChange("dataPresunta", suggestions.dpp)
+                              handleOstetriciaChange(
+                                "dataPresunta",
+                                suggestions.dpp,
+                              )
                             }
                           >
-                            Suggerito: {format(
-                              parseISO(suggestions.dpp),
-                              "dd/MM/yyyy",
-                            )}
+                            Suggerito:{" "}
+                            {format(parseISO(suggestions.dpp), "dd/MM/yyyy")}
                           </Chip>
                         </div>
                       )}
@@ -2395,7 +2493,10 @@ export default function AddVisit() {
                       <SelectItem key="iui" value="iui">
                         IUI / Inseminazione
                       </SelectItem>
-                      <SelectItem key="donazione_ovociti" value="donazione_ovociti">
+                      <SelectItem
+                        key="donazione_ovociti"
+                        value="donazione_ovociti"
+                      >
                         Donazione ovociti
                       </SelectItem>
                       <SelectItem key="altra" value="altra">
@@ -2412,7 +2513,11 @@ export default function AddVisit() {
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        value={ostetriciaData.pesoPreGravidanza === 0 ? "" : ostetriciaData.pesoPreGravidanza.toString()}
+                        value={
+                          ostetriciaData.pesoPreGravidanza === 0
+                            ? ""
+                            : ostetriciaData.pesoPreGravidanza.toString()
+                        }
                         onValueChange={(v) =>
                           handleOstetriciaChange(
                             "pesoPreGravidanza",
@@ -2425,42 +2530,68 @@ export default function AddVisit() {
                         className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
-                      
+
                       {/* Indicatore aumento peso + BMI (compatto e discreto) */}
-                      {ostetriciaData.pesoPreGravidanza > 0 && ostetriciaData.pesoAttuale > 0 && (
-                        <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
-                          {(() => {
-                             const diff = ostetriciaData.pesoAttuale - ostetriciaData.pesoPreGravidanza;
-                             const isNegative = diff < 0;
-                             const colorClass = isNegative ? "text-success-600 bg-success-50/80 border-success-200" : "text-primary-600 bg-primary-50/80 border-primary-200";
-                             const hasAltezza = patient?.altezza != null && patient.altezza > 0;
-                             const h = hasAltezza ? patient!.altezza / 100 : 0;
-                             const bmiPartenza =
-                               hasAltezza && ostetriciaData.pesoPreGravidanza > 0
-                                 ? (ostetriciaData.pesoPreGravidanza / (h * h)).toFixed(1)
-                                 : null;
-                             const bmiAttuale =
-                               hasAltezza && ostetriciaData.pesoAttuale > 0
-                                 ? (ostetriciaData.pesoAttuale / (h * h)).toFixed(1)
-                                 : null;
-                             return (
-                               <div className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 ${colorClass}`}>
-                                 <div className="flex items-center gap-1 text-xs font-semibold">
-                                   {diff >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                                   <span>{Math.abs(diff).toFixed(1)} kg</span>
-                                 </div>
-                                 {(bmiPartenza != null || bmiAttuale != null) && (
-                                   <div className="text-[10px] font-medium opacity-85 leading-tight">
-                                     {bmiPartenza != null && <span>part. {bmiPartenza}</span>}
-                                     {bmiPartenza != null && bmiAttuale != null && " · "}
-                                     {bmiAttuale != null && <span>BMI {bmiAttuale}</span>}
-                                   </div>
-                                 )}
-                               </div>
-                             );
-                          })()}
-                        </div>
-                      )}
+                      {ostetriciaData.pesoPreGravidanza > 0 &&
+                        ostetriciaData.pesoAttuale > 0 && (
+                          <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
+                            {(() => {
+                              const diff =
+                                ostetriciaData.pesoAttuale -
+                                ostetriciaData.pesoPreGravidanza;
+                              const isNegative = diff < 0;
+                              const colorClass = isNegative
+                                ? "text-success-600 bg-success-50/80 border-success-200"
+                                : "text-primary-600 bg-primary-50/80 border-primary-200";
+                              const hasAltezza =
+                                patient?.altezza != null && patient.altezza > 0;
+                              const h = hasAltezza ? patient!.altezza / 100 : 0;
+                              const bmiPartenza =
+                                hasAltezza &&
+                                ostetriciaData.pesoPreGravidanza > 0
+                                  ? (
+                                      ostetriciaData.pesoPreGravidanza /
+                                      (h * h)
+                                    ).toFixed(1)
+                                  : null;
+                              const bmiAttuale =
+                                hasAltezza && ostetriciaData.pesoAttuale > 0
+                                  ? (
+                                      ostetriciaData.pesoAttuale /
+                                      (h * h)
+                                    ).toFixed(1)
+                                  : null;
+                              return (
+                                <div
+                                  className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 ${colorClass}`}
+                                >
+                                  <div className="flex items-center gap-1 text-xs font-semibold">
+                                    {diff >= 0 ? (
+                                      <TrendingUp size={12} />
+                                    ) : (
+                                      <TrendingDown size={12} />
+                                    )}
+                                    <span>{Math.abs(diff).toFixed(1)} kg</span>
+                                  </div>
+                                  {(bmiPartenza != null ||
+                                    bmiAttuale != null) && (
+                                    <div className="text-[10px] font-medium opacity-85 leading-tight">
+                                      {bmiPartenza != null && (
+                                        <span>part. {bmiPartenza}</span>
+                                      )}
+                                      {bmiPartenza != null &&
+                                        bmiAttuale != null &&
+                                        " · "}
+                                      {bmiAttuale != null && (
+                                        <span>BMI {bmiAttuale}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
 
                       <Input
                         label="Peso Attuale (kg)"
@@ -2468,7 +2599,11 @@ export default function AddVisit() {
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
-                        value={ostetriciaData.pesoAttuale === 0 ? "" : ostetriciaData.pesoAttuale.toString()}
+                        value={
+                          ostetriciaData.pesoAttuale === 0
+                            ? ""
+                            : ostetriciaData.pesoAttuale.toString()
+                        }
                         onValueChange={(v) =>
                           handleOstetriciaChange(
                             "pesoAttuale",
@@ -2629,8 +2764,6 @@ export default function AddVisit() {
                         labelPlacement="outside"
                         min={0}
                         max={MAX_OBSTETRIC_COUNT}
-                        min={0}
-                        max={MAX_OBSTETRIC_COUNT}
                         classNames={{ input: "text-center" }}
                       />
                     </div>
@@ -2722,7 +2855,11 @@ export default function AddVisit() {
                       label="CRL (mm)"
                       placeholder="Lunghezza vertice-sacro"
                       description="Se non concorde con le settimane, queste e la data presunta parto vengono aggiornate"
-                      value={ostetriciaData.crlMm != null && ostetriciaData.crlMm > 0 ? String(ostetriciaData.crlMm) : ""}
+                      value={
+                        ostetriciaData.crlMm != null && ostetriciaData.crlMm > 0
+                          ? String(ostetriciaData.crlMm)
+                          : ""
+                      }
                       onValueChange={handleCrlChange}
                       variant="bordered"
                       labelPlacement="outside"
@@ -2839,7 +2976,9 @@ export default function AddVisit() {
                               labelPlacement="outside"
                               value={
                                 ostetriciaData.biometriaFetale?.[field]
-                                  ? String(ostetriciaData.biometriaFetale[field])
+                                  ? String(
+                                      ostetriciaData.biometriaFetale[field],
+                                    )
                                   : ""
                               }
                               onValueChange={(v) =>
@@ -2930,9 +3069,13 @@ export default function AddVisit() {
                                       inputMode="numeric"
                                       className="w-7 text-right text-[11px] bg-transparent border-b border-default-200 focus:border-primary outline-none tabular-nums text-default-500 focus:text-primary placeholder:text-default-300"
                                       placeholder="-"
-                                      value={formatCentileInputValue(currentEfwPct)}
+                                      value={formatCentileInputValue(
+                                        currentEfwPct,
+                                      )}
                                       onChange={(e) => {
-                                        const v = parseCentileInputValue(e.target.value);
+                                        const v = parseCentileInputValue(
+                                          e.target.value,
+                                        );
                                         handleEfwPercentileChange(v);
                                       }}
                                     />
@@ -2980,7 +3123,8 @@ export default function AddVisit() {
                           ostetriciaData.flussimetriaOmbelicale?.[
                             item.key as "pi" | "ri"
                           ];
-                        let currentPct = ostetriciaData.flussimetriaOmbelicale?.[
+                        let currentPct = ostetriciaData
+                          .flussimetriaOmbelicale?.[
                           item.pctKey as keyof typeof ostetriciaData.flussimetriaOmbelicale
                         ] as number | undefined;
 
@@ -2993,7 +3137,11 @@ export default function AddVisit() {
                               ? val
                               : parseFloat(String(val).replace(",", "."));
 
-                          if (ga != null && Number.isFinite(valNum) && valNum > 0) {
+                          if (
+                            ga != null &&
+                            Number.isFinite(valNum) &&
+                            valNum > 0
+                          ) {
                             if (item.key === "pi") {
                               const p = getUmbilicalPiPercentile(valNum, ga);
                               if (p != null) currentPct = Math.round(p);
@@ -3030,8 +3178,7 @@ export default function AddVisit() {
                                 setFlussimetriaOmbelicaleDraft((d) => ({
                                   ...d,
                                   [fieldKey]:
-                                    val != null &&
-                                    Number.isFinite(Number(val))
+                                    val != null && Number.isFinite(Number(val))
                                       ? formatFlussimetriaNumForInput(
                                           Number(val),
                                         )
@@ -3084,7 +3231,9 @@ export default function AddVisit() {
                                   placeholder="-"
                                   value={formatCentileInputValue(currentPct)}
                                   onChange={(e) => {
-                                    const v = parseCentileInputValue(e.target.value);
+                                    const v = parseCentileInputValue(
+                                      e.target.value,
+                                    );
                                     handleFlussimetriaPercentileChange(
                                       item.key as "pi" | "ri",
                                       v,

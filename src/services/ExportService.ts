@@ -11,7 +11,66 @@ export interface ExportData {
   totalVisits: number;
 }
 
+/** Export strutturato per esercizio del diritto di accesso (art. 15 GDPR). */
+export interface DataAccessExportPackage {
+  schema: "corioli.data-access";
+  version: "1.0";
+  exportedAt: string;
+  purpose: "gdpr_article_15_access";
+  doctor: Doctor | null;
+  patients: Patient[];
+  visits: Visit[];
+  metadata: {
+    patientCount: number;
+    visitCount: number;
+    note: string;
+  };
+}
+
 export class ExportService {
+  /** Pacchetto JSON versionato per richieste di accesso ai dati (medico titolare, dati in locale). */
+  static async exportDataAccessPackage(): Promise<void> {
+    try {
+      const [doctor, patients, visits] = await Promise.all([
+        DoctorService.getDoctor(),
+        PatientService.getAllPatients(),
+        VisitService.getAllVisits(),
+      ]);
+
+      const payload: DataAccessExportPackage = {
+        schema: "corioli.data-access",
+        version: "1.0",
+        exportedAt: new Date().toISOString(),
+        purpose: "gdpr_article_15_access",
+        doctor,
+        patients,
+        visits,
+        metadata: {
+          patientCount: patients.length,
+          visitCount: visits.length,
+          note:
+            "Export generato dall'app desktop Corioli. I dati sanitari restano sotto responsabilità del medico titolare.",
+        },
+      };
+
+      const jsonString = JSON.stringify(payload, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `corioli_accesso_dati_${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error("Errore export accesso dati:", error);
+      }
+      throw error;
+    }
+  }
+
   // Export completo in JSON
   static async exportAllDataAsJSON(): Promise<void> {
     try {

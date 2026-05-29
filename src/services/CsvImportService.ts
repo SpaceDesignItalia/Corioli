@@ -17,6 +17,12 @@ export interface DoctorlibImportResult {
 
 type CsvRow = Record<string, string>;
 
+function importDevLog(message: string): void {
+  if (import.meta.env.DEV) {
+    console.warn(`[Import CSV] ${message}`);
+  }
+}
+
 interface PendingClinicalNote {
   patientId: string;
   dataVisita: string;
@@ -334,7 +340,7 @@ export class CsvImportService {
       const hasUsefulData = Boolean(sourceId || nome || cognome || email || telefono);
       if (!hasUsefulData) {
         result.patientsSkipped += 1;
-        console.warn(`[Import CSV] Paziente riga ${rowNum} saltato: nessun dato utile (id, nome, cognome, email, telefono tutti vuoti).`);
+        importDevLog(`Paziente riga ${rowNum} saltato: nessun dato utile.`);
         continue;
       }
 
@@ -370,7 +376,7 @@ export class CsvImportService {
           result.patientsUpdated += 1;
         } else {
           result.patientsSkipped += 1;
-          console.warn(`[Import CSV] Paziente riga ${rowNum} saltato: già presente${codiceFiscale ? ` (CF ${codiceFiscale})` : ""}, nessun aggiornamento necessario — "${nome} ${cognome}".`);
+          importDevLog(`Paziente riga ${rowNum} saltato: già presente, nessun aggiornamento.`);
         }
       } else {
         const newPatient = await PatientService.addPatient({
@@ -437,21 +443,21 @@ export class CsvImportService {
       const internalPatientId = sourceIdToInternalPatientId.get(externalPatientId);
       if (!internalPatientId) {
         result.visitsSkipped += 1;
-        console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: patientId "${externalPatientId}" non trovato tra i pazienti importati (manca nel CSV pazienti o riga paziente saltata).`);
+        importDevLog(`Appuntamento riga ${visitRowNum} saltato: patientId esterno non mappato.`);
         continue;
       }
 
       const status = normalizeAppointmentStatus(row["appointment status"]);
       if (shouldSkipAppointmentStatus(status)) {
         result.visitsSkipped += 1;
-        console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: stato cancellato — "${status}" (patientId: ${externalPatientId}, start time: ${row["start time"]}).`);
+        importDevLog(`Appuntamento riga ${visitRowNum} saltato: stato cancellato.`);
         continue;
       }
 
       const date = parseDateTimeForVisit(row["start time"]);
       if (!date) {
         result.visitsSkipped += 1;
-        console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: data non valida — "start time" = "${row["start time"]}" (patientId: ${externalPatientId}). Formato atteso: YYYY-MM-DD o GG/MM/AAAA.`);
+        importDevLog(`Appuntamento riga ${visitRowNum} saltato: data non valida.`);
         continue;
       }
 
@@ -463,7 +469,7 @@ export class CsvImportService {
       const key = composeVisitKey(internalPatientId, date, description);
       if (existingVisitKeys.has(key)) {
         result.visitsSkipped += 1;
-        console.warn(`[Import CSV] Appuntamento riga ${visitRowNum} saltato: visita già presente (stesso paziente, data ${date}, descrizione "${description}").`);
+        importDevLog(`Appuntamento riga ${visitRowNum} saltato: visita duplicata.`);
         continue;
       }
 
@@ -537,7 +543,7 @@ export class CsvImportService {
       const hasUsefulData = Boolean(nome || cognome || email || telefono || dataNascita || sourceId);
       if (!hasUsefulData) {
         result.patientsSkipped += 1;
-        console.warn(`[Import CSV Doctorlib] Paziente riga ${docRowNum} saltato: nessun dato utile (nome, cognome, email, telefono, data nascita, id tutti vuoti).`);
+        importDevLog(`[Doctorlib] Paziente riga ${docRowNum} saltato: nessun dato utile.`);
         continue;
       }
 
@@ -597,7 +603,7 @@ export class CsvImportService {
           result.patientsUpdated += 1;
         } else {
           result.patientsSkipped += 1;
-          console.warn(`[Import CSV Doctorlib] Paziente riga ${docRowNum} saltato: già presente (${existing.nome} ${existing.cognome}${existing.codiceFiscale ? `, CF ${existing.codiceFiscale}` : ''}), nessun aggiornamento necessario.`);
+          importDevLog(`[Doctorlib] Paziente riga ${docRowNum} saltato: già presente.`);
         }
       } else {
         const created = await PatientService.addPatient({

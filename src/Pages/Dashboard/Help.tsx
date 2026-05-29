@@ -37,7 +37,7 @@ import {
 } from "../../services/SupportChatService";
 import type { Doctor } from "../../types/Storage";
 
-const CHAT_POLL_MS = 4000;
+const CHAT_POLL_MS = 8000;
 const MAX_IMAGE_MB = 10;
 const MAX_VIDEO_MB = 25;
 
@@ -513,7 +513,7 @@ export default function HelpAndFeedback() {
         {
           title: "I miei dati sono al sicuro? Dove vengono salvati?",
           content:
-            "Corioli è progettato Local First: cartella clinica, visite e documenti restano sul tuo computer in un database locale (proteggi il dispositivo con password di sistema e backup sicuri). Per licenze, assistenza e aggiornamenti l'app comunica in modo limitato con i server Corioli (dati del medico e statistiche aggregate, mai l'intera cartella clinica). La decodifica del codice fiscale può usare un servizio esterno solo se abilitata nelle impostazioni. Consulta l'informativa privacy per i dettagli sui trattamenti e i tuoi diritti.",
+            "Corioli è progettato Local First: cartella clinica, visite e documenti restano sul tuo computer in un database locale (proteggi il dispositivo con password di sistema e backup sicuri). Per licenze, assistenza e aggiornamenti l'app comunica in modo limitato con i server Corioli (dati del medico e statistiche aggregate, mai l'intera cartella clinica). La decodifica del codice fiscale può usare un servizio esterno solo se abilitata in Impostazioni. Per richieste privacy scrivi a privacy@corioli.it o consulta l'informativa sul sito corioli.it.",
         },
         {
           title: "Come faccio il backup dei dati?",
@@ -533,7 +533,7 @@ export default function HelpAndFeedback() {
         {
           title: "Come installare l'aggiornamento?",
           content:
-            "Se è disponibile una nuova versione, il sistema ti avviserà o potrai scaricare l'installer aggiornato. Installando sopra la versione precedente, i dati verranno mantenuti (ma è sempre consigliato un backup prima di aggiornare).",
+            "Su Windows, gli aggiornamenti arrivano dal Microsoft Store (Libreria → aggiornamenti per Corioli, oppure in automatico). Prima di reinstallare o aggiornare, esegui sempre un backup da Impostazioni → Backup e dati.",
         },
       ],
     },
@@ -782,6 +782,11 @@ export default function HelpAndFeedback() {
               )}
             </CardHeader>
             <Divider />
+            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 text-xs text-amber-950 leading-relaxed shrink-0">
+              <strong>Policy chat:</strong> usa questa chat solo per assistenza tecnica e licenze.
+              Non inviare dati identificativi di pazienti, referti clinici, immagini diagnostiche o
+              documentazione sanitaria negli allegati.
+            </div>
 
             <CardBody className="p-0 flex flex-col flex-1 min-h-0 overflow-hidden bg-gray-50/30">
               <div

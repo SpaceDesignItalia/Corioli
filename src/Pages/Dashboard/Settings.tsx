@@ -41,7 +41,11 @@ import {
   Plus,
   Trash2,
   Edit,
+  Shield,
+  ExternalLink,
 } from "lucide-react";
+import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
+import { ExportService } from "../../services/ExportService";
 import { PageHeader } from "../../components/PageHeader";
 import BackupManager from "../../components/BackupManager";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -55,7 +59,6 @@ import {
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
 import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
-import axios from "axios";
 
 const SettingsScreen = () => {
   // ... state declarations ...
@@ -122,6 +125,7 @@ const SettingsScreen = () => {
     formulaPesoFetale: 'hadlock4', // hadlock4, shepard, hadlock3
     showDoctorPhoneInPdf: true,
     showDoctorEmailInPdf: true,
+    cfDecodeRemoteEnabled: false,
   });
   const [duplicateGroups, setDuplicateGroups] = useState<
     Array<{ key: string; patients: any[] }>
@@ -157,14 +161,6 @@ const SettingsScreen = () => {
 
   const [appVersion, setAppVersion] = useState<string>("");
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" && navigator.onLine);
-  const [updateChecking, setUpdateChecking] = useState(false);
-  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
-  const [updateDownloaded, setUpdateDownloaded] = useState(false);
-  const [updateDownloading, setUpdateDownloading] = useState(false);
-  const [updateDownloadPercent, setUpdateDownloadPercent] = useState(0);
-  const [updateError, setUpdateError] = useState<string | null>(null);
-  const [updateBoxVisible, setUpdateBoxVisible] = useState(false);
-
   const handleNotificationsToggle = () => {
     setNotificationsEnabled(!notificationsEnabled);
   };
@@ -265,35 +261,6 @@ const SettingsScreen = () => {
       window.removeEventListener('corioli-backup-completed', onBackupCompleted);
   }, []);
 
-  const checkUpdateAccess = async (): Promise<boolean> => {
-    try {
-      const doctor = await DoctorService.getDoctor();
-      const clientId = doctor?.id?.trim();
-      if (!clientId) return false;
-
-      const api = (window as unknown as {
-        electronAPI?: { getAppVersion?: () => Promise<string> };
-      }).electronAPI;
-      const currentVersion =
-        (await api?.getAppVersion?.()) || appVersion || "0.0.0";
-
-      const access = await axios.get<{ allowed: boolean; shouldUpdate: boolean }>(
-        `${import.meta.env.VITE_API_URL}/updates/check-access`,
-        {
-          params: {
-            app: "corioli",
-            clientId,
-            currentVersion,
-          },
-        },
-      );
-
-      return Boolean(access.data?.allowed);
-    } catch {
-      return false;
-    }
-  };
-
   useEffect(() => {
     const loadCounts = async () => {
       try {
@@ -328,86 +295,14 @@ const SettingsScreen = () => {
 
   useEffect(() => {
     const api = (window as unknown as {
-      electronAPI?: {
-        getAppVersion?: () => Promise<string>;
-        updaterCheck?: () => Promise<{ version?: string; noUpdate?: boolean; error?: string }>;
-        updaterQuitAndInstall?: () => void;
-        onUpdaterChecking?: (cb: () => void) => void;
-        onUpdaterAvailable?: (cb: (info: { version: string }) => void) => void;
-        onUpdaterNotAvailable?: (cb: () => void) => void;
-        onUpdaterProgress?: (cb: (p: { percent: number }) => void) => void;
-        onUpdaterDownloaded?: (cb: () => void) => void;
-        onUpdaterError?: (cb: (msg: string) => void) => void;
-        removeAllListeners?: (channel: string) => void;
-      };
+      electronAPI?: { getAppVersion?: () => Promise<string> };
     }).electronAPI;
     if (api?.getAppVersion) {
       api.getAppVersion().then((v) => setAppVersion(v || ""));
     } else if (typeof import.meta.env.VITE_APP_VERSION === "string") {
       setAppVersion(import.meta.env.VITE_APP_VERSION);
     }
-    void checkUpdateAccess().then((allowed) => {
-      setUpdateBoxVisible(allowed);
-      if (!allowed) {
-        setUpdateAvailable(null);
-        setUpdateDownloaded(false);
-        setUpdateError(null);
-      }
-    });
-    api.onUpdaterChecking?.(() => { setUpdateError(null); setUpdateChecking(true); setUpdateDownloading(false); });
-    api.onUpdaterAvailable?.((info) => {
-      setUpdateChecking(false);
-      setUpdateAvailable(info?.version ?? "Nuova versione");
-      setUpdateDownloading(true);
-      setUpdateDownloadPercent(0);
-    });
-    api.onUpdaterNotAvailable?.(() => { setUpdateChecking(false); setUpdateAvailable(null); setUpdateError(null); setUpdateDownloading(false); });
-    api.onUpdaterProgress?.((p: { percent?: number }) => {
-      setUpdateDownloading(true);
-      setUpdateDownloadPercent(typeof p?.percent === "number" ? Math.round(p.percent) : 0);
-    });
-    api.onUpdaterDownloaded?.(() => {
-      setUpdateDownloading(false);
-      setUpdateDownloadPercent(0);
-      setUpdateDownloaded(true);
-    });
-    api.onUpdaterError?.((msg) => { setUpdateChecking(false); setUpdateDownloading(false); setUpdateError(msg); });
-    return () => {
-      api.removeAllListeners?.("updater:checking");
-      api.removeAllListeners?.("updater:available");
-      api.removeAllListeners?.("updater:not-available");
-      api.removeAllListeners?.("updater:progress");
-      api.removeAllListeners?.("updater:downloaded");
-      api.removeAllListeners?.("updater:error");
-    };
   }, []);
-
-  const handleCheckForUpdates = async () => {
-    const api = (window as unknown as { electronAPI?: { updaterCheck?: () => Promise<{ version?: string; noUpdate?: boolean; error?: string }> } }).electronAPI;
-    if (!api?.updaterCheck) return;
-    const allowed = await checkUpdateAccess();
-    setUpdateBoxVisible(allowed);
-    if (!allowed) return;
-    setUpdateError(null);
-    setUpdateAvailable(null);
-    setUpdateDownloaded(false);
-    setUpdateDownloading(false);
-    setUpdateDownloadPercent(0);
-    setUpdateChecking(true);
-    try {
-      const result = await api.updaterCheck();
-      if (result?.error) setUpdateError(result.error);
-      else if (result?.noUpdate) setUpdateAvailable(null);
-      else if (result?.version) setUpdateAvailable(result.version);
-    } finally {
-      setUpdateChecking(false);
-    }
-  };
-
-  const handleQuitAndInstall = () => {
-    const api = (window as unknown as { electronAPI?: { updaterQuitAndInstall?: () => void } }).electronAPI;
-    api?.updaterQuitAndInstall?.();
-  };
 
   const loadTemplates = async () => {
     try {
@@ -1298,88 +1193,23 @@ const SettingsScreen = () => {
         </Card>
       )}
 
-      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && updateBoxVisible && (
+      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
         <Card className="shadow-sm border border-default-200">
-          <CardBody className="py-2 px-4">
-            <div className="flex items-center justify-between w-full gap-3">
-              <div className="flex items-center gap-2 flex-shrink-0">
+          <CardBody className="py-3 px-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
                 <h2 className="text-base font-semibold text-gray-900">Aggiornamenti</h2>
-                {updateChecking && (
-                  <span className="flex items-center gap-1.5 text-sm text-default-500">
-                    <Spinner size="sm" color="primary" />
-                    Controllo in corso...
-                  </span>
-                )}
-                {updateDownloading && (
-                  <span className="flex items-center gap-1.5 text-sm text-primary">
-                    <Spinner size="sm" color="primary" />
-                    Download in corso...
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 ml-auto overflow-x-auto whitespace-nowrap">
-                {appVersion && (
-                  <Chip variant="flat" size="sm">
-                    v{appVersion}
-                  </Chip>
-                )}
-                <Button
-                  size="sm"
-                  variant="flat"
-                  color="primary"
-                  onPress={handleCheckForUpdates}
-                  isLoading={updateChecking}
-                  isDisabled={updateDownloading}
-                  startContent={!updateChecking ? <RefreshCw size={16} /> : undefined}
-                >
-                  Controlla
-                </Button>
-                {updateAvailable && !updateDownloaded && !updateDownloading && (
-                  <Chip color="primary" variant="flat">
-                    Disponibile: {updateAvailable}
-                  </Chip>
-                )}
-                {updateDownloaded && (
-                  <>
-                    <Chip color="success">Pronto da installare</Chip>
-                    <Button
-                      size="sm"
-                      color="primary"
-                      onPress={handleQuitAndInstall}
-                    >
-                      Installa ora
-                    </Button>
-                  </>
-                )}
-                {updateError && (
-                  <Chip color="danger" variant="flat">
-                    {updateError}
-                  </Chip>
-                )}
-                <a
-                  href="https://github.com/SpaceDesignItalia/Corioli/releases"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary underline"
-                >
-                  Release notes
-                </a>
-              </div>
-            </div>
-            {updateDownloading && (
-              <div className="mt-2 w-full">
-                <Progress
-                  size="sm"
-                  value={updateDownloadPercent}
-                  color="primary"
-                  className="max-w-full"
-                  aria-label="Progresso download aggiornamento"
-                />
-                <p className="text-xs text-default-500 mt-1">
-                  {updateDownloadPercent}% scaricato
+                <p className="text-sm text-default-500 mt-1">
+                  Su Windows, Corioli si aggiorna tramite il Microsoft Store (apri lo Store →
+                  Libreria → aggiornamenti, oppure attendi l&apos;aggiornamento automatico).
                 </p>
               </div>
-            )}
+              {appVersion ? (
+                <Chip variant="flat" size="sm" className="shrink-0">
+                  v{appVersion}
+                </Chip>
+              ) : null}
+            </div>
           </CardBody>
         </Card>
       )}
@@ -1748,11 +1578,59 @@ const SettingsScreen = () => {
                 </div>
               </div>
 
+              <div className="rounded-lg border border-default-200 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                  <Shield className="w-4 h-4 text-primary" />
+                  Privacy e diritti
+                </div>
+                <p className="text-xs text-default-500">
+                  Richieste privacy:{" "}
+                  <a
+                    href={`mailto:${PRIVACY_CONTACT_EMAIL}`}
+                    className="text-primary font-medium hover:underline"
+                  >
+                    {PRIVACY_CONTACT_EMAIL}
+                  </a>
+                  .{" "}
+                  <a
+                    href={PRIVACY_POLICY_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary font-medium hover:underline inline-flex items-center gap-0.5"
+                  >
+                    Informativa <ExternalLink className="w-3 h-3" />
+                  </a>
+                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-default-700">Decodifica CF via servizio esterno</p>
+                    <p className="text-xs text-default-400 mt-0.5">
+                      Disattivata di default. Se attiva, il CF viene inviato a un provider terzo.
+                    </p>
+                  </div>
+                  <Switch
+                    aria-label="Decodifica codice fiscale remota"
+                    isSelected={Boolean(preferences.cfDecodeRemoteEnabled)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange("cfDecodeRemoteEnabled", value)
+                    }
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="bordered"
+                  className="w-full"
+                  onPress={() => void ExportService.exportDataAccessPackage()}
+                >
+                  Esporta pacchetto diritto di accesso (JSON)
+                </Button>
+              </div>
+
               <div className="space-y-3 mt-auto">
                 <div className="w-full [&>button]:w-full">
                   <BackupManager />
                 </div>
-                
+
                 <p className="text-xs text-center text-default-400 px-4">
                   Gestione avanzata permette importazioni, cancellazioni e reset.
                 </p>

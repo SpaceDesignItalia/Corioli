@@ -1,4 +1,5 @@
 import { decodeFiscalCode } from "codice-fiscale-ts";
+import { PreferenceService } from "../services/OfflineServices";
 
 const CF_REGEX = /^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/;
 
@@ -167,6 +168,14 @@ function mapAxerrioJson(
  * Prova la decodifica remota (es. Axerrio). In caso di errore di rete, CORS o
  * risposta non JSON, restituisce null e si usa il decoder locale.
  */
+/** Default off: opt-in in Impostazioni o VITE_CF_DECODE_REMOTE=1 in build CI. */
+export async function isRemoteCfDecodeEnabled(): Promise<boolean> {
+  if (import.meta.env.VITE_CF_DECODE_REMOTE === "1") return true;
+  if (import.meta.env.VITE_CF_DECODE_REMOTE === "0") return false;
+  const prefs = await PreferenceService.getPreferences();
+  return Boolean(prefs?.cfDecodeRemoteEnabled);
+}
+
 async function decodeCfViaRemoteApi(
   normalizedCf: string,
 ): Promise<Partial<
@@ -175,7 +184,7 @@ async function decodeCfViaRemoteApi(
     cognomeGuess?: string;
   }
 > | null> {
-  if (import.meta.env.VITE_CF_DECODE_REMOTE === "0") {
+  if (!(await isRemoteCfDecodeEnabled())) {
     return null;
   }
 

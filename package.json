@@ -1,7 +1,7 @@
 {
   "name": "appdottori",
   "private": true,
-  "version": "1.2.4",
+  "version": "1.2.5",
   "type": "module",
   "description": "Gestione pazienti e visite - Corioli",
   "author": "Corioli",
@@ -16,12 +16,10 @@
     "electron:dev": "concurrently \"npm run dev\" \"cross-env NODE_ENV=development ELECTRON_START_URL=http://localhost:5173 electron .\"",
     "electron:build": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder --publish=never",
-    "dist:win": "npm run build && electron-builder --win --publish=never",
     "dist:appx": "npm run build && electron-builder --win appx --publish=never",
     "icons:appx": "python scripts/gen-appx-icons.py",
     "icons:appx:check": "python -c \"from pathlib import Path; d=Path('build/appx'); [print(f.name) for f in sorted(d.iterdir())]\"",
-    "dist:all": "npm run build && electron-builder --mac --win --publish=never",
-    "dist:publish": "npm run build && electron-builder --mac --win --publish always"
+    "dist:all": "npm run build && electron-builder --mac --win appx --publish=never"
   },
   "dependencies": {
     "@date-io/date-fns": "^3.0.0",
@@ -32,13 +30,10 @@
     "@mui/material": "^5.15.19",
     "@mui/x-date-pickers": "^7.14.0",
     "@nextui-org/react": "^2.6.11",
-    "@orbytapp/orbyt-sdk": "^1.0.1-beta.8",
     "codice-fiscale-ts": "^1.3.3",
     "date-fns": "^3.6.0",
     "dayjs": "^1.11.13",
     "dompurify": "^3.1.6",
-    "electron-log": "^5.4.3",
-    "electron-updater": "^6.8.3",
     "framer-motion": "^11.2.10",
     "jspdf": "^4.2.0",
     "lucide-react": "^0.429.0",
@@ -88,20 +83,6 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "msi",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
           "target": "appx",
           "arch": [
             "x64",
@@ -109,18 +90,7 @@
           ]
         }
       ],
-      "icon": "build/icon.ico",
-      "forceCodeSigning": false,
-      "verifyUpdateCodeSignature": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "msi": {
-      "oneClick": false,
-      "perMachine": false,
-      "artifactName": "${productName} Setup ${version} ${arch}.${ext}"
+      "icon": "build/icon.ico"
     },
     "appx": {
       "applicationId": "Corioli",
@@ -140,11 +110,6 @@
     "linux": {
       "target": "AppImage",
       "icon": "public/dottoressa.png"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "SpaceDesignItalia",
-      "repo": "Corioli"
     }
   }
 }
