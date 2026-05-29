@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type SVGProps } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, CardBody, Input, Spinner } from "@nextui-org/react";
+import { Card, CardBody, Input } from "@nextui-org/react";
 import { Baby } from "lucide-react";
 import { PageHeader } from "../../components/PageHeader";
+import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { PregnancyListRow } from "../../components/PregnancyListRow";
 import {
   PatientService,
@@ -79,11 +80,7 @@ export default function Gravidanze() {
   ).length;
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <Spinner size="lg" color="primary" />
-      </div>
-    );
+    return <PageLoadingSkeleton variant="table" pathname="/gravidanze" />;
   }
 
   return (

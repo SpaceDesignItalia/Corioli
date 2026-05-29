@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -65,6 +65,37 @@ import {
 import { MedicalTemplate } from "../../types/Storage";
 import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
 
+type SettingsNoticeScope = "profilo" | "ambulatori" | "modelli" | "duplicati";
+
+type SettingsNotice = {
+  scope: SettingsNoticeScope;
+  type: "success" | "error";
+  message: string;
+};
+
+function SettingsSectionNotice({
+  scope,
+  notice,
+}: {
+  scope: SettingsNoticeScope;
+  notice: SettingsNotice | null;
+}) {
+  if (!notice || notice.scope !== scope) return null;
+
+  return (
+    <div
+      role="status"
+      className={`mb-3 rounded-lg border px-3 py-2 text-sm animate-in fade-in duration-200 ${
+        notice.type === "success"
+          ? "border-success/30 bg-success-50 text-success-800"
+          : "border-danger/30 bg-danger-50 text-danger-800"
+      }`}
+    >
+      {notice.message}
+    </div>
+  );
+}
+
 const SettingsScreen = () => {
   const navigate = useNavigate();
   // ... state declarations ...
@@ -72,8 +103,42 @@ const SettingsScreen = () => {
   const [pdfTheme, setPdfTheme] = useState("light");
   const [profilePic, setProfilePic] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<SettingsNotice | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showNotice = useCallback(
+    (
+      scope: SettingsNoticeScope,
+      type: "success" | "error",
+      message: string,
+      ms = 3000,
+    ) => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+      setNotice({ scope, type, message });
+      if (ms > 0) {
+        noticeTimerRef.current = setTimeout(() => {
+          setNotice((current) =>
+            current?.scope === scope && current.message === message
+              ? null
+              : current,
+          );
+        }, ms);
+      }
+    },
+    [],
+  );
+
+  const clearNotice = useCallback((scope?: SettingsNoticeScope) => {
+    if (noticeTimerRef.current) {
+      clearTimeout(noticeTimerRef.current);
+      noticeTimerRef.current = null;
+    }
+    if (!scope) {
+      setNotice(null);
+      return;
+    }
+    setNotice((current) => (current?.scope === scope ? null : current));
+  }, []);
 
   const [doctorInfo, setDoctorInfo] = useState({
     nome: "",
@@ -386,10 +451,9 @@ const SettingsScreen = () => {
       }
       await loadTemplates();
       onTemplateModalClose();
-      setSuccess("Modello salvato con successo");
-      setTimeout(() => setSuccess(null), 3000);
+      showNotice("modelli", "success", "Modello salvato con successo");
     } catch (e) {
-      setError("Errore salvataggio template");
+      showNotice("modelli", "error", "Errore salvataggio template", 5000);
     } finally {
       setIsSavingTemplate(false);
     }
@@ -408,10 +472,9 @@ const SettingsScreen = () => {
       await loadTemplates();
       onDeleteTemplateClose();
       setTemplateToDelete(null);
-      setSuccess("Modello eliminato");
-      setTimeout(() => setSuccess(null), 3000);
+      showNotice("modelli", "success", "Modello eliminato");
     } catch (e) {
-      setError("Errore eliminazione template");
+      showNotice("modelli", "error", "Errore eliminazione template", 5000);
     } finally {
       setIsDeletingTemplate(false);
     }
@@ -732,7 +795,7 @@ const SettingsScreen = () => {
       setDuplicateGroups(formatted);
     } catch (e) {
       console.error("Errore caricamento doppioni:", e);
-      setError("Errore durante il controllo doppioni.");
+      showNotice("duplicati", "error", "Errore durante il controllo doppioni.", 5000);
     } finally {
       setLoadingDuplicates(false);
       setDuplicateCheckProgress(null);
@@ -747,11 +810,10 @@ const SettingsScreen = () => {
     )
       return;
     setProcessingDuplicateId(patientId);
-    setError(null);
+    clearNotice("duplicati");
     try {
       await PatientService.deletePatient(patientId);
-      setSuccess("Paziente duplicato eliminato.");
-      setTimeout(() => setSuccess(null), 3000);
+      showNotice("duplicati", "success", "Paziente duplicato eliminato.");
       const [patients, visits] = await Promise.all([
         PatientService.getAllPatients(),
         VisitService.getAllVisits(),
@@ -767,8 +829,11 @@ const SettingsScreen = () => {
           .filter((g) => g.patients.length > 1),
       );
     } catch (e: any) {
-      setError(
+      showNotice(
+        "duplicati",
+        "error",
         "Errore durante eliminazione duplicato: " + (e?.message || "errore"),
+        5000,
       );
     } finally {
       setProcessingDuplicateId(null);
@@ -783,7 +848,7 @@ const SettingsScreen = () => {
   ) => {
     setProcessingDuplicateGroupKey(groupKey);
     setProcessingDuplicateId(target.id);
-    setError(null);
+    clearNotice("duplicati");
     try {
       for (const source of sources) {
         const visits = await VisitService.getVisitsByPatientId(source.id);
@@ -807,12 +872,18 @@ const SettingsScreen = () => {
       ]);
       setPatientCount(patients.length);
       setVisitCount(visits.length);
-      setSuccess(
+      showNotice(
+        "duplicati",
+        "success",
         `Doppioni uniti con successo (mantenuto: ${target.nome} ${target.cognome}).`,
       );
-      setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
-      setError("Errore durante merge duplicati: " + (e?.message || "errore"));
+      showNotice(
+        "duplicati",
+        "error",
+        "Errore durante merge duplicati: " + (e?.message || "errore"),
+        5000,
+      );
     } finally {
       setProcessingDuplicateGroupKey(null);
       setProcessingDuplicateId(null);
@@ -996,7 +1067,7 @@ const SettingsScreen = () => {
       )
     )
       return;
-    setError(null);
+    clearNotice("duplicati");
     setMergingAll(true);
     const groups = [...duplicateGroups];
     let done = 0;
@@ -1005,11 +1076,13 @@ const SettingsScreen = () => {
         await mergeDuplicateGroupAuto(group.key, group.patients);
         done += 1;
       }
-      setSuccess(`Uniti ${done} gruppi di doppioni.`);
-      setTimeout(() => setSuccess(null), 5000);
+      showNotice("duplicati", "success", `Uniti ${done} gruppi di doppioni.`, 5000);
     } catch (e: any) {
-      setError(
+      showNotice(
+        "duplicati",
+        "error",
         `Errore durante unione gruppi: ${e?.message || "errore"}. Uniti ${done} di ${groups.length}.`,
+        5000,
       );
     } finally {
       setMergingAll(false);
@@ -1064,7 +1137,7 @@ const SettingsScreen = () => {
   /** Salva i dati dottore (con eventuale lista ambulatori passata). Usato per salvataggio immediato dopo azioni ambulatori. */
   const saveDoctorData = async (ambulatoriList?: any[]) => {
     const list = ambulatoriList !== undefined ? ambulatoriList : ambulatori;
-    setError(null);
+    clearNotice("ambulatori");
     try {
       await DoctorService.updateDoctor({
         nome: doctorInfo.nome.trim(),
@@ -1078,17 +1151,22 @@ const SettingsScreen = () => {
       window.dispatchEvent(new CustomEvent("appdottori-doctor-updated"));
     } catch (e) {
       console.error("Errore salvataggio:", e);
-      setError("Errore nel salvataggio: " + (e as Error).message);
-      setTimeout(() => setError(null), 5000);
+      showNotice(
+        "ambulatori",
+        "error",
+        "Errore nel salvataggio: " + (e as Error).message,
+        5000,
+      );
+      throw e;
     }
   };
 
   const addAmbulatorio = async () => {
     if (!newAmbulatorio.nome.trim() || !newAmbulatorio.indirizzo.trim()) {
-      setError("Nome e indirizzo ambulatorio sono obbligatori");
+      showNotice("ambulatori", "error", "Nome e indirizzo ambulatorio sono obbligatori", 5000);
       return;
     }
-    setError(null);
+    clearNotice("ambulatori");
 
     const ambulatorio = {
       id: Date.now().toString(),
@@ -1111,8 +1189,7 @@ const SettingsScreen = () => {
     setSavingAmbulatori(true);
     try {
       await saveDoctorData(newList);
-      setSuccess("Ambulatorio aggiunto e salvato.");
-      setTimeout(() => setSuccess(null), 3000);
+      showNotice("ambulatori", "success", "Ambulatorio aggiunto e salvato.");
     } catch {
       setAmbulatori(ambulatori);
     } finally {
@@ -1121,8 +1198,9 @@ const SettingsScreen = () => {
   };
 
   const removeAmbulatorio = async (id: string) => {
-    const removed = ambulatori.find((amb) => amb.id === id);
-    let newList = ambulatori.filter((amb) => amb.id !== id);
+    const previousList = ambulatori;
+    const removed = previousList.find((amb) => amb.id === id);
+    let newList = previousList.filter((amb) => amb.id !== id);
     if (removed?.isPrimario && newList.length > 0) {
       newList = newList.map((amb, index) => ({
         ...amb,
@@ -1133,10 +1211,10 @@ const SettingsScreen = () => {
     setSavingAmbulatori(true);
     try {
       await saveDoctorData(newList);
-      setSuccess("Ambulatorio rimosso e modifiche salvate.");
-      setTimeout(() => setSuccess(null), 3000);
-    } catch {
-      setAmbulatori(ambulatori);
+      showNotice("ambulatori", "success", "Ambulatorio rimosso e modifiche salvate.");
+    } catch (e) {
+      setAmbulatori(previousList);
+      throw e;
     } finally {
       setSavingAmbulatori(false);
     }
@@ -1158,10 +1236,10 @@ const SettingsScreen = () => {
   const saveEditAmbulatorio = async () => {
     if (!editAmbulatorio) return;
     if (!editAmbulatorio.nome.trim() || !editAmbulatorio.indirizzo.trim()) {
-      setError("Nome e indirizzo ambulatorio sono obbligatori");
+      showNotice("ambulatori", "error", "Nome e indirizzo ambulatorio sono obbligatori", 5000);
       return;
     }
-    setError(null);
+    clearNotice("ambulatori");
 
     const newList = ambulatori.map((amb) =>
       amb.id === editAmbulatorio.id ? { ...amb, ...editAmbulatorio } : amb,
@@ -1170,8 +1248,7 @@ const SettingsScreen = () => {
     setSavingAmbulatori(true);
     try {
       await saveDoctorData(newList);
-      setSuccess("Ambulatorio aggiornato.");
-      setTimeout(() => setSuccess(null), 3000);
+      showNotice("ambulatori", "success", "Ambulatorio aggiornato.");
       onEditAmbulatorioClose();
       setEditAmbulatorio(null);
     } catch {
@@ -1187,11 +1264,15 @@ const SettingsScreen = () => {
   };
 
   const confirmDeleteAmbulatorio = async () => {
-    if (!ambulatorioToDelete) return;
+    if (!ambulatorioToDelete || savingAmbulatori) return;
     const { id } = ambulatorioToDelete;
-    onDeleteAmbulatorioClose();
-    setAmbulatorioToDelete(null);
-    await removeAmbulatorio(id);
+    try {
+      await removeAmbulatorio(id);
+      onDeleteAmbulatorioClose();
+      setAmbulatorioToDelete(null);
+    } catch {
+      // Errore già mostrato nella sezione Ambulatori; tieni il modale aperto.
+    }
   };
 
   const setPrimario = async (id: string) => {
@@ -1203,8 +1284,7 @@ const SettingsScreen = () => {
     setSavingAmbulatori(true);
     try {
       await saveDoctorData(newList);
-      setSuccess("Sede in uso aggiornata.");
-      setTimeout(() => setSuccess(null), 3000);
+      showNotice("ambulatori", "success", "Sede in uso aggiornata.");
     } catch {
       setAmbulatori(ambulatori);
     } finally {
@@ -1214,8 +1294,7 @@ const SettingsScreen = () => {
 
   const saveDoctorInfo = async () => {
     setIsLoading(true);
-    setError(null);
-    setSuccess(null);
+    clearNotice("profilo");
     const profileToValidate: {
       nome: string;
       cognome: string;
@@ -1232,8 +1311,11 @@ const SettingsScreen = () => {
     };
     const missingFields = getMissingDoctorProfileFields(profileToValidate);
     if (missingFields.length > 0) {
-      setError(
+      showNotice(
+        "profilo",
+        "error",
         `Compila tutti i campi obbligatori del profilo: ${missingFields.join(", ")}.`,
+        5000,
       );
       setIsLoading(false);
       return;
@@ -1252,13 +1334,15 @@ const SettingsScreen = () => {
 
       savePreferences();
       window.dispatchEvent(new CustomEvent("appdottori-doctor-updated"));
-      setSuccess("Profilo salvato con successo.");
-
-      setTimeout(() => setSuccess(null), 3000);
+      showNotice("profilo", "success", "Profilo salvato con successo.");
     } catch (error) {
       console.error("Errore nel salvataggio:", error);
-      setError("Errore nel salvataggio dei dati: " + error.message);
-      setTimeout(() => setError(null), 5000);
+      showNotice(
+        "profilo",
+        "error",
+        "Errore nel salvataggio dei dati: " + (error as Error).message,
+        5000,
+      );
     } finally {
       setIsLoading(false);
     }
@@ -1282,23 +1366,6 @@ const SettingsScreen = () => {
         icon={SettingsIcon}
         iconColor="primary"
       />
-
-      {/* Messages */}
-      {error && (
-        <Card className="border-l-4 border-l-danger">
-          <CardBody className="py-3">
-            <p className="text-danger text-sm">{error}</p>
-          </CardBody>
-        </Card>
-      )}
-
-      {success && (
-        <Card className="border-l-4 border-l-success">
-          <CardBody className="py-3">
-            <p className="text-success text-sm">{success}</p>
-          </CardBody>
-        </Card>
-      )}
 
       {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
         <Card className="shadow-sm border border-default-200">
@@ -1340,6 +1407,7 @@ const SettingsScreen = () => {
               </div>
             </CardHeader>
             <CardBody>
+              <SettingsSectionNotice scope="profilo" notice={notice} />
               <div className="flex items-center gap-4 flex-shrink-0">
                 <Avatar
                   key={profilePic} // Force re-render on change
@@ -1451,6 +1519,7 @@ const SettingsScreen = () => {
               </div>
             </CardHeader>
             <CardBody>
+              <SettingsSectionNotice scope="ambulatori" notice={notice} />
               {/* Lista ambulatori — scroll solo se > 2 sedi */}
               <div className="rounded-lg border border-default-200 bg-default-50/50 p-3 flex-shrink-0">
                 {ambulatori.length > 0 ? (
@@ -1473,67 +1542,89 @@ const SettingsScreen = () => {
                           className={`bg-white border flex-shrink-0 transition-colors ${
                             amb.isPrimario
                               ? "border-success/60 ring-1 ring-success/20"
-                              : "border-default-200 hover:border-primary/40"
+                              : "border-default-200 hover:border-primary/40 cursor-pointer"
                           }`}
                         >
                           <CardBody className="p-3 gap-2">
                             <div className="flex items-start gap-2 min-w-0">
-                              <Tooltip
-                                content={
-                                  amb.isPrimario
-                                    ? "Sede attualmente in uso"
-                                    : "Usa questa sede"
-                                }
-                              >
+                              {!amb.isPrimario ? (
                                 <button
                                   type="button"
-                                  className={`mt-0.5 shrink-0 rounded-full p-0.5 transition-colors ${
-                                    amb.isPrimario
-                                      ? "text-success cursor-default"
-                                      : "text-default-300 hover:text-primary cursor-pointer"
-                                  }`}
-                                  onClick={() =>
-                                    !amb.isPrimario && setPrimario(amb.id)
-                                  }
-                                  disabled={savingAmbulatori || amb.isPrimario}
-                                  aria-label={
-                                    amb.isPrimario
-                                      ? "Sede in uso"
-                                      : "Imposta come sede in uso"
-                                  }
+                                  disabled={savingAmbulatori}
+                                  onClick={() => void setPrimario(amb.id)}
+                                  className="flex min-w-0 flex-1 items-start gap-2 rounded-lg text-left transition-colors hover:bg-default-50 disabled:cursor-default disabled:opacity-60"
+                                  aria-label={`Usa ${amb.nome} come sede attiva`}
                                 >
-                                  {amb.isPrimario ? (
-                                    <CheckCircle2 className="w-4 h-4" />
-                                  ) : (
-                                    <Circle className="w-4 h-4" />
-                                  )}
-                                </button>
-                              </Tooltip>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <h4 className="font-semibold text-sm text-gray-900 truncate">
-                                    {amb.nome}
-                                  </h4>
-                                  {amb.isPrimario && (
-                                    <Chip
-                                      size="sm"
-                                      color="success"
-                                      variant="flat"
-                                      className="flex-shrink-0"
+                                  <Tooltip content="Clicca per usare questa sede">
+                                    <span
+                                      className="mt-0.5 inline-flex shrink-0 rounded-full p-0.5 text-default-300"
+                                      aria-hidden
                                     >
-                                      In uso
-                                    </Chip>
-                                  )}
+                                      <Circle className="w-4 h-4" />
+                                    </span>
+                                  </Tooltip>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex min-h-[26px] min-w-0 items-center gap-2">
+                                      <h4 className="truncate text-sm font-semibold text-gray-900">
+                                        {amb.nome}
+                                      </h4>
+                                      <Chip
+                                        size="sm"
+                                        color="success"
+                                        variant="flat"
+                                        className="invisible flex-shrink-0"
+                                        aria-hidden
+                                      >
+                                        In uso
+                                      </Chip>
+                                    </div>
+                                    <p className="mt-1 text-xs leading-snug text-gray-600">
+                                      {amb.indirizzo}, {amb.cap} {amb.citta}
+                                    </p>
+                                    <p className="min-h-[1rem] text-xs leading-snug text-gray-500">
+                                      {amb.telefono && `Tel. ${amb.telefono}`}
+                                      {amb.telefono && amb.email && " · "}
+                                      {amb.email}
+                                      {!amb.telefono && !amb.email ? "\u00A0" : ""}
+                                    </p>
+                                  </div>
+                                </button>
+                              ) : (
+                                <div className="flex min-w-0 flex-1 items-start gap-2">
+                                  <Tooltip content="Sede attualmente in uso">
+                                    <span
+                                      className="mt-0.5 inline-flex shrink-0 rounded-full p-0.5 text-success"
+                                      aria-hidden
+                                    >
+                                      <CheckCircle2 className="w-4 h-4" />
+                                    </span>
+                                  </Tooltip>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex min-h-[26px] min-w-0 items-center gap-2">
+                                      <h4 className="truncate text-sm font-semibold text-gray-900">
+                                        {amb.nome}
+                                      </h4>
+                                      <Chip
+                                        size="sm"
+                                        color="success"
+                                        variant="flat"
+                                        className="flex-shrink-0"
+                                      >
+                                        In uso
+                                      </Chip>
+                                    </div>
+                                    <p className="mt-1 text-xs leading-snug text-gray-600">
+                                      {amb.indirizzo}, {amb.cap} {amb.citta}
+                                    </p>
+                                    <p className="min-h-[1rem] text-xs leading-snug text-gray-500">
+                                      {amb.telefono && `Tel. ${amb.telefono}`}
+                                      {amb.telefono && amb.email && " · "}
+                                      {amb.email}
+                                      {!amb.telefono && !amb.email ? "\u00A0" : ""}
+                                    </p>
+                                  </div>
                                 </div>
-                                <p className="text-xs text-gray-600 leading-snug mt-1">
-                                  {amb.indirizzo}, {amb.cap} {amb.citta}
-                                </p>
-                                <p className="text-xs text-gray-500 leading-snug">
-                                  {amb.telefono && `Tel. ${amb.telefono}`}
-                                  {amb.telefono && amb.email && " · "}
-                                  {amb.email && amb.email}
-                                </p>
-                              </div>
+                              )}
                               <div className="flex shrink-0 gap-0.5">
                                 <Tooltip content="Modifica">
                                   <Button
@@ -1942,6 +2033,7 @@ const SettingsScreen = () => {
           </CardHeader>
 
           <CardBody className="space-y-4">
+            <SettingsSectionNotice scope="duplicati" notice={notice} />
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
               <Input
                 label="Ricerca nei sospetti doppioni"
@@ -2091,6 +2183,7 @@ const SettingsScreen = () => {
           </div>
         </CardHeader>
         <CardBody className="space-y-6">
+          <SettingsSectionNotice scope="modelli" notice={notice} />
           <div className="flex flex-col gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3 min-w-0">
               <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -2583,7 +2676,7 @@ const SettingsScreen = () => {
             </Button>
             <Button
               color="danger"
-              onPress={confirmDeleteAmbulatorio}
+              onPress={() => void confirmDeleteAmbulatorio()}
               isLoading={savingAmbulatori}
               isDisabled={savingAmbulatori}
             >

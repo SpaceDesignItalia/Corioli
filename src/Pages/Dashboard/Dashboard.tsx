@@ -14,7 +14,6 @@ import {
   Button,
   Chip,
   Avatar,
-  Spinner,
 } from "@nextui-org/react";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
@@ -25,6 +24,7 @@ import {
   PreferenceService,
 } from "../../services/OfflineServices";
 import { PageHeader } from "../../components/PageHeader";
+import { PatientGridSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { Users, UserPlus, ChevronLeft, ChevronRight } from "lucide-react";
 import { calculateAge } from "../../utils/dateUtils";
@@ -430,11 +430,7 @@ export default function Dashboard() {
       </PageHeader>
 
       {/* Loading State */}
-      {loading && (
-        <div className="flex justify-center py-12">
-          <Spinner size="lg" color="primary" />
-        </div>
-      )}
+      {loading && <PatientGridSkeleton />}
 
       {/* Error Message */}
       {errorMessage && (

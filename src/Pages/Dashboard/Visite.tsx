@@ -38,6 +38,7 @@ import { PatientService, VisitService, PreferenceService, DoctorService } from "
 import { PdfService } from "../../services/PdfService";
 import { Visit, Patient, Doctor } from "../../types/Storage";
 import { PageHeader } from "../../components/PageHeader";
+import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useToast } from "../../contexts/ToastContext";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
@@ -540,11 +541,7 @@ export default function Visite() {
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <Spinner size="lg" color="primary" />
-      </div>
-    );
+    return <PageLoadingSkeleton variant="table" pathname="/visite" />;
   }
 
   const HeaderActions = (

@@ -6,7 +6,6 @@ import {
   CardHeader,
   Button,
   Chip,
-  Spinner,
   Avatar,
 } from "@nextui-org/react";
 import {
@@ -37,6 +36,7 @@ import {
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import { PageHeader } from "../../components/PageHeader";
+import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { PregnancyListRow } from "../../components/PregnancyListRow";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
@@ -343,11 +343,7 @@ export default function Home() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <Spinner size="lg" color="primary" />
-      </div>
-    );
+    return <PageLoadingSkeleton variant="home" pathname="/" />;
   }
 
   const { activePregnancies } = stats;

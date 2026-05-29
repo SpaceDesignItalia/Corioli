@@ -12,7 +12,6 @@ import {
   ModalContent,
   ModalFooter,
   ModalHeader,
-  Spinner,
   useDisclosure,
 } from "@nextui-org/react";
 import {
@@ -29,6 +28,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { PageHeader } from "../../components/PageHeader";
+import { DocumentsGridSkeleton } from "../../components/AppStartupSkeleton";
 import { useToast } from "../../contexts/ToastContext";
 import { Document, Patient } from "../../types/Storage";
 import { DocumentService, PatientService } from "../../services/OfflineServices";
@@ -357,11 +357,7 @@ export default function PatientFiles() {
         </Card>
       )}
 
-      {loading && (
-        <div className="flex justify-center items-center min-h-[260px]">
-          <Spinner size="lg" color="primary" />
-        </div>
-      )}
+      {loading && <DocumentsGridSkeleton />}
 
       {!loading && (
         <>

@@ -15,7 +15,6 @@ import {
   useDisclosure,
   Chip,
   Divider,
-  Spinner,
   Textarea
 } from "@nextui-org/react";
 import {
@@ -30,6 +29,7 @@ import { DocumentService } from "../../services/OfflineServices";
 import { Document } from "../../types/Storage";
 import { format, parseISO } from "date-fns";
 import { PageHeader } from "../../components/PageHeader";
+import { DocumentsGridSkeleton } from "../../components/AppStartupSkeleton";
 
 const CATEGORY_OPTIONS = [
   { key: "all", label: "Tutte le categorie" },
@@ -305,11 +305,7 @@ export default function Documents() {
       )}
 
       {/* Loading */}
-      {loading && (
-        <div className="flex justify-center items-center min-h-[260px]">
-          <Spinner size="lg" color="primary" />
-        </div>
-      )}
+      {loading && <DocumentsGridSkeleton />}
 
       {/* Documents Grid */}
       {!loading && (

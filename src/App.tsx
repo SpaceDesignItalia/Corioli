@@ -3,7 +3,10 @@ import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import Documents from "./Pages/Dashboard/Documents";
 import DesktopShell from "./components/DesktopShell";
 import { ContextMenu } from "./components/ContextMenu";
-import { Spinner } from "@nextui-org/react";
+import {
+  AppStartupGate,
+  RoutePageSkeleton,
+} from "./components/AppStartupSkeleton";
 import { storageService } from "./services/StorageServiceFallback";
 
 // Lazy loaded routes per ottimizzare il bundle iniziale
@@ -68,40 +71,36 @@ const App: React.FC = () => {
 
   return (
     <ContextMenu>
-      <Suspense
-        fallback={
-          <div className="flex items-center justify-center py-16">
-            <Spinner color="primary" size="lg" />
-          </div>
-        }
-      >
+      <AppStartupGate>
         <Routes>
           <Route element={<BlockedPage />} path="/blocked" />
           <Route
             path="/*"
             element={
               <DesktopShell>
-                <Routes>
-                  <Route element={<Home />} path="/" />
-                  <Route element={<PatientList />} path="/pazienti" />
-                  <Route element={<AboutUs />} path="/about-us" />
-                  <Route element={<AddPatient />} path="/add-patient" />
-                  <Route element={<CheckPatientOpener />} path="/check-patient" />
-                  <Route element={<AddVisit />} path="/add-visit" />
-                  <Route element={<AddVisit />} path="/edit-visit/:visitId" />
-                  <Route element={<Visite />} path="/visite" />
-                  <Route element={<Gravidanze />} path="/gravidanze" />
-                  <Route element={<Documents />} path="/documents" />
-                  <Route element={<Settings />} path="/settings" />
-                  <Route element={<PatientHistory />} path="/patient-history/:patientId" />
-                  <Route element={<PatientFiles />} path="/patient-history/:patientId/files" />
-                  <Route element={<Help />} path="/help" />
-                </Routes>
+                <Suspense fallback={<RoutePageSkeleton />}>
+                  <Routes>
+                    <Route element={<Home />} path="/" />
+                    <Route element={<PatientList />} path="/pazienti" />
+                    <Route element={<AboutUs />} path="/about-us" />
+                    <Route element={<AddPatient />} path="/add-patient" />
+                    <Route element={<CheckPatientOpener />} path="/check-patient" />
+                    <Route element={<AddVisit />} path="/add-visit" />
+                    <Route element={<AddVisit />} path="/edit-visit/:visitId" />
+                    <Route element={<Visite />} path="/visite" />
+                    <Route element={<Gravidanze />} path="/gravidanze" />
+                    <Route element={<Documents />} path="/documents" />
+                    <Route element={<Settings />} path="/settings" />
+                    <Route element={<PatientHistory />} path="/patient-history/:patientId" />
+                    <Route element={<PatientFiles />} path="/patient-history/:patientId/files" />
+                    <Route element={<Help />} path="/help" />
+                  </Routes>
+                </Suspense>
               </DesktopShell>
             }
           />
         </Routes>
-      </Suspense>
+      </AppStartupGate>
     </ContextMenu>
   );
 };

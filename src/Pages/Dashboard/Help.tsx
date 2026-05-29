@@ -826,7 +826,7 @@ export default function HelpAndFeedback() {
             <CardBody className="p-0 flex flex-col flex-1 min-h-0 overflow-hidden bg-gray-50/30">
               <div
                 ref={messagesScrollRef}
-                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4"
+                className="flex flex-col flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4"
               >
                 {chatLoading && (
                   <p className="text-center text-sm text-default-400 py-8">Caricamento chat…</p>
@@ -835,10 +835,10 @@ export default function HelpAndFeedback() {
                   <p className="text-center text-sm text-warning-600 py-2 px-2">{chatError}</p>
                 )}
                 {!chatLoading && messages.length === 0 && !chatError && (
-                  <div className="flex flex-col items-center justify-center py-10 text-center px-4">
+                  <div className="flex flex-1 flex-col items-center justify-center text-center px-4">
                     <LifeBuoy className="w-10 h-10 text-default-300 mb-3" />
                     <p className="text-sm font-medium text-default-600">Nessun messaggio ancora</p>
-                    <p className="text-xs text-default-400 mt-1 max-w-[240px]">
+                    <p className="text-xs text-default-400 mt-1 max-w-[260px]">
                       Scrivi per primo per contattare il team assistenza Corioli.
                     </p>
                   </div>
