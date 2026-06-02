@@ -11,6 +11,7 @@ import {
   Divider,
   Avatar,
   Tooltip,
+  useDisclosure,
 } from "@nextui-org/react";
 import {
   HelpCircle,
@@ -24,6 +25,7 @@ import {
   Image as ImageIcon,
   FileSpreadsheet,
 } from "lucide-react";
+import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { PageHeader } from "../../components/PageHeader";
 import { VoiceWaveform, extractWaveformFromBlob, generatePlaceholderWaveform } from "../../components/chat/VoiceWaveform";
 import { VoiceMessagePlayer } from "../../components/chat/VoiceMessagePlayer";
@@ -91,6 +93,11 @@ export default function HelpAndFeedback() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [endingChat, setEndingChat] = useState(false);
+  const {
+    isOpen: isEndChatModalOpen,
+    onOpen: onEndChatModalOpen,
+    onClose: onEndChatModalClose,
+  } = useDisclosure();
   const [inputValue, setInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [openCategories, setOpenCategories] = useState<Set<string>>(
@@ -247,12 +254,8 @@ export default function HelpAndFeedback() {
     [doctor, conversationId],
   );
 
-  const handleEndChat = useCallback(async () => {
+  const confirmEndChat = useCallback(async () => {
     if (!doctor || !conversationId || endingChat) return;
-    const ok = window.confirm(
-      "Terminare la chat? Tutti i messaggi e gli allegati verranno eliminati definitivamente.",
-    );
-    if (!ok) return;
 
     setEndingChat(true);
     setChatError(null);
@@ -262,12 +265,13 @@ export default function HelpAndFeedback() {
       setMessages([]);
       setInputValue("");
       setPendingAttachments([]);
+      onEndChatModalClose();
     } catch {
       setChatError("Impossibile terminare la chat. Riprova.");
     } finally {
       setEndingChat(false);
     }
-  }, [doctor, conversationId, endingChat]);
+  }, [doctor, conversationId, endingChat, onEndChatModalClose]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -809,7 +813,7 @@ export default function HelpAndFeedback() {
                     color="danger"
                     isLoading={endingChat}
                     isDisabled={isSubmitting || endingChat}
-                    onPress={() => void handleEndChat()}
+                    onPress={onEndChatModalOpen}
                   >
                     Termina chat
                   </Button>
@@ -987,6 +991,20 @@ export default function HelpAndFeedback() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDangerModal
+        isOpen={isEndChatModalOpen}
+        onClose={onEndChatModalClose}
+        title="Termina chat"
+        confirmLabel="Termina chat"
+        onConfirm={() => void confirmEndChat()}
+        isLoading={endingChat}
+      >
+        <p className="text-sm text-default-600">
+          Tutti i messaggi e gli allegati verranno eliminati definitivamente. Sei sicuro di voler
+          terminare la conversazione con l&apos;assistenza?
+        </p>
+      </ConfirmDangerModal>
     </div>
   );
 }

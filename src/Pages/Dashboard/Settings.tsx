@@ -53,6 +53,7 @@ import { ExportService } from "../../services/ExportService";
 import { PageHeader } from "../../components/PageHeader";
 import BackupManager from "../../components/BackupManager";
 import { TemplateEditorModal } from "../../components/TemplateEditorModal";
+import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import {
   DoctorService,
@@ -206,6 +207,11 @@ const SettingsScreen = () => {
     onOpen: onDeleteAmbulatorioOpen,
     onClose: onDeleteAmbulatorioClose,
   } = useDisclosure();
+  const {
+    isOpen: isDeleteDuplicateOpen,
+    onOpen: onDeleteDuplicateOpen,
+    onClose: onDeleteDuplicateClose,
+  } = useDisclosure();
   const [editAmbulatorio, setEditAmbulatorio] = useState<{
     id: string;
     nome: string;
@@ -218,6 +224,10 @@ const SettingsScreen = () => {
   const [ambulatorioToDelete, setAmbulatorioToDelete] = useState<{
     id: string;
     nome: string;
+  } | null>(null);
+  const [duplicatePatientToDelete, setDuplicatePatientToDelete] = useState<{
+    id: string;
+    label: string;
   } | null>(null);
 
   const [preferences, setPreferences] = useState({
@@ -802,13 +812,20 @@ const SettingsScreen = () => {
     }
   };
 
-  const deleteDuplicatePatient = async (patientId: string) => {
-    if (
-      !confirm(
-        "Eliminare questo paziente? Verranno eliminate anche le visite collegate.",
-      )
-    )
-      return;
+  const requestDeleteDuplicatePatient = (
+    patientId: string,
+    nome?: string,
+    cognome?: string,
+  ) => {
+    const label =
+      nome && cognome ? `${nome} ${cognome}` : "questo paziente";
+    setDuplicatePatientToDelete({ id: patientId, label });
+    onDeleteDuplicateOpen();
+  };
+
+  const confirmDeleteDuplicatePatient = async () => {
+    if (!duplicatePatientToDelete) return;
+    const patientId = duplicatePatientToDelete.id;
     setProcessingDuplicateId(patientId);
     clearNotice("duplicati");
     try {
@@ -828,6 +845,8 @@ const SettingsScreen = () => {
           }))
           .filter((g) => g.patients.length > 1),
       );
+      onDeleteDuplicateClose();
+      setDuplicatePatientToDelete(null);
     } catch (e: any) {
       showNotice(
         "duplicati",
@@ -2150,7 +2169,13 @@ const SettingsScreen = () => {
                                   size="sm"
                                   color="danger"
                                   variant="flat"
-                                  onPress={() => deleteDuplicatePatient(p.id)}
+                                  onPress={() =>
+                                    requestDeleteDuplicatePatient(
+                                      p.id,
+                                      p.nome,
+                                      p.cognome,
+                                    )
+                                  }
                                   isLoading={processingDuplicateId === p.id}
                                   isDisabled={
                                     processingDuplicateGroupKey === group.key
@@ -2471,63 +2496,21 @@ const SettingsScreen = () => {
         isSaving={isSavingTemplate}
       />
 
-      <Modal
+      <ConfirmDangerModal
         isOpen={isDeleteTemplateOpen}
         onClose={() => {
-          if (isDeletingTemplate) return;
           onDeleteTemplateClose();
           setTemplateToDelete(null);
         }}
-        size="md"
-        placement="center"
-        backdrop="blur"
-        classNames={{
-          base: "border border-danger-200",
-          header: "border-b border-default-200",
-          footer: "border-t border-default-200",
-        }}
+        title="Elimina modello"
+        confirmLabel="Elimina modello"
+        onConfirm={() => void confirmDeleteTemplate()}
+        isLoading={isDeletingTemplate}
       >
-        <ModalContent>
-          <ModalHeader className="flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-danger-100">
-              <Trash2 size={18} className="text-danger" />
-            </span>
-            <div>
-              <p className="text-base font-semibold text-gray-900">
-                Elimina modello
-              </p>
-              <p className="text-sm font-normal text-default-500">
-                L&apos;operazione non può essere annullata
-              </p>
-            </div>
-          </ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-default-600">
-              Sei sicuro di voler eliminare{" "}
-              <strong>{templateToDelete?.label}</strong>?
-            </p>
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="flat"
-              onPress={() => {
-                onDeleteTemplateClose();
-                setTemplateToDelete(null);
-              }}
-              isDisabled={isDeletingTemplate}
-            >
-              Annulla
-            </Button>
-            <Button
-              color="danger"
-              onPress={() => void confirmDeleteTemplate()}
-              isLoading={isDeletingTemplate}
-            >
-              Elimina modello
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+        <p className="text-sm text-default-600">
+          Sei sicuro di voler eliminare <strong>{templateToDelete?.label}</strong>?
+        </p>
+      </ConfirmDangerModal>
 
       {/* Modifica ambulatorio */}
       <Modal
@@ -2646,45 +2629,39 @@ const SettingsScreen = () => {
         </ModalContent>
       </Modal>
 
-      {/* Conferma eliminazione ambulatorio */}
-      <Modal
+      <ConfirmDangerModal
         isOpen={isDeleteAmbulatorioOpen}
         onClose={() => {
           onDeleteAmbulatorioClose();
           setAmbulatorioToDelete(null);
         }}
-        size="md"
+        title="Elimina ambulatorio"
+        confirmLabel="Elimina ambulatorio"
+        onConfirm={() => void confirmDeleteAmbulatorio()}
+        isLoading={savingAmbulatori}
       >
-        <ModalContent>
-          <ModalHeader>Elimina ambulatorio</ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-default-600">
-              Sei sicuro di voler eliminare{" "}
-              <strong>{ambulatorioToDelete?.nome}</strong>? L&apos;operazione
-              non può essere annullata.
-            </p>
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="light"
-              onPress={() => {
-                onDeleteAmbulatorioClose();
-                setAmbulatorioToDelete(null);
-              }}
-            >
-              Annulla
-            </Button>
-            <Button
-              color="danger"
-              onPress={() => void confirmDeleteAmbulatorio()}
-              isLoading={savingAmbulatori}
-              isDisabled={savingAmbulatori}
-            >
-              Elimina
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+        <p className="text-sm text-default-600">
+          Sei sicuro di voler eliminare <strong>{ambulatorioToDelete?.nome}</strong>?
+        </p>
+      </ConfirmDangerModal>
+
+      <ConfirmDangerModal
+        isOpen={isDeleteDuplicateOpen}
+        onClose={() => {
+          if (processingDuplicateId) return;
+          onDeleteDuplicateClose();
+          setDuplicatePatientToDelete(null);
+        }}
+        title="Elimina paziente duplicato"
+        confirmLabel="Elimina paziente"
+        onConfirm={() => void confirmDeleteDuplicatePatient()}
+        isLoading={Boolean(processingDuplicateId)}
+      >
+        <p className="text-sm text-default-600">
+          Sei sicuro di voler eliminare <strong>{duplicatePatientToDelete?.label}</strong>?
+          Verranno eliminate anche le visite collegate.
+        </p>
+      </ConfirmDangerModal>
     </div>
   );
 };

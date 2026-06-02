@@ -42,6 +42,7 @@ import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useToast } from "../../contexts/ToastContext";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
+import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -154,6 +155,13 @@ export default function Visite() {
   const [isIncludeFetalGrowthChartModalOpen, setIsIncludeFetalGrowthChartModalOpen] = useState(false);
   const [pendingPrintIncludeImages, setPendingPrintIncludeImages] = useState(false);
   const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
+  const [visitToDelete, setVisitToDelete] = useState<string | null>(null);
+  const {
+    isOpen: isDeleteVisitOpen,
+    onOpen: onDeleteVisitOpen,
+    onClose: onDeleteVisitClose,
+  } = useDisclosure();
+  const [isDeletingVisit, setIsDeletingVisit] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -489,11 +497,16 @@ export default function Visite() {
     }
   };
 
-  const handleDeleteVisit = async (visitId: string) => {
-    if (!confirm("Sei sicuro di voler eliminare questa visita? Questa azione è irreversibile.")) return;
+  const requestDeleteVisit = (visitId: string) => {
+    setVisitToDelete(visitId);
+    onDeleteVisitOpen();
+  };
+
+  const confirmDeleteVisit = async () => {
+    if (!visitToDelete) return;
     try {
-      setLoading(true);
-      await VisitService.deleteVisit(visitId);
+      setIsDeletingVisit(true);
+      await VisitService.deleteVisit(visitToDelete);
       const [allVisits, allPatients] = await Promise.all([VisitService.getAllVisits(), PatientService.getAllPatients()]);
       const patientMap = new Map(allPatients.map((p) => [p.id, p]));
       const enriched = allVisits.map((v) => {
@@ -502,13 +515,15 @@ export default function Visite() {
       });
       enriched.sort((a, b) => new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime());
       setVisits(enriched);
-      if (selectedVisit?.id === visitId) onClose();
+      if (selectedVisit?.id === visitToDelete) onClose();
       setSelectedVisit(null);
+      onDeleteVisitClose();
+      setVisitToDelete(null);
     } catch (error) {
       console.error("Errore nell'eliminazione visita:", error);
       showToast("Errore nell'eliminazione della visita.", "error");
     } finally {
-      setLoading(false);
+      setIsDeletingVisit(false);
     }
   };
 
@@ -956,7 +971,7 @@ export default function Visite() {
                   color="danger"
                   variant="light"
                   startContent={<Trash2Icon size={16} />}
-                  onPress={() => selectedVisit && handleDeleteVisit(selectedVisit.id)}
+                  onPress={() => selectedVisit && requestDeleteVisit(selectedVisit.id)}
                   className="mr-auto"
                   aria-label="Elimina visita"
                   title="Elimina visita"
@@ -1051,6 +1066,23 @@ export default function Visite() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <ConfirmDangerModal
+        isOpen={isDeleteVisitOpen}
+        onClose={() => {
+          if (isDeletingVisit) return;
+          onDeleteVisitClose();
+          setVisitToDelete(null);
+        }}
+        title="Elimina visita"
+        confirmLabel="Elimina visita"
+        onConfirm={() => void confirmDeleteVisit()}
+        isLoading={isDeletingVisit}
+      >
+        <p className="text-sm text-default-600">
+          Sei sicuro di voler eliminare questa visita? Questa azione è irreversibile.
+        </p>
+      </ConfirmDangerModal>
     </div>
   );
 }

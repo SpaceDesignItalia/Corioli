@@ -29,6 +29,7 @@ import { DocumentService } from "../../services/OfflineServices";
 import { Document } from "../../types/Storage";
 import { format, parseISO } from "date-fns";
 import { PageHeader } from "../../components/PageHeader";
+import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { DocumentsGridSkeleton } from "../../components/AppStartupSkeleton";
 
 const CATEGORY_OPTIONS = [
@@ -99,6 +100,13 @@ export default function Documents() {
   // Modal states
   const { isOpen: isUploadOpen, onOpen: onUploadOpen, onClose: onUploadClose } = useDisclosure();
   const { isOpen: isPreviewOpen, onOpen: onPreviewOpen, onClose: onPreviewClose } = useDisclosure();
+  const {
+    isOpen: isDeleteOpen,
+    onOpen: onDeleteOpen,
+    onClose: onDeleteClose,
+  } = useDisclosure();
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [uploadData, setUploadData] = useState({
@@ -213,15 +221,24 @@ export default function Documents() {
     onPreviewClose();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm("Sei sicuro di voler eliminare questo documento?")) {
-      try {
-        await DocumentService.deleteDocument(id);
-        setSuccess("Documento eliminato con successo");
-        loadDocuments();
-      } catch (error) {
-        setError("Errore nell'eliminazione del documento");
-      }
+  const requestDelete = (id: string) => {
+    setDocumentToDelete(id);
+    onDeleteOpen();
+  };
+
+  const confirmDelete = async () => {
+    if (!documentToDelete) return;
+    setIsDeleting(true);
+    try {
+      await DocumentService.deleteDocument(documentToDelete);
+      setSuccess("Documento eliminato con successo");
+      onDeleteClose();
+      setDocumentToDelete(null);
+      loadDocuments();
+    } catch (error) {
+      setError("Errore nell'eliminazione del documento");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -416,7 +433,7 @@ export default function Documents() {
                         size="sm"
                         color="danger"
                         variant="flat"
-                        onPress={() => handleDelete(doc.id)}
+                        onPress={() => requestDelete(doc.id)}
                         isIconOnly
                       >
                         <Trash2 size={14} />
@@ -578,6 +595,23 @@ export default function Documents() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <ConfirmDangerModal
+        isOpen={isDeleteOpen}
+        onClose={() => {
+          if (isDeleting) return;
+          onDeleteClose();
+          setDocumentToDelete(null);
+        }}
+        title="Elimina documento"
+        confirmLabel="Elimina documento"
+        onConfirm={() => void confirmDelete()}
+        isLoading={isDeleting}
+      >
+        <p className="text-sm text-default-600">
+          Sei sicuro di voler eliminare questo documento?
+        </p>
+      </ConfirmDangerModal>
     </div>
   );
 }

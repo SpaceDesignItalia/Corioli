@@ -50,9 +50,20 @@ import {
 } from '../services/OfflineServices';
 import { CsvImportService, CsvImportProgress } from '../services/CsvImportService';
 import { CodiceFiscaleValue } from './CodiceFiscaleValue';
+import { ConfirmDangerModal } from './ConfirmDangerModal';
 
 const BackupManager: React.FC = () => {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const {
+    isOpen: isResetModalOpen,
+    onOpen: onResetModalOpen,
+    onClose: onResetModalClose,
+  } = useDisclosure();
+  const {
+    isOpen: isDeleteItemOpen,
+    onOpen: onDeleteItemOpen,
+    onClose: onDeleteItemClose,
+  } = useDisclosure();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const patientsCsvInputRef = React.useRef<HTMLInputElement>(null);
   const appointmentsCsvInputRef = React.useRef<HTMLInputElement>(null);
@@ -73,6 +84,9 @@ const BackupManager: React.FC = () => {
   // Edit State
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
 
   // Feedback state
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -168,26 +182,78 @@ const BackupManager: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Sei sicuro di voler eliminare questo elemento? L'azione è irreversibile.")) return;
+  const confirmResetTotal = async () => {
+    setIsResetting(true);
+    try {
+      if (window.electronAPI?.kvClearAppDottori) {
+        await window.electronAPI.kvClearAppDottori();
+      } else {
+        localStorage.clear();
+      }
+      window.location.reload();
+    } catch (error) {
+      console.error("Errore reset totale:", error);
+      setMessage({ text: "Errore durante il reset dei dati.", type: "error" });
+      setIsResetting(false);
+      onResetModalClose();
+    }
+  };
+
+  const getDeleteItemConfig = () => {
+    switch (selectedTab) {
+      case "patients":
+        return {
+          title: "Elimina paziente",
+          confirmLabel: "Elimina paziente",
+          message:
+            "Sei sicuro di voler eliminare questo paziente? Verranno eliminate anche le visite collegate.",
+        };
+      case "visits":
+        return {
+          title: "Elimina visita",
+          confirmLabel: "Elimina visita",
+          message:
+            "Sei sicuro di voler eliminare questa visita? Questa azione è irreversibile.",
+        };
+      default:
+        return {
+          title: "Elimina documento",
+          confirmLabel: "Elimina documento",
+          message: "Sei sicuro di voler eliminare questo documento?",
+        };
+    }
+  };
+
+  const requestDelete = (id: string) => {
+    setItemToDelete(id);
+    onDeleteItemOpen();
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
 
     try {
+      setIsDeletingItem(true);
       switch (selectedTab) {
         case "patients":
-          await PatientService.deletePatient(id);
+          await PatientService.deletePatient(itemToDelete);
           break;
         case "visits":
-          await VisitService.deleteVisit(id);
+          await VisitService.deleteVisit(itemToDelete);
           break;
         case "documents":
-          await DocumentService.deleteDocument(id);
+          await DocumentService.deleteDocument(itemToDelete);
           break;
       }
       setMessage({ text: "Elemento eliminato con successo", type: "success" });
-      loadData(); // Reload data
+      onDeleteItemClose();
+      setItemToDelete(null);
+      loadData();
     } catch (error) {
       console.error("Errore eliminazione:", error);
       setMessage({ text: "Errore durante l'eliminazione", type: "error" });
+    } finally {
+      setIsDeletingItem(false);
     }
   };
 
@@ -412,7 +478,7 @@ const BackupManager: React.FC = () => {
                   </span>
                 </Tooltip>
                 <Tooltip content="Elimina">
-                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => handleDelete(item.id)}>
+                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => requestDelete(item.id)}>
                     <Trash2 size={18} />
                   </span>
                 </Tooltip>
@@ -448,7 +514,7 @@ const BackupManager: React.FC = () => {
                   </span>
                 </Tooltip>
                 <Tooltip content="Elimina">
-                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => handleDelete(item.id)}>
+                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => requestDelete(item.id)}>
                     <Trash2 size={18} />
                   </span>
                 </Tooltip>
@@ -489,7 +555,7 @@ const BackupManager: React.FC = () => {
                   </span>
                 </Tooltip>
                 <Tooltip content="Elimina">
-                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => handleDelete(item.id)}>
+                  <span className="text-lg text-danger cursor-pointer active:opacity-50" onClick={() => requestDelete(item.id)}>
                     <Trash2 size={18} />
                   </span>
                 </Tooltip>
@@ -730,15 +796,7 @@ const BackupManager: React.FC = () => {
                           <Button
                             color="danger"
                             variant="flat"
-                            onPress={async () => {
-                              if (!confirm("SEI SICURO DI VOLER CANCELLARE TUTTO?")) return;
-                              if (window.electronAPI?.kvClearAppDottori) {
-                                await window.electronAPI.kvClearAppDottori();
-                              } else {
-                                localStorage.clear();
-                              }
-                              window.location.reload();
-                            }}
+                            onPress={onResetModalOpen}
                           >
                             Reset Totale
                           </Button>
@@ -953,6 +1011,35 @@ const BackupManager: React.FC = () => {
         </ModalContent>
       </Modal>
       {renderEditModal()}
+
+      <ConfirmDangerModal
+        isOpen={isResetModalOpen}
+        onClose={onResetModalClose}
+        title="Reset totale"
+        confirmLabel="Reset totale"
+        onConfirm={() => void confirmResetTotal()}
+        isLoading={isResetting}
+      >
+        <p className="text-sm text-default-600">
+          Stai per cancellare <strong>tutti i dati locali</strong> (pazienti, visite, documenti e
+          impostazioni). L&apos;operazione è irreversibile. Sei sicuro di voler procedere?
+        </p>
+      </ConfirmDangerModal>
+
+      <ConfirmDangerModal
+        isOpen={isDeleteItemOpen}
+        onClose={() => {
+          if (isDeletingItem) return;
+          onDeleteItemClose();
+          setItemToDelete(null);
+        }}
+        title={getDeleteItemConfig().title}
+        confirmLabel={getDeleteItemConfig().confirmLabel}
+        onConfirm={() => void confirmDelete()}
+        isLoading={isDeletingItem}
+      >
+        <p className="text-sm text-default-600">{getDeleteItemConfig().message}</p>
+      </ConfirmDangerModal>
     </>
   );
 };

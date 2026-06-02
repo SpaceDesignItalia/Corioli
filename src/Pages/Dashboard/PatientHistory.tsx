@@ -77,6 +77,7 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useDoctorProfileIncompleteModal } from "../../components/DoctorProfileIncompleteModal";
+import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import {
   MAX_HEIGHT_CM,
   MIN_BIRTH_YEAR,
@@ -133,6 +134,12 @@ function sortRichiesteEsamiByDateAndCreation(
   });
 }
 
+type PendingDelete =
+  | { kind: "visita"; id: string }
+  | { kind: "paziente" }
+  | { kind: "esame"; id: string }
+  | { kind: "certificato"; id: string };
+
 export default function PatientHistory() {
   const { patientId: patientIdParam } = useParams<{ patientId: string }>();
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -152,7 +159,13 @@ export default function PatientHistory() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [deletingPatient, setDeletingPatient] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const {
+    isOpen: isDeleteOpen,
+    onOpen: onDeleteOpen,
+    onClose: onDeleteClose,
+  } = useDisclosure();
+  const [isDeleting, setIsDeleting] = useState(false);
   const [richiesteEsami, setRichiesteEsami] = useState<
     RichiestaEsameComplementare[]
   >([]);
@@ -652,20 +665,122 @@ export default function PatientHistory() {
     }
   };
 
-  const handleDeleteRichiestaEsame = async (id: string): Promise<boolean> => {
-    if (!confirm("Eliminare questa richiesta esame?")) return false;
+  const requestDelete = (pending: PendingDelete) => {
+    setPendingDelete(pending);
+    onDeleteOpen();
+  };
+
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return;
+
+    setIsDeleting(true);
+    setError(null);
     try {
-      await RichiestaEsameService.delete(id);
-      if (patient) {
-        const list = await RichiestaEsameService.getByPatientId(patient.id);
-        setRichiesteEsami(sortRichiesteEsamiByDateAndCreation(list));
+      switch (pendingDelete.kind) {
+        case "visita": {
+          const visitId = pendingDelete.id;
+          await VisitService.deleteVisit(visitId);
+          if (patient) {
+            const updatedVisits = await VisitService.getVisitsByPatientId(patient.id);
+            const sortedVisits = updatedVisits.sort((a, b) => {
+              const dateDiff =
+                new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime();
+              if (dateDiff !== 0) return dateDiff;
+              return (
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              );
+            });
+            setVisits(sortedVisits);
+          }
+          if (selectedVisit && selectedVisit.id === visitId) onClose();
+          showToast("Visita eliminata.");
+          break;
+        }
+        case "paziente": {
+          if (!patient) return;
+          await PatientService.deletePatient(patient.id);
+          sessionStorage.setItem(
+            "appdottori_toast",
+            "Paziente eliminato con successo",
+          );
+          showToast("Paziente eliminato con successo");
+          navigate("/pazienti");
+          return;
+        }
+        case "esame": {
+          await RichiestaEsameService.delete(pendingDelete.id);
+          if (patient) {
+            const list = await RichiestaEsameService.getByPatientId(patient.id);
+            setRichiesteEsami(sortRichiesteEsamiByDateAndCreation(list));
+          }
+          handleCloseEsameModal();
+          if (selectedRichiestaEsamePreview?.id === pendingDelete.id) {
+            onEsamePreviewClose();
+            setSelectedRichiestaEsamePreview(null);
+          }
+          showToast("Richiesta eliminata.");
+          break;
+        }
+        case "certificato": {
+          await CertificatoService.delete(pendingDelete.id);
+          if (patient) {
+            const list = await CertificatoService.getByPatientId(patient.id);
+            setCertificati(list);
+          }
+          handleCloseCertificatoModal();
+          if (selectedCertificatoPreview?.id === pendingDelete.id) {
+            handleCloseCertificatoPreview();
+          }
+          showToast("Certificato eliminato.");
+          break;
+        }
       }
-      showToast("Richiesta eliminata.");
-      handleCloseEsameModal();
-      return true;
-    } catch (e) {
-      showToast("Errore nell'eliminazione.", "error");
-      return false;
+      onDeleteClose();
+      setPendingDelete(null);
+    } catch (error) {
+      console.error("Errore eliminazione:", error);
+      if (pendingDelete.kind === "visita") {
+        setError("Errore nell'eliminazione della visita");
+        showToast("Errore nell'eliminazione della visita.", "error");
+      } else if (pendingDelete.kind === "paziente") {
+        setError("Errore durante l'eliminazione del paziente.");
+        showToast("Errore durante l'eliminazione del paziente.", "error");
+      } else {
+        showToast("Errore nell'eliminazione.", "error");
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const getDeleteModalConfig = (pending: PendingDelete) => {
+    switch (pending.kind) {
+      case "visita":
+        return {
+          title: "Elimina visita",
+          confirmLabel: "Elimina visita",
+          message:
+            "Sei sicuro di voler eliminare questa visita? Questa azione è irreversibile.",
+        };
+      case "paziente":
+        return {
+          title: "Elimina paziente",
+          confirmLabel: "Elimina paziente",
+          message:
+            "Sei sicuro di voler eliminare questo paziente? Verranno eliminate anche tutte le visite collegate. Questa azione è irreversibile.",
+        };
+      case "esame":
+        return {
+          title: "Elimina richiesta esame",
+          confirmLabel: "Elimina richiesta",
+          message: "Sei sicuro di voler eliminare questa richiesta esame?",
+        };
+      case "certificato":
+        return {
+          title: "Elimina certificato",
+          confirmLabel: "Elimina certificato",
+          message: "Sei sicuro di voler eliminare questo certificato?",
+        };
     }
   };
 
@@ -744,21 +859,6 @@ export default function PatientHistory() {
     }
   };
 
-  const handleDeleteCertificato = async (id: string) => {
-    if (!confirm("Eliminare questo certificato?")) return;
-    try {
-      await CertificatoService.delete(id);
-      if (patient) {
-        const list = await CertificatoService.getByPatientId(patient.id);
-        setCertificati(list);
-      }
-      showToast("Certificato eliminato.");
-      handleCloseCertificatoModal();
-    } catch (e) {
-      showToast("Errore nell'eliminazione.", "error");
-    }
-  };
-
   const handleOpenCertificatoPreview = (c: CertificatoPaziente) => {
     setSelectedCertificatoPreview(c);
     onCertificatoPreviewOpen();
@@ -804,76 +904,6 @@ export default function PatientHistory() {
       showToast("Errore generazione PDF.", "error");
     } finally {
       setPdfLoading(false);
-    }
-  };
-
-  const handleDeleteVisit = async (visitId: string) => {
-    if (
-      !confirm(
-        "Sei sicuro di voler eliminare questa visita? Questa azione è irreversibile.",
-      )
-    ) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await VisitService.deleteVisit(visitId);
-
-      // Ricarica le visite
-      if (patient) {
-        const updatedVisits = await VisitService.getVisitsByPatientId(
-          patient.id,
-        );
-        const sortedVisits = updatedVisits.sort((a, b) => {
-          const dateDiff =
-            new Date(b.dataVisita).getTime() - new Date(a.dataVisita).getTime();
-          if (dateDiff !== 0) return dateDiff;
-          return (
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-        });
-        setVisits(sortedVisits);
-      }
-
-      // Chiudi modal se la visita eliminata era quella selezionata
-      if (selectedVisit && selectedVisit.id === visitId) {
-        onClose();
-      }
-    } catch (error) {
-      console.error("Errore nell'eliminazione visita:", error);
-      setError("Errore nell'eliminazione della visita");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeletePatient = async () => {
-    if (!patient) return;
-    if (
-      !confirm(
-        "Sei sicuro di voler eliminare questo paziente? Verranno eliminate anche tutte le visite collegate. Questa azione è irreversibile.",
-      )
-    ) {
-      return;
-    }
-
-    setDeletingPatient(true);
-    setError(null);
-    try {
-      await PatientService.deletePatient(patient.id);
-      sessionStorage.setItem(
-        "appdottori_toast",
-        "Paziente eliminato con successo",
-      );
-      showToast("Paziente eliminato con successo");
-      navigate("/pazienti");
-    } catch (error) {
-      console.error("Errore eliminazione paziente:", error);
-      setError("Errore durante l'eliminazione del paziente.");
-      showToast("Errore durante l'eliminazione del paziente.", "error");
-    } finally {
-      setDeletingPatient(false);
     }
   };
 
@@ -2163,7 +2193,8 @@ export default function PatientHistory() {
                   variant="light"
                   startContent={<Trash2Icon size={16} />}
                   onPress={() =>
-                    selectedVisit && handleDeleteVisit(selectedVisit.id)
+                    selectedVisit &&
+                    requestDelete({ kind: "visita", id: selectedVisit.id })
                   }
                   className="mr-auto"
                   aria-label="Elimina visita"
@@ -2414,10 +2445,8 @@ export default function PatientHistory() {
               isIconOnly
               onPress={() => {
                 onEditClose();
-                handleDeletePatient();
+                requestDelete({ kind: "paziente" });
               }}
-              isLoading={deletingPatient}
-              isDisabled={deletingPatient}
               aria-label="Elimina Paziente"
               title="Elimina Paziente"
             >
@@ -2487,7 +2516,7 @@ export default function PatientHistory() {
                 )}
               </ModalBody>
               <ModalFooter className="border-t border-default-200 gap-2 flex-wrap">
-                <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={async () => { if (!selectedRichiestaEsamePreview) return; const deleted = await handleDeleteRichiestaEsame(selectedRichiestaEsamePreview.id); if (deleted) { onEsamePreviewClose(); setSelectedRichiestaEsamePreview(null); } }} aria-label="Elimina richiesta esame" title="Elimina richiesta esame">Elimina</Button>
+                <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={() => { if (!selectedRichiestaEsamePreview) return; requestDelete({ kind: "esame", id: selectedRichiestaEsamePreview.id }); }} aria-label="Elimina richiesta esame" title="Elimina richiesta esame">Elimina</Button>
                 <Button variant="light" startContent={esamePreviewFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} onPress={() => setEsamePreviewFullscreen(!esamePreviewFullscreen)}>{esamePreviewFullscreen ? "Riduci" : "Espandi"}</Button>
                 <Button color="primary" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedRichiestaEsamePreview && handlePrintRichiestaEsame(selectedRichiestaEsamePreview)} isLoading={pdfLoading}>Stampa PDF</Button>
                 <Button color="primary" startContent={<EditIcon size={18} />} onPress={handleFromPreviewToEdit}>Modifica</Button>
@@ -2534,7 +2563,7 @@ export default function PatientHistory() {
                 )}
               </ModalBody>
               <ModalFooter className="border-t border-default-200 gap-2 flex-wrap">
-                <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={async () => { if (!selectedCertificatoPreview) return; if (!confirm("Eliminare questo certificato?")) return; await CertificatoService.delete(selectedCertificatoPreview.id); const list = await CertificatoService.getByPatientId(patient.id); setCertificati(list); handleCloseCertificatoPreview(); showToast("Certificato eliminato."); }} aria-label="Elimina certificato">Elimina</Button>
+                <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={() => { if (!selectedCertificatoPreview) return; requestDelete({ kind: "certificato", id: selectedCertificatoPreview.id }); }} aria-label="Elimina certificato">Elimina</Button>
                 <Button variant="light" startContent={certificatoPreviewFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} onPress={() => setCertificatoPreviewFullscreen(!certificatoPreviewFullscreen)}>{certificatoPreviewFullscreen ? "Riduci" : "Espandi"}</Button>
                 <Button color="warning" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedCertificatoPreview && handlePrintCertificato(selectedCertificatoPreview)} isLoading={pdfLoading}>Stampa PDF</Button>
                 <Button color="primary" startContent={<EditIcon size={18} />} onPress={handleFromCertificatoPreviewToEdit}>Modifica</Button>
@@ -2633,7 +2662,7 @@ export default function PatientHistory() {
                 variant="light"
                 isIconOnly
                 onPress={() =>
-                  handleDeleteRichiestaEsame(editingRichiestaEsame.id)
+                  requestDelete({ kind: "esame", id: editingRichiestaEsame.id })
                 }
                 aria-label="Elimina richiesta"
                 title="Elimina richiesta"
@@ -2748,7 +2777,9 @@ export default function PatientHistory() {
                 color="danger"
                 variant="light"
                 startContent={<Trash2Icon size={18} />}
-                onPress={() => handleDeleteCertificato(editingCertificato.id)}
+                onPress={() =>
+                  requestDelete({ kind: "certificato", id: editingCertificato.id })
+                }
               >
                 Elimina
               </Button>
@@ -2837,6 +2868,25 @@ export default function PatientHistory() {
       </Modal>
 
       {doctorProfileIncompleteModal}
+
+      {pendingDelete && (
+        <ConfirmDangerModal
+          isOpen={isDeleteOpen}
+          onClose={() => {
+            if (isDeleting) return;
+            onDeleteClose();
+            setPendingDelete(null);
+          }}
+          title={getDeleteModalConfig(pendingDelete).title}
+          confirmLabel={getDeleteModalConfig(pendingDelete).confirmLabel}
+          onConfirm={() => void confirmPendingDelete()}
+          isLoading={isDeleting}
+        >
+          <p className="text-sm text-default-600">
+            {getDeleteModalConfig(pendingDelete).message}
+          </p>
+        </ConfirmDangerModal>
+      )}
     </div>
   );
 }

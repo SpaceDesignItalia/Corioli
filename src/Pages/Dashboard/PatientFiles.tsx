@@ -28,6 +28,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { PageHeader } from "../../components/PageHeader";
+import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { DocumentsGridSkeleton } from "../../components/AppStartupSkeleton";
 import { useToast } from "../../contexts/ToastContext";
 import { Document, Patient } from "../../types/Storage";
@@ -108,6 +109,13 @@ export default function PatientFiles() {
     onOpen: onPreviewOpen,
     onClose: onPreviewClose,
   } = useDisclosure();
+  const {
+    isOpen: isDeleteOpen,
+    onOpen: onDeleteOpen,
+    onClose: onDeleteClose,
+  } = useDisclosure();
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
@@ -214,18 +222,25 @@ export default function PatientFiles() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Sei sicuro di voler eliminare questo documento?")) return;
+  const requestDelete = (id: string) => {
+    setDocumentToDelete(id);
+    onDeleteOpen();
+  };
+
+  const confirmDelete = async () => {
+    if (!documentToDelete) return;
+    setIsDeleting(true);
     try {
-      setLoading(true);
-      await DocumentService.deleteDocument(id);
+      await DocumentService.deleteDocument(documentToDelete);
       setSuccess("Documento eliminato con successo.");
+      onDeleteClose();
+      setDocumentToDelete(null);
       await loadData();
     } catch (err) {
       console.error("Errore eliminazione documento paziente:", err);
       setError("Errore durante l'eliminazione del documento.");
     } finally {
-      setLoading(false);
+      setIsDeleting(false);
     }
   };
 
@@ -488,7 +503,7 @@ export default function PatientFiles() {
                           size="sm"
                           color="danger"
                           variant="flat"
-                          onPress={() => handleDelete(doc.id)}
+                          onPress={() => requestDelete(doc.id)}
                           isIconOnly
                         >
                           <Trash2 size={14} />
@@ -649,6 +664,23 @@ export default function PatientFiles() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <ConfirmDangerModal
+        isOpen={isDeleteOpen}
+        onClose={() => {
+          if (isDeleting) return;
+          onDeleteClose();
+          setDocumentToDelete(null);
+        }}
+        title="Elimina documento"
+        confirmLabel="Elimina documento"
+        onConfirm={() => void confirmDelete()}
+        isLoading={isDeleting}
+      >
+        <p className="text-sm text-default-600">
+          Sei sicuro di voler eliminare questo documento?
+        </p>
+      </ConfirmDangerModal>
     </div>
   );
 }
