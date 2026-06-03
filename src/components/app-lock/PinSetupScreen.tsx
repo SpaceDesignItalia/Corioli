@@ -1,8 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { Card, CardBody, Input, Button } from "@nextui-org/react";
+import { Card, CardBody, Button } from "@nextui-org/react";
 import { Lock } from "lucide-react";
 import { setupAppLock } from "../../services/AppLockService";
 import RecoveryCodePanel from "./RecoveryCodePanel";
+import PinDigitInput from "./PinDigitInput";
+
+const PIN_LENGTH = 4;
 
 type Props = {
   mode: "first-run" | "migration";
@@ -17,6 +20,8 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const [recoveryStoredSecurely, setRecoveryStoredSecurely] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pinShake, setPinShake] = useState(false);
+  const [confirmShake, setConfirmShake] = useState(false);
 
   const title =
     mode === "migration"
@@ -25,18 +30,22 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const subtitle =
     mode === "migration"
       ? "Con l'aggiornamento è richiesto un PIN per proteggere la cartella clinica su questo computer."
-      : "Per iniziare, imposta un PIN per proteggere i dati sul dispositivo.";
+      : "Per iniziare, imposta un PIN a 4 cifre per proteggere i dati sul dispositivo.";
 
   const handleCreatePin = async () => {
     setError(null);
     const a = pin.replace(/\D/g, "");
     const b = pinConfirm.replace(/\D/g, "");
-    if (a.length < 4 || a.length > 8) {
-      setError("Il PIN deve avere tra 4 e 8 cifre.");
+    if (a.length !== PIN_LENGTH) {
+      setError(`Il PIN deve avere esattamente ${PIN_LENGTH} cifre.`);
+      setPinShake(true);
+      setTimeout(() => setPinShake(false), 600);
       return;
     }
     if (a !== b) {
       setError("I PIN non coincidono.");
+      setConfirmShake(true);
+      setTimeout(() => setConfirmShake(false), 600);
       return;
     }
     setLoading(true);
@@ -70,34 +79,40 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     );
   }
 
+  const bothFilled =
+    pin.replace(/\D/g, "").length === PIN_LENGTH &&
+    pinConfirm.replace(/\D/g, "").length === PIN_LENGTH;
+
   return (
     <AppLockShell title={title} subtitle={subtitle}>
-      <div className="space-y-4">
-        <Input
-          label="PIN (4–8 cifre)"
-          type="password"
-          inputMode="numeric"
-          autoComplete="new-password"
-          value={pin}
-          onValueChange={setPin}
-          variant="bordered"
-          maxLength={8}
-        />
-        <Input
-          label="Conferma PIN"
-          type="password"
-          inputMode="numeric"
-          autoComplete="new-password"
-          value={pinConfirm}
-          onValueChange={setPinConfirm}
-          variant="bordered"
-          maxLength={8}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void handleCreatePin();
-          }}
-        />
+      <div className="space-y-5">
+        <div className="space-y-1">
+          <p className="text-xs text-default-500 text-center">Scegli un PIN a 4 cifre</p>
+          <PinDigitInput
+            value={pin}
+            onChange={setPin}
+            length={PIN_LENGTH}
+            autoFocus
+            disabled={loading}
+            invalid={pinShake}
+            aria-label="Nuovo PIN"
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-default-500 text-center">Conferma PIN</p>
+          <PinDigitInput
+            value={pinConfirm}
+            onChange={setPinConfirm}
+            length={PIN_LENGTH}
+            disabled={loading}
+            invalid={confirmShake}
+          onComplete={(_v) => void handleCreatePin()}
+          onSubmit={() => void handleCreatePin()}
+            aria-label="Conferma PIN"
+          />
+        </div>
         {error ? (
-          <p className="text-sm text-danger" role="alert">
+          <p className="text-sm text-danger text-center" role="alert">
             {error}
           </p>
         ) : null}
@@ -105,6 +120,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
           color="primary"
           className="w-full font-medium"
           isLoading={loading}
+          isDisabled={!bothFilled}
           onPress={() => void handleCreatePin()}
         >
           Continua

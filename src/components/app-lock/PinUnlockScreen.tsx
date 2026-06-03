@@ -17,6 +17,9 @@ import {
   getAppLockStatus,
   verifyAppLockBiometric,
 } from "../../services/AppLockService";
+import PinDigitInput from "./PinDigitInput";
+
+const PIN_LENGTH = 4;
 
 type Props = {
   onUnlocked: () => void;
@@ -26,6 +29,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [shake, setShake] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -69,27 +73,31 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
     void handleBiometricUnlock();
   }, [biometricEnabled, handleBiometricUnlock]);
 
-  const handleUnlock = async () => {
+  const handleUnlock = useCallback(async (digits: string) => {
+    if (digits.length !== PIN_LENGTH) return;
     setError(null);
     setLoading(true);
     try {
-      const result = await verifyAppLockPin(pin.replace(/\D/g, ""));
+      const result = await verifyAppLockPin(digits);
       if (!result.ok) {
         setError(result.error || "PIN non corretto.");
+        setShake(true);
+        setPin("");
+        setTimeout(() => setShake(false), 600);
         return;
       }
       onUnlocked();
     } finally {
       setLoading(false);
     }
-  };
+  }, [onUnlocked]);
 
   const handleRecoveryReset = async () => {
     setRecoveryError(null);
     const a = newPin.replace(/\D/g, "");
     const b = newPinConfirm.replace(/\D/g, "");
-    if (a.length < 4 || a.length > 8) {
-      setRecoveryError("Il nuovo PIN deve avere tra 4 e 8 cifre.");
+    if (a.length !== PIN_LENGTH) {
+      setRecoveryError(`Il nuovo PIN deve avere esattamente ${PIN_LENGTH} cifre.`);
       return;
     }
     if (a !== b) {
@@ -124,7 +132,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               <p className="text-sm text-default-500">
                 {biometricEnabled && biometricLabel
                   ? `Usa ${biometricLabel} o inserisci il PIN.`
-                  : "Inserisci il PIN per accedere alla cartella clinica."}
+                  : "Inserisci il PIN a 4 cifre per accedere."}
               </p>
             </div>
 
@@ -141,33 +149,34 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               </Button>
             ) : null}
 
-            <Input
-              label="PIN"
-              type="password"
-              inputMode="numeric"
-              autoComplete="current-password"
+            <PinDigitInput
               value={pin}
-              onValueChange={setPin}
-              variant="bordered"
-              maxLength={8}
+              onChange={setPin}
+              length={PIN_LENGTH}
               autoFocus={!biometricEnabled}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void handleUnlock();
-              }}
+              disabled={loading}
+              invalid={shake}
+              onComplete={(v) => void handleUnlock(v)}
+              onSubmit={() => void handleUnlock(pin.replace(/\D/g, ""))}
+              aria-label="PIN di sblocco"
             />
+
             {error ? (
-              <p className="text-sm text-danger" role="alert">
+              <p className="text-sm text-danger text-center" role="alert">
                 {error}
               </p>
             ) : null}
+
             <Button
               color="primary"
               className="w-full font-medium"
               isLoading={loading}
-              onPress={() => void handleUnlock()}
+              isDisabled={pin.replace(/\D/g, "").length !== PIN_LENGTH}
+              onPress={() => void handleUnlock(pin.replace(/\D/g, ""))}
             >
-              Sblocca con PIN
+              Sblocca
             </Button>
+
             <button
               type="button"
               className="w-full text-sm text-primary font-medium hover:underline"
@@ -185,10 +194,10 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
       <Modal isOpen={recoveryOpen} onOpenChange={setRecoveryOpen} placement="center">
         <ModalContent>
           <ModalHeader>Recupero con codice</ModalHeader>
-          <ModalBody className="space-y-3">
+          <ModalBody className="space-y-4">
             <p className="text-sm text-default-600">
-              Inserisci il codice di recupero che hai salvato alla configurazione del PIN,
-              poi imposta un nuovo PIN.
+              Inserisci il codice di recupero salvato alla configurazione, poi imposta un
+              nuovo PIN.
             </p>
             <Input
               label="Codice di recupero"
@@ -197,24 +206,24 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               variant="bordered"
               placeholder="CORI-XXXX-XXXX-XXXX"
             />
-            <Input
-              label="Nuovo PIN"
-              type="password"
-              inputMode="numeric"
-              value={newPin}
-              onValueChange={setNewPin}
-              variant="bordered"
-              maxLength={8}
-            />
-            <Input
-              label="Conferma nuovo PIN"
-              type="password"
-              inputMode="numeric"
-              value={newPinConfirm}
-              onValueChange={setNewPinConfirm}
-              variant="bordered"
-              maxLength={8}
-            />
+            <div className="space-y-1">
+              <p className="text-xs text-default-500 text-center">Nuovo PIN</p>
+              <PinDigitInput
+                value={newPin}
+                onChange={setNewPin}
+                length={PIN_LENGTH}
+                aria-label="Nuovo PIN"
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-default-500 text-center">Conferma nuovo PIN</p>
+              <PinDigitInput
+                value={newPinConfirm}
+                onChange={setNewPinConfirm}
+                length={PIN_LENGTH}
+                aria-label="Conferma nuovo PIN"
+              />
+            </div>
             {recoveryError ? (
               <p className="text-sm text-danger">{recoveryError}</p>
             ) : null}

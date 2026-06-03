@@ -1,14 +1,16 @@
 import { systemPreferences } from "electron";
+import { createRequire } from "module";
 
+const _require = createRequire(import.meta.url);
 const PROMPT_REASON = "Sblocca Corioli";
 
-let winHelloFactory = null;
+let winHelloFactory = undefined;
 
 function loadWinHello() {
   if (process.platform !== "win32") return null;
   if (winHelloFactory !== undefined) return winHelloFactory;
   try {
-    const mod = require("win-hello");
+    const mod = _require("win-hello");
     winHelloFactory = mod.default ?? mod;
     return winHelloFactory;
   } catch {

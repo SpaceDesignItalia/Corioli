@@ -6,6 +6,7 @@ import {
 } from "./biometricAuth.js";
 import path from "path";
 import fs from "fs";
+import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,6 +17,7 @@ app.setName("Corioli");
 
 let kvReady = null;
 let mainWindowRef = null;
+let sessionUnlocked = false;
 
 async function getKv() {
   if (kvReady) return kvReady;
@@ -264,6 +266,29 @@ ipcMain.handle("appLock:setBiometricEnabled", (_e, payload) =>
   appLock.setBiometricEnabled(payload?.pin, payload?.enabled),
 );
 ipcMain.handle("appLock:verifyBiometric", () => appLock.verifyBiometric());
+ipcMain.handle("appLock:isSessionUnlocked", () => sessionUnlocked);
+ipcMain.handle("appLock:setSessionUnlocked", () => {
+  sessionUnlocked = true;
+});
+ipcMain.handle("shell:openExternal", async (_event, url) => {
+  if (typeof url !== "string" || !/^(https?:|ms-windows-store:)/i.test(url)) {
+    return { ok: false, error: "URL non consentito." };
+  }
+  try {
+    await shell.openExternal(url);
+    return { ok: true };
+  } catch (err) {
+    if (process.platform === "win32") {
+      spawn("cmd.exe", ["/c", "start", "", url], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      }).unref();
+      return { ok: true };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
 
 app.whenReady().then(() => {
   createWindow();

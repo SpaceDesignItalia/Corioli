@@ -8,7 +8,7 @@ export const APP_LOCK_BIOMETRIC_PREF_KEY = "app_lock_biometric_pref_v1";
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const HASH_KEYLEN = 32;
 const PIN_MIN = 4;
-const PIN_MAX = 8;
+const PIN_MAX = 4;
 const RECOVERY_SEGMENT = 4;
 
 function scryptHash(secret, salt) {
@@ -27,10 +27,10 @@ function normalizeRecoveryCode(code) {
 
 export function validatePinFormat(pin) {
   const n = normalizePin(pin);
-  if (n.length < PIN_MIN || n.length > PIN_MAX) {
+  if (n.length !== PIN_MIN) {
     return {
       ok: false,
-      error: `Il PIN deve avere tra ${PIN_MIN} e ${PIN_MAX} cifre.`,
+      error: `Il PIN deve avere esattamente ${PIN_MIN} cifre.`,
     };
   }
   return { ok: true, normalized: n };

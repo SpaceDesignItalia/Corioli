@@ -47,6 +47,7 @@ import {
   Circle,
   CheckCircle2,
   HelpCircle,
+  ArrowUpCircle,
 } from "lucide-react";
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
 import { ExportService } from "../../services/ExportService";
@@ -75,6 +76,30 @@ type SettingsNotice = {
   type: "success" | "error";
   message: string;
 };
+
+const CORIOLI_MS_STORE_ID = "9P24WMFJW58N";
+const CORIOLI_MS_STORE_WEB = `https://apps.microsoft.com/detail/${CORIOLI_MS_STORE_ID}?hl=it-it&gl=IT`;
+const CORIOLI_MS_STORE_APP = `ms-windows-store://pdp/?ProductId=${CORIOLI_MS_STORE_ID}`;
+
+async function openCorioliMicrosoftStore() {
+  const api = (
+    window as unknown as {
+      electronAPI?: {
+        openExternal?: (url: string) => Promise<{ ok?: boolean }>;
+      };
+    }
+  ).electronAPI;
+
+  if (!api?.openExternal) {
+    window.open(CORIOLI_MS_STORE_WEB, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  const storeResult = await api.openExternal(CORIOLI_MS_STORE_APP);
+  if (!storeResult?.ok) {
+    await api.openExternal(CORIOLI_MS_STORE_WEB);
+  }
+}
 
 function SettingsSectionNotice({
   scope,
@@ -1388,28 +1413,49 @@ const SettingsScreen = () => {
         iconColor="primary"
       />
 
-      {isAppLockAvailable() ? <AppLockSettingsCard /> : null}
+      {/* ── Sicurezza & Aggiornamenti ── */}
+      {(isAppLockAvailable() || typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined") ? (
+        <div>
+          <p className="section-label">Sicurezza</p>
+          <Card className="shadow-sm border border-default-200 overflow-hidden">
+            <CardBody className="p-0">
+              {isAppLockAvailable() ? <AppLockSettingsCard /> : null}
 
-      {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
-        <Card className="shadow-sm border border-default-200">
-          <CardBody className="py-3 px-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Aggiornamenti</h2>
-                <p className="text-sm text-default-500 mt-1">
-                  Su Windows, Corioli si aggiorna tramite il Microsoft Store (apri lo Store →
-                  Libreria → aggiornamenti, oppure attendi l&apos;aggiornamento automatico).
-                </p>
-              </div>
-              {appVersion ? (
-                <Chip variant="flat" size="sm" className="shrink-0">
-                  v{appVersion}
-                </Chip>
+              {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" ? (
+                <div className="settings-row">
+                  <div
+                    className="flex items-center justify-center shrink-0 rounded-lg"
+                    style={{ width: 30, height: 30, background: "#e1f5ee" }}
+                  >
+                    <ArrowUpCircle size={16} color="#0f6e56" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-[500] text-foreground leading-snug">
+                      Controlla aggiornamenti
+                    </p>
+                    <p className="text-[12px] leading-snug mt-0.5">
+                      <span style={{ color: "var(--color-text-secondary)", fontWeight: 500 }}>
+                        Microsoft Store
+                      </span>
+                      <span style={{ color: "var(--color-text-tertiary)" }}>
+                        {" "}→ Libreria → Corioli
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="settings-ghost-btn settings-ghost-btn--teal"
+                    onClick={() => void openCorioliMicrosoftStore()}
+                  >
+                    <ExternalLink size={13} />
+                    Apri Store
+                  </button>
+                </div>
               ) : null}
-            </div>
-          </CardBody>
-        </Card>
-      )}
+            </CardBody>
+          </Card>
+        </div>
+      ) : null}
 
       <div className="space-y-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:items-stretch [&>*]:h-full [&>*]:min-h-0">

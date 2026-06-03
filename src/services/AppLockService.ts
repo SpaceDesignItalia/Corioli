@@ -41,6 +41,8 @@ type ElectronAppLockApi = {
     error?: string;
     cancelled?: boolean;
   }>;
+  appLockIsSessionUnlocked?: () => Promise<boolean>;
+  appLockSetSessionUnlocked?: () => Promise<void>;
 };
 
 function api(): ElectronAppLockApi | undefined {
@@ -115,4 +117,12 @@ export async function verifyAppLockBiometric(): Promise<{
 }> {
   const res = await api()?.appLockVerifyBiometric?.();
   return res ?? { ok: false, error: "Funzione non disponibile." };
+}
+
+export async function isSessionUnlocked(): Promise<boolean> {
+  return (await api()?.appLockIsSessionUnlocked?.()) ?? false;
+}
+
+export async function markSessionUnlocked(): Promise<void> {
+  await api()?.appLockSetSessionUnlocked?.();
 }

@@ -35,4 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appLockSetBiometricEnabled: (payload) =>
     ipcRenderer.invoke('appLock:setBiometricEnabled', payload),
   appLockVerifyBiometric: () => ipcRenderer.invoke('appLock:verifyBiometric'),
+  appLockIsSessionUnlocked: () => ipcRenderer.invoke('appLock:isSessionUnlocked'),
+  appLockSetSessionUnlocked: () => ipcRenderer.invoke('appLock:setSessionUnlocked'),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 });

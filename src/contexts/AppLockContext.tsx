@@ -11,6 +11,8 @@ import { Spinner } from "@nextui-org/react";
 import {
   getAppLockStatus,
   isAppLockAvailable,
+  isSessionUnlocked,
+  markSessionUnlocked,
 } from "../services/AppLockService";
 import { DoctorService, PatientService } from "../services/OfflineServices";
 import PinSetupScreen from "../components/app-lock/PinSetupScreen";
@@ -63,6 +65,11 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       setPhase("setup");
       return;
     }
+    const alreadyUnlocked = await isSessionUnlocked();
+    if (alreadyUnlocked) {
+      setPhase("unlocked");
+      return;
+    }
     setPhase((current) => (current === "unlocked" ? "unlocked" : "unlock"));
   }, []);
 
@@ -97,14 +104,22 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
     return (
       <PinSetupScreen
         mode={setupMode}
-        onComplete={() => setPhase("unlocked")}
+        onComplete={() => {
+          void markSessionUnlocked();
+          setPhase("unlocked");
+        }}
       />
     );
   }
 
   if (phase === "unlock") {
     return (
-      <PinUnlockScreen onUnlocked={() => setPhase("unlocked")} />
+      <PinUnlockScreen
+        onUnlocked={() => {
+          void markSessionUnlocked();
+          setPhase("unlocked");
+        }}
+      />
     );
   }
 
