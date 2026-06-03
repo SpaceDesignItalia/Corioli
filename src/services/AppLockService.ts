@@ -1,6 +1,10 @@
 export type AppLockStatus = {
   configured: boolean;
   canRevealRecovery: boolean;
+  biometricAvailable?: boolean;
+  biometricLabel?: string | null;
+  biometricKind?: "touchId" | "windowsHello" | null;
+  biometricEnabled?: boolean;
 };
 
 export type AppLockSetupResult = {
@@ -28,6 +32,15 @@ type ElectronAppLockApi = {
     recoveryCode: string;
     newPin: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  appLockSetBiometricEnabled?: (payload: {
+    pin: string;
+    enabled: boolean;
+  }) => Promise<{ ok: boolean; biometricEnabled?: boolean; error?: string }>;
+  appLockVerifyBiometric?: () => Promise<{
+    ok: boolean;
+    error?: string;
+    cancelled?: boolean;
+  }>;
 };
 
 function api(): ElectronAppLockApi | undefined {
@@ -84,5 +97,22 @@ export async function resetPinWithRecovery(
     recoveryCode,
     newPin,
   });
+  return res ?? { ok: false, error: "Funzione non disponibile." };
+}
+
+export async function setBiometricUnlockEnabled(
+  pin: string,
+  enabled: boolean,
+): Promise<{ ok: boolean; biometricEnabled?: boolean; error?: string }> {
+  const res = await api()?.appLockSetBiometricEnabled?.({ pin, enabled });
+  return res ?? { ok: false, error: "Funzione non disponibile." };
+}
+
+export async function verifyAppLockBiometric(): Promise<{
+  ok: boolean;
+  error?: string;
+  cancelled?: boolean;
+}> {
+  const res = await api()?.appLockVerifyBiometric?.();
   return res ?? { ok: false, error: "Funzione non disponibile." };
 }

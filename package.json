@@ -78,7 +78,11 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "node_modules/win-hello/**/*"
+    ],
+    "asarUnpack": [
+      "**/win-hello/**/*.node"
     ],
     "win": {
       "target": [
@@ -111,5 +115,8 @@
       "target": "AppImage",
       "icon": "public/dottoressa.png"
     }
+  },
+  "optionalDependencies": {
+    "win-hello": "^1.1.1"
   }
 }

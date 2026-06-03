@@ -555,9 +555,9 @@ export default function HelpAndFeedback() {
             "Su Windows, gli aggiornamenti arrivano dal Microsoft Store (Libreria → aggiornamenti per Corioli, oppure in automatico). Prima di reinstallare o aggiornare, esegui sempre un backup da Impostazioni → Backup e dati.",
         },
         {
-          title: "PIN e codice di recupero",
+          title: "PIN, biometria e codice di recupero",
           content:
-            "All'avvio Corioli chiede un PIN per proteggere l'accesso sul computer. Alla configurazione ricevi un codice di recupero: conservalo in un luogo sicuro. Puoi rivederlo o rigenerarlo da Impostazioni → Sicurezza (PIN). Se dimentichi PIN e codice, non è possibile sbloccare l'app automaticamente: servirà il backup dei dati.",
+            "All'avvio Corioli chiede un PIN per proteggere l'accesso sul computer. Su Mac con Touch ID o su Windows con Windows Hello puoi attivare lo sblocco biometrico opzionale da Impostazioni → Sicurezza (PIN); il PIN resta obbligatorio per le operazioni sensibili. Alla configurazione ricevi un codice di recupero: conservalo in un luogo sicuro. Puoi rivederlo o rigenerarlo da Impostazioni → Sicurezza. Se dimentichi PIN e codice, non è possibile sbloccare l'app automaticamente: servirà il backup dei dati.",
         },
       ],
     },

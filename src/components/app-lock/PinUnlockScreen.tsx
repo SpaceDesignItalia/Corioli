@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Card,
   CardBody,
@@ -10,10 +10,12 @@ import {
   ModalBody,
   ModalFooter,
 } from "@nextui-org/react";
-import { Lock } from "lucide-react";
+import { Fingerprint, Lock } from "lucide-react";
 import {
   verifyAppLockPin,
   resetPinWithRecovery,
+  getAppLockStatus,
+  verifyAppLockBiometric,
 } from "../../services/AppLockService";
 
 type Props = {
@@ -30,6 +32,42 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
   const [newPinConfirm, setNewPinConfirm] = useState("");
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [bioLoading, setBioLoading] = useState(false);
+  const autoBioAttempted = useRef(false);
+
+  useEffect(() => {
+    void getAppLockStatus().then((s) => {
+      if (s?.biometricAvailable && s.biometricEnabled && s.biometricLabel) {
+        setBiometricLabel(s.biometricLabel);
+        setBiometricEnabled(true);
+      }
+    });
+  }, []);
+
+  const handleBiometricUnlock = useCallback(async () => {
+    setError(null);
+    setBioLoading(true);
+    try {
+      const result = await verifyAppLockBiometric();
+      if (!result.ok) {
+        if (!result.cancelled) {
+          setError(result.error || "Autenticazione non riuscita.");
+        }
+        return;
+      }
+      onUnlocked();
+    } finally {
+      setBioLoading(false);
+    }
+  }, [onUnlocked]);
+
+  useEffect(() => {
+    if (!biometricEnabled || autoBioAttempted.current) return;
+    autoBioAttempted.current = true;
+    void handleBiometricUnlock();
+  }, [biometricEnabled, handleBiometricUnlock]);
 
   const handleUnlock = async () => {
     setError(null);
@@ -84,9 +122,25 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               </div>
               <h1 className="text-xl font-bold text-foreground">Sblocca Corioli</h1>
               <p className="text-sm text-default-500">
-                Inserisci il PIN per accedere alla cartella clinica.
+                {biometricEnabled && biometricLabel
+                  ? `Usa ${biometricLabel} o inserisci il PIN.`
+                  : "Inserisci il PIN per accedere alla cartella clinica."}
               </p>
             </div>
+
+            {biometricEnabled && biometricLabel ? (
+              <Button
+                color="primary"
+                variant="flat"
+                className="w-full font-medium"
+                startContent={<Fingerprint size={18} />}
+                isLoading={bioLoading}
+                onPress={() => void handleBiometricUnlock()}
+              >
+                Sblocca con {biometricLabel}
+              </Button>
+            ) : null}
+
             <Input
               label="PIN"
               type="password"
@@ -96,7 +150,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               onValueChange={setPin}
               variant="bordered"
               maxLength={8}
-              autoFocus
+              autoFocus={!biometricEnabled}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void handleUnlock();
               }}
@@ -112,7 +166,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               isLoading={loading}
               onPress={() => void handleUnlock()}
             >
-              Sblocca
+              Sblocca con PIN
             </Button>
             <button
               type="button"

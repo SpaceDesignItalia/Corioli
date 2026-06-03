@@ -3,6 +3,7 @@ import { safeStorage } from "electron";
 
 export const APP_LOCK_CONFIG_KEY = "app_lock_config_v1";
 export const APP_LOCK_RECOVERY_ENC_KEY = "app_lock_recovery_enc_v1";
+export const APP_LOCK_BIOMETRIC_PREF_KEY = "app_lock_biometric_pref_v1";
 
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const HASH_KEYLEN = 32;
@@ -68,7 +69,7 @@ function formatRecoveryForDisplay(code) {
   return code;
 }
 
-export function createAppLockHandlers(kvGet, kvSet) {
+export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
   async function readConfig() {
     const raw = await kvGet(APP_LOCK_CONFIG_KEY);
     if (!raw) return null;
@@ -134,13 +135,38 @@ export function createAppLockHandlers(kvGet, kvSet) {
     }
   }
 
+  async function readBiometricPref() {
+    const raw = await kvGet(APP_LOCK_BIOMETRIC_PREF_KEY);
+    if (!raw) return { enabled: false };
+    try {
+      const parsed = JSON.parse(raw);
+      return { enabled: Boolean(parsed?.enabled) };
+    } catch {
+      return { enabled: false };
+    }
+  }
+
+  async function writeBiometricPref(enabled) {
+    await kvSet(
+      APP_LOCK_BIOMETRIC_PREF_KEY,
+      JSON.stringify({ version: 1, enabled: Boolean(enabled) }),
+    );
+  }
+
   return {
     async getStatus() {
       const config = await readConfig();
+      const bio = biometric ? await biometric.checkAvailable() : null;
+      const pref = await readBiometricPref();
       return {
         configured: Boolean(config),
         canRevealRecovery:
           Boolean(config) && safeStorage.isEncryptionAvailable(),
+        biometricAvailable: Boolean(bio?.available),
+        biometricLabel: bio?.label ?? null,
+        biometricKind: bio?.kind ?? null,
+        biometricEnabled:
+          Boolean(config) && Boolean(bio?.available) && pref.enabled,
       };
     },
 
@@ -264,6 +290,54 @@ export function createAppLockHandlers(kvGet, kvSet) {
       config.pinSalt = pinSalt;
       config.pinHash = hashSecret(pinCheck.normalized, pinSalt);
       await writeConfig(config);
+      return { ok: true };
+    },
+
+    async setBiometricEnabled(pin, enabled) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      if (!verifyPinAgainstConfig(pin, config)) {
+        return { ok: false, error: "PIN non corretto." };
+      }
+      if (!biometric) {
+        return { ok: false, error: "Biometria non supportata." };
+      }
+      const avail = await biometric.checkAvailable();
+      if (!avail.available && enabled) {
+        return {
+          ok: false,
+          error: `${avail.label || "Biometria"} non disponibile su questo dispositivo.`,
+        };
+      }
+      await writeBiometricPref(enabled);
+      return { ok: true, biometricEnabled: enabled };
+    },
+
+    async verifyBiometric() {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      const pref = await readBiometricPref();
+      if (!pref.enabled) {
+        return { ok: false, error: "Sblocco biometrico non attivo." };
+      }
+      if (!biometric) {
+        return { ok: false, error: "Biometria non supportata." };
+      }
+      const avail = await biometric.checkAvailable();
+      if (!avail.available) {
+        return {
+          ok: false,
+          error: `${avail.label || "Biometria"} non disponibile.`,
+        };
+      }
+      const result = await biometric.prompt();
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: result.error || "Autenticazione non riuscita.",
+          cancelled: Boolean(result.cancelled),
+        };
+      }
       return { ok: true };
     },
   };

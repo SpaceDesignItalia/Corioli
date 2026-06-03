@@ -10,13 +10,15 @@ import {
   ModalBody,
   ModalFooter,
   Chip,
+  Switch,
 } from "@nextui-org/react";
-import { Lock, KeyRound } from "lucide-react";
+import { Lock, KeyRound, Fingerprint } from "lucide-react";
 import {
   getAppLockStatus,
   revealRecoveryCode,
   regenerateRecoveryCode,
   changeAppLockPin,
+  setBiometricUnlockEnabled,
 } from "../../services/AppLockService";
 import RecoveryCodePanel from "./RecoveryCodePanel";
 import { useAppLock } from "../../contexts/AppLockContext";
@@ -34,11 +36,26 @@ export default function AppLockSettingsCard() {
   const [loading, setLoading] = useState(false);
   const [revealedCode, setRevealedCode] = useState<string | null>(null);
   const [regeneratedCode, setRegeneratedCode] = useState<string | null>(null);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [bioToggleLoading, setBioToggleLoading] = useState(false);
+  const [bioPinModal, setBioPinModal] = useState(false);
+  const [bioPin, setBioPin] = useState("");
+  const [bioPendingEnable, setBioPendingEnable] = useState(false);
+  const [bioError, setBioError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refreshLockStatus = () => {
     void getAppLockStatus().then((s) => {
       setCanReveal(Boolean(s?.canRevealRecovery));
+      setBiometricAvailable(Boolean(s?.biometricAvailable));
+      setBiometricLabel(s?.biometricLabel ?? null);
+      setBiometricEnabled(Boolean(s?.biometricEnabled));
     });
+  };
+
+  useEffect(() => {
+    refreshLockStatus();
   }, []);
 
   const closeModal = () => {
@@ -142,8 +159,107 @@ export default function AppLockSettingsCard() {
               il codice che hai ricevuto alla configurazione, oppure rigenerane uno nuovo.
             </p>
           ) : null}
+
+          {biometricAvailable && biometricLabel ? (
+            <div className="pt-2 border-t border-default-200 space-y-2">
+              <div className="flex items-center gap-2">
+                <Fingerprint className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-gray-900">
+                  Sblocco con {biometricLabel}
+                </span>
+              </div>
+              <p className="text-xs text-default-500">
+                Opzionale: dopo il PIN puoi sbloccare l&apos;app con {biometricLabel}.
+                Il PIN resta sempre necessario per operazioni sensibili.
+              </p>
+              <Switch
+                isSelected={biometricEnabled}
+                isDisabled={bioToggleLoading}
+                onValueChange={(next) => {
+                  setBioPendingEnable(next);
+                  setBioPin("");
+                  setBioError(null);
+                  setBioPinModal(true);
+                }}
+              >
+                {biometricEnabled ? "Attivo" : "Disattivato"}
+              </Switch>
+            </div>
+          ) : null}
         </CardBody>
       </Card>
+
+      <Modal
+        isOpen={bioPinModal}
+        onOpenChange={(o) => {
+          if (!o) {
+            setBioPinModal(false);
+            setBioPin("");
+            setBioError(null);
+          }
+        }}
+      >
+        <ModalContent>
+          <ModalHeader>
+            {bioPendingEnable ? `Attiva ${biometricLabel}` : `Disattiva ${biometricLabel}`}
+          </ModalHeader>
+          <ModalBody className="space-y-3">
+            <p className="text-sm text-default-600">
+              Inserisci il PIN per confermare.
+            </p>
+            <Input
+              label="PIN"
+              type="password"
+              inputMode="numeric"
+              value={bioPin}
+              onValueChange={setBioPin}
+              variant="bordered"
+              maxLength={8}
+            />
+            {bioError ? <p className="text-sm text-danger">{bioError}</p> : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="light"
+              onPress={() => {
+                setBioPinModal(false);
+                setBioPin("");
+                setBioError(null);
+              }}
+            >
+              Annulla
+            </Button>
+            <Button
+              color="primary"
+              isLoading={bioToggleLoading}
+              onPress={() => {
+                void (async () => {
+                  setBioError(null);
+                  setBioToggleLoading(true);
+                  try {
+                    const res = await setBiometricUnlockEnabled(
+                      bioPin.replace(/\D/g, ""),
+                      bioPendingEnable,
+                    );
+                    if (!res.ok) {
+                      setBioError(res.error || "Operazione non riuscita.");
+                      return;
+                    }
+                    setBiometricEnabled(bioPendingEnable);
+                    setBioPinModal(false);
+                    setBioPin("");
+                    refreshLockStatus();
+                  } finally {
+                    setBioToggleLoading(false);
+                  }
+                })();
+              }}
+            >
+              Conferma
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <Modal isOpen={pinModal !== null} onOpenChange={(o) => !o && closeModal()}>
         <ModalContent>

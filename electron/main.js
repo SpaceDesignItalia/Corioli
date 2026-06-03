@@ -1,5 +1,9 @@
 import { app, BrowserWindow, Menu, ipcMain, shell } from "electron";
 import { createAppLockHandlers } from "./appLock.js";
+import {
+  checkBiometricAvailable,
+  promptBiometric,
+} from "./biometricAuth.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -237,7 +241,12 @@ ipcMain.handle("kv:clearAppDottori", async () => {
 
 ipcMain.handle("app:version", () => app.getVersion());
 
-const appLock = createAppLockHandlers(kvGet, kvSet);
+const biometricBridge = {
+  checkAvailable: () => checkBiometricAvailable(),
+  prompt: () => promptBiometric(mainWindowRef),
+};
+
+const appLock = createAppLockHandlers(kvGet, kvSet, biometricBridge);
 ipcMain.handle("appLock:status", () => appLock.getStatus());
 ipcMain.handle("appLock:setup", (_e, pin) => appLock.setup(pin));
 ipcMain.handle("appLock:verifyPin", (_e, pin) => appLock.verifyPin(pin));
@@ -251,6 +260,10 @@ ipcMain.handle("appLock:changePin", (_e, payload) =>
 ipcMain.handle("appLock:resetPinWithRecovery", (_e, payload) =>
   appLock.resetPinWithRecovery(payload?.recoveryCode, payload?.newPin),
 );
+ipcMain.handle("appLock:setBiometricEnabled", (_e, payload) =>
+  appLock.setBiometricEnabled(payload?.pin, payload?.enabled),
+);
+ipcMain.handle("appLock:verifyBiometric", () => appLock.verifyBiometric());
 
 app.whenReady().then(() => {
   createWindow();

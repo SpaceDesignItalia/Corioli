@@ -32,4 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appLockChangePin: (payload) => ipcRenderer.invoke('appLock:changePin', payload),
   appLockResetPinWithRecovery: (payload) =>
     ipcRenderer.invoke('appLock:resetPinWithRecovery', payload),
+  appLockSetBiometricEnabled: (payload) =>
+    ipcRenderer.invoke('appLock:setBiometricEnabled', payload),
+  appLockVerifyBiometric: () => ipcRenderer.invoke('appLock:verifyBiometric'),
 });
