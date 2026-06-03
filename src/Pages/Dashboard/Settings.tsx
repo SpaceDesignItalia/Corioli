@@ -50,6 +50,8 @@ import {
 } from "lucide-react";
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
 import { ExportService } from "../../services/ExportService";
+import AppLockSettingsCard from "../../components/app-lock/AppLockSettingsCard";
+import { isAppLockAvailable } from "../../services/AppLockService";
 import { PageHeader } from "../../components/PageHeader";
 import BackupManager from "../../components/BackupManager";
 import { TemplateEditorModal } from "../../components/TemplateEditorModal";
@@ -1385,6 +1387,8 @@ const SettingsScreen = () => {
         icon={SettingsIcon}
         iconColor="primary"
       />
+
+      {isAppLockAvailable() ? <AppLockSettingsCard /> : null}
 
       {typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined" && (
         <Card className="shadow-sm border border-default-200">

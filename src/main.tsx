@@ -5,6 +5,7 @@ import App from "./App";
 import "./index.css";
 import { seedDemoDataIfNeeded } from "./services/seed";
 import { ToastProvider } from "./contexts/ToastContext";
+import { AppLockProvider } from "./contexts/AppLockContext";
 import { configureClientApiAuth } from "./utils/configureClientApi";
 
 configureClientApiAuth();
@@ -17,7 +18,9 @@ root.render(
   <NextUIProvider>
     <Router>
       <ToastProvider>
-        <App />
+        <AppLockProvider>
+          <App />
+        </AppLockProvider>
       </ToastProvider>
     </Router>
   </NextUIProvider>,

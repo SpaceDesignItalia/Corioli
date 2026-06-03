@@ -23,4 +23,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
 
   getAppVersion: () => ipcRenderer.invoke('app:version'),
+
+  appLockStatus: () => ipcRenderer.invoke('appLock:status'),
+  appLockSetup: (pin) => ipcRenderer.invoke('appLock:setup', pin),
+  appLockVerifyPin: (pin) => ipcRenderer.invoke('appLock:verifyPin', pin),
+  appLockRevealRecovery: (pin) => ipcRenderer.invoke('appLock:revealRecovery', pin),
+  appLockRegenerateRecovery: (pin) => ipcRenderer.invoke('appLock:regenerateRecovery', pin),
+  appLockChangePin: (payload) => ipcRenderer.invoke('appLock:changePin', payload),
+  appLockResetPinWithRecovery: (payload) =>
+    ipcRenderer.invoke('appLock:resetPinWithRecovery', payload),
 });

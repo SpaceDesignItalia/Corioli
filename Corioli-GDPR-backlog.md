@@ -103,7 +103,7 @@
 - [ ] Backup automatico pre-migrazione al primo avvio post-aggiornamento.
 - [ ] Test su DB reali (dimensioni, tempi, rollback).
 - [ ] Decidere se cifrare anche export backup `.json`.
-- [ ] Lock app (PIN / credenziali OS) all’avvio.
+- [x] Lock app (PIN + codice recupero; Windows Hello / Touch ID in secondo momento).
 - [ ] Comunicazione agli utenti esistenti prima del rilascio.
 
 ---

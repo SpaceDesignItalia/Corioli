@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, ipcMain, shell } from "electron";
+import { createAppLockHandlers } from "./appLock.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -235,6 +236,21 @@ ipcMain.handle("kv:clearAppDottori", async () => {
 });
 
 ipcMain.handle("app:version", () => app.getVersion());
+
+const appLock = createAppLockHandlers(kvGet, kvSet);
+ipcMain.handle("appLock:status", () => appLock.getStatus());
+ipcMain.handle("appLock:setup", (_e, pin) => appLock.setup(pin));
+ipcMain.handle("appLock:verifyPin", (_e, pin) => appLock.verifyPin(pin));
+ipcMain.handle("appLock:revealRecovery", (_e, pin) => appLock.revealRecovery(pin));
+ipcMain.handle("appLock:regenerateRecovery", (_e, pin) =>
+  appLock.regenerateRecovery(pin),
+);
+ipcMain.handle("appLock:changePin", (_e, payload) =>
+  appLock.changePin(payload?.currentPin, payload?.newPin),
+);
+ipcMain.handle("appLock:resetPinWithRecovery", (_e, payload) =>
+  appLock.resetPinWithRecovery(payload?.recoveryCode, payload?.newPin),
+);
 
 app.whenReady().then(() => {
   createWindow();

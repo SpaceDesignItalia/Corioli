@@ -1,0 +1,270 @@
+import crypto from "crypto";
+import { safeStorage } from "electron";
+
+export const APP_LOCK_CONFIG_KEY = "app_lock_config_v1";
+export const APP_LOCK_RECOVERY_ENC_KEY = "app_lock_recovery_enc_v1";
+
+const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+const HASH_KEYLEN = 32;
+const PIN_MIN = 4;
+const PIN_MAX = 8;
+const RECOVERY_SEGMENT = 4;
+
+function scryptHash(secret, salt) {
+  return crypto.scryptSync(secret, salt, HASH_KEYLEN, SCRYPT_PARAMS);
+}
+
+function normalizePin(pin) {
+  return String(pin ?? "").replace(/\D/g, "");
+}
+
+function normalizeRecoveryCode(code) {
+  return String(code ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+export function validatePinFormat(pin) {
+  const n = normalizePin(pin);
+  if (n.length < PIN_MIN || n.length > PIN_MAX) {
+    return {
+      ok: false,
+      error: `Il PIN deve avere tra ${PIN_MIN} e ${PIN_MAX} cifre.`,
+    };
+  }
+  return { ok: true, normalized: n };
+}
+
+function hashSecret(secret, saltHex) {
+  const salt = Buffer.from(saltHex, "hex");
+  return scryptHash(secret, salt).toString("hex");
+}
+
+function createSalt() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+export function generateRecoveryCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.randomBytes(RECOVERY_SEGMENT * 3);
+  const parts = [];
+  for (let p = 0; p < 3; p++) {
+    let segment = "";
+    for (let i = 0; i < RECOVERY_SEGMENT; i++) {
+      segment += alphabet[bytes[p * RECOVERY_SEGMENT + i] % alphabet.length];
+    }
+    parts.push(segment);
+  }
+  return `CORI-${parts.join("-")}`;
+}
+
+function formatRecoveryForDisplay(code) {
+  const raw = normalizeRecoveryCode(code);
+  if (raw.startsWith("CORI") && raw.length >= 16) {
+    const body = raw.slice(4);
+    const chunks = body.match(/.{1,4}/g) || [];
+    return `CORI-${chunks.join("-")}`;
+  }
+  return code;
+}
+
+export function createAppLockHandlers(kvGet, kvSet) {
+  async function readConfig() {
+    const raw = await kvGet(APP_LOCK_CONFIG_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.version !== 1 || !parsed.pinHash || !parsed.pinSalt) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  async function writeConfig(config) {
+    await kvSet(APP_LOCK_CONFIG_KEY, JSON.stringify(config));
+  }
+
+  async function storeRecoveryEncrypted(recoveryCode) {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, reason: "safe_storage_unavailable" };
+    }
+    const enc = safeStorage.encryptString(recoveryCode);
+    await kvSet(APP_LOCK_RECOVERY_ENC_KEY, enc.toString("base64"));
+    return { ok: true };
+  }
+
+  async function readRecoveryDecrypted() {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, reason: "safe_storage_unavailable" };
+    }
+    const blob = await kvGet(APP_LOCK_RECOVERY_ENC_KEY);
+    if (!blob) return { ok: false, reason: "not_found" };
+    try {
+      const plain = safeStorage.decryptString(Buffer.from(blob, "base64"));
+      return { ok: true, code: formatRecoveryForDisplay(plain) };
+    } catch {
+      return { ok: false, reason: "decrypt_failed" };
+    }
+  }
+
+  function verifyPinAgainstConfig(pin, config) {
+    const check = validatePinFormat(pin);
+    if (!check.ok) return false;
+    const hash = hashSecret(check.normalized, config.pinSalt);
+    return crypto.timingSafeEqual(
+      Buffer.from(hash, "hex"),
+      Buffer.from(config.pinHash, "hex"),
+    );
+  }
+
+  function verifyRecoveryAgainstConfig(code, config) {
+    const normalized = normalizeRecoveryCode(code);
+    if (normalized.length < 12) return false;
+    const hash = hashSecret(normalized, config.recoverySalt);
+    try {
+      return crypto.timingSafeEqual(
+        Buffer.from(hash, "hex"),
+        Buffer.from(config.recoveryHash, "hex"),
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  return {
+    async getStatus() {
+      const config = await readConfig();
+      return {
+        configured: Boolean(config),
+        canRevealRecovery:
+          Boolean(config) && safeStorage.isEncryptionAvailable(),
+      };
+    },
+
+    async setup(pin) {
+      const pinCheck = validatePinFormat(pin);
+      if (!pinCheck.ok) {
+        return { ok: false, error: pinCheck.error };
+      }
+
+      const existing = await readConfig();
+      if (existing) {
+        return { ok: false, error: "Il PIN è già configurato." };
+      }
+
+      const recoveryCode = generateRecoveryCode();
+      const recoveryNormalized = normalizeRecoveryCode(recoveryCode);
+      const pinSalt = createSalt();
+      const recoverySalt = createSalt();
+      const config = {
+        version: 1,
+        pinSalt,
+        pinHash: hashSecret(pinCheck.normalized, pinSalt),
+        recoverySalt,
+        recoveryHash: hashSecret(recoveryNormalized, recoverySalt),
+        createdAt: new Date().toISOString(),
+      };
+
+      await writeConfig(config);
+      const stored = await storeRecoveryEncrypted(
+        formatRecoveryForDisplay(recoveryCode),
+      );
+
+      return {
+        ok: true,
+        recoveryCode: formatRecoveryForDisplay(recoveryCode),
+        recoveryStoredSecurely: stored.ok,
+      };
+    },
+
+    async verifyPin(pin) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      if (!verifyPinAgainstConfig(pin, config)) {
+        return { ok: false, error: "PIN non corretto." };
+      }
+      return { ok: true };
+    },
+
+    async revealRecovery(pin) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      if (!verifyPinAgainstConfig(pin, config)) {
+        return { ok: false, error: "PIN non corretto." };
+      }
+      const revealed = await readRecoveryDecrypted();
+      if (!revealed.ok) {
+        return {
+          ok: false,
+          error:
+            "Codice di recupero non disponibile su questo dispositivo. Rigenera un nuovo codice dalle impostazioni.",
+        };
+      }
+      return { ok: true, recoveryCode: revealed.code };
+    },
+
+    async regenerateRecovery(pin) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      if (!verifyPinAgainstConfig(pin, config)) {
+        return { ok: false, error: "PIN non corretto." };
+      }
+
+      const recoveryCode = generateRecoveryCode();
+      const recoveryNormalized = normalizeRecoveryCode(recoveryCode);
+      config.recoverySalt = createSalt();
+      config.recoveryHash = hashSecret(recoveryNormalized, config.recoverySalt);
+      await writeConfig(config);
+      const stored = await storeRecoveryEncrypted(
+        formatRecoveryForDisplay(recoveryCode),
+      );
+
+      return {
+        ok: true,
+        recoveryCode: formatRecoveryForDisplay(recoveryCode),
+        recoveryStoredSecurely: stored.ok,
+      };
+    },
+
+    async changePin(currentPin, newPin) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      if (!verifyPinAgainstConfig(currentPin, config)) {
+        return { ok: false, error: "PIN attuale non corretto." };
+      }
+
+      const pinCheck = validatePinFormat(newPin);
+      if (!pinCheck.ok) {
+        return { ok: false, error: pinCheck.error };
+      }
+
+      const pinSalt = createSalt();
+      config.pinSalt = pinSalt;
+      config.pinHash = hashSecret(pinCheck.normalized, pinSalt);
+      await writeConfig(config);
+      return { ok: true };
+    },
+
+    async resetPinWithRecovery(recoveryCode, newPin) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+      if (!verifyRecoveryAgainstConfig(recoveryCode, config)) {
+        return { ok: false, error: "Codice di recupero non valido." };
+      }
+
+      const pinCheck = validatePinFormat(newPin);
+      if (!pinCheck.ok) {
+        return { ok: false, error: pinCheck.error };
+      }
+
+      const pinSalt = createSalt();
+      config.pinSalt = pinSalt;
+      config.pinHash = hashSecret(pinCheck.normalized, pinSalt);
+      await writeConfig(config);
+      return { ok: true };
+    },
+  };
+}
