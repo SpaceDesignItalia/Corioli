@@ -1,23 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Card,
-  CardBody,
-  Input,
-  Button,
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-} from "@nextui-org/react";
+import { Card, CardBody, Button } from "@nextui-org/react";
 import { Fingerprint, Lock } from "lucide-react";
 import {
   verifyAppLockPin,
-  resetPinWithRecovery,
   getAppLockStatus,
   verifyAppLockBiometric,
 } from "../../services/AppLockService";
 import PinDigitInput from "./PinDigitInput";
+import PinForgotModal from "./PinForgotModal";
 
 const PIN_LENGTH = 4;
 
@@ -30,12 +20,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [shake, setShake] = useState(false);
-  const [recoveryOpen, setRecoveryOpen] = useState(false);
-  const [recoveryCode, setRecoveryCode] = useState("");
-  const [newPin, setNewPin] = useState("");
-  const [newPinConfirm, setNewPinConfirm] = useState("");
-  const [recoveryError, setRecoveryError] = useState<string | null>(null);
-  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
   const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [bioLoading, setBioLoading] = useState(false);
@@ -73,51 +58,27 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
     void handleBiometricUnlock();
   }, [biometricEnabled, handleBiometricUnlock]);
 
-  const handleUnlock = useCallback(async (digits: string) => {
-    if (digits.length !== PIN_LENGTH) return;
-    setError(null);
-    setLoading(true);
-    try {
-      const result = await verifyAppLockPin(digits);
-      if (!result.ok) {
-        setError(result.error || "PIN non corretto.");
-        setShake(true);
-        setPin("");
-        setTimeout(() => setShake(false), 600);
-        return;
+  const handleUnlock = useCallback(
+    async (digits: string) => {
+      if (digits.length !== PIN_LENGTH) return;
+      setError(null);
+      setLoading(true);
+      try {
+        const result = await verifyAppLockPin(digits);
+        if (!result.ok) {
+          setError(result.error || "PIN non corretto.");
+          setShake(true);
+          setPin("");
+          setTimeout(() => setShake(false), 600);
+          return;
+        }
+        onUnlocked();
+      } finally {
+        setLoading(false);
       }
-      onUnlocked();
-    } finally {
-      setLoading(false);
-    }
-  }, [onUnlocked]);
-
-  const handleRecoveryReset = async () => {
-    setRecoveryError(null);
-    const a = newPin.replace(/\D/g, "");
-    const b = newPinConfirm.replace(/\D/g, "");
-    if (a.length !== PIN_LENGTH) {
-      setRecoveryError(`Il nuovo PIN deve avere esattamente ${PIN_LENGTH} cifre.`);
-      return;
-    }
-    if (a !== b) {
-      setRecoveryError("I PIN non coincidono.");
-      return;
-    }
-    setRecoveryLoading(true);
-    try {
-      const result = await resetPinWithRecovery(recoveryCode, a);
-      if (!result.ok) {
-        setRecoveryError(result.error || "Recupero non riuscito.");
-        return;
-      }
-      setRecoveryOpen(false);
-      setPin(a);
-      onUnlocked();
-    } finally {
-      setRecoveryLoading(false);
-    }
-  };
+    },
+    [onUnlocked],
+  );
 
   return (
     <>
@@ -181,8 +142,8 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               type="button"
               className="w-full text-sm text-primary font-medium hover:underline"
               onClick={() => {
-                setRecoveryOpen(true);
-                setRecoveryError(null);
+                setForgotOpen(true);
+                setError(null);
               }}
             >
               Ho dimenticato il PIN
@@ -191,57 +152,14 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
         </Card>
       </div>
 
-      <Modal isOpen={recoveryOpen} onOpenChange={setRecoveryOpen} placement="center">
-        <ModalContent>
-          <ModalHeader>Recupero con codice</ModalHeader>
-          <ModalBody className="space-y-4">
-            <p className="text-sm text-default-600">
-              Inserisci il codice di recupero salvato alla configurazione, poi imposta un
-              nuovo PIN.
-            </p>
-            <Input
-              label="Codice di recupero"
-              value={recoveryCode}
-              onValueChange={setRecoveryCode}
-              variant="bordered"
-              placeholder="CORI-XXXX-XXXX-XXXX"
-            />
-            <div className="space-y-1">
-              <p className="text-xs text-default-500 text-center">Nuovo PIN</p>
-              <PinDigitInput
-                value={newPin}
-                onChange={setNewPin}
-                length={PIN_LENGTH}
-                aria-label="Nuovo PIN"
-              />
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs text-default-500 text-center">Conferma nuovo PIN</p>
-              <PinDigitInput
-                value={newPinConfirm}
-                onChange={setNewPinConfirm}
-                length={PIN_LENGTH}
-                aria-label="Conferma nuovo PIN"
-              />
-            </div>
-            {recoveryError ? (
-              <p className="text-sm text-danger">{recoveryError}</p>
-            ) : null}
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={() => setRecoveryOpen(false)}>
-              Annulla
-            </Button>
-            <Button
-              color="primary"
-              isLoading={recoveryLoading}
-              onPress={() => void handleRecoveryReset()}
-            >
-              Imposta nuovo PIN
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <PinForgotModal
+        isOpen={forgotOpen}
+        onOpenChange={setForgotOpen}
+        onUnlocked={(newPin) => {
+          if (newPin) setPin(newPin);
+          onUnlocked();
+        }}
+      />
     </>
   );
 }

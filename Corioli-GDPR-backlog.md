@@ -48,6 +48,8 @@
 ## 2. Deploy e configurazione (da fare subito)
 
 - [ ] **Produzione BE:** impostare `CLIENT_API_SECRET` (stesso valore usato in build app Corioli).
+- [ ] **Produzione BE:** configurare SMTP (`SMTP_HOST`, `SMTP_FROM`, …) per recupero PIN via email; in dev opzionale `PIN_RECOVERY_DEV_LOG_OTP=true`.
+- [ ] **Produzione BE:** `npx prisma migrate deploy` (tabella `PinRecoveryChallenge`).
 - [ ] **Produzione BE:** impostare `CORS_ORIGINS` con URL reale dashboard (es. `https://dashboard.corioli.it`).
 - [ ] **Produzione BE:** eseguire `npx prisma migrate deploy` (migrazione tabella `AuditLog`).
 - [ ] **Build app Corioli:** includere `VITE_CLIENT_API_SECRET` in CI/CD; ricompilare e distribuire agli utenti.
@@ -103,7 +105,7 @@
 - [ ] Backup automatico pre-migrazione al primo avvio post-aggiornamento.
 - [ ] Test su DB reali (dimensioni, tempi, rollback).
 - [ ] Decidere se cifrare anche export backup `.json`.
-- [x] Lock app (PIN + codice recupero + Windows Hello / Touch ID opzionale).
+- [x] Lock app (PIN + profilo obbligatorio al setup + codice recupero + recupero via email + Windows Hello / Touch ID opzionale).
 - [ ] Comunicazione agli utenti esistenti prima del rilascio.
 
 ---

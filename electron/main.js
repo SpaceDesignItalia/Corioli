@@ -262,6 +262,13 @@ ipcMain.handle("appLock:changePin", (_e, payload) =>
 ipcMain.handle("appLock:resetPinWithRecovery", (_e, payload) =>
   appLock.resetPinWithRecovery(payload?.recoveryCode, payload?.newPin),
 );
+ipcMain.handle("appLock:resetPinWithOnlineGrant", (_e, payload) =>
+  appLock.resetPinWithOnlineGrant(
+    payload?.clientId,
+    payload?.grant,
+    payload?.newPin,
+  ),
+);
 ipcMain.handle("appLock:setBiometricEnabled", (_e, payload) =>
   appLock.setBiometricEnabled(payload?.pin, payload?.enabled),
 );

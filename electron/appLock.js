@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { safeStorage } from "electron";
+import { consumePinRecoveryGrant } from "./pinRecoveryClient.js";
 
 export const APP_LOCK_CONFIG_KEY = "app_lock_config_v1";
 export const APP_LOCK_RECOVERY_ENC_KEY = "app_lock_recovery_enc_v1";
@@ -260,6 +261,27 @@ export function createAppLockHandlers(kvGet, kvSet, biometric = null) {
       if (!config) return { ok: false, error: "PIN non configurato." };
       if (!verifyPinAgainstConfig(currentPin, config)) {
         return { ok: false, error: "PIN attuale non corretto." };
+      }
+
+      const pinCheck = validatePinFormat(newPin);
+      if (!pinCheck.ok) {
+        return { ok: false, error: pinCheck.error };
+      }
+
+      const pinSalt = createSalt();
+      config.pinSalt = pinSalt;
+      config.pinHash = hashSecret(pinCheck.normalized, pinSalt);
+      await writeConfig(config);
+      return { ok: true };
+    },
+
+    async resetPinWithOnlineGrant(clientId, grant, newPin) {
+      const config = await readConfig();
+      if (!config) return { ok: false, error: "PIN non configurato." };
+
+      const consumed = await consumePinRecoveryGrant(clientId, grant);
+      if (!consumed.ok) {
+        return { ok: false, error: consumed.error };
       }
 
       const pinCheck = validatePinFormat(newPin);

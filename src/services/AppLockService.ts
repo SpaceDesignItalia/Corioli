@@ -32,6 +32,11 @@ type ElectronAppLockApi = {
     recoveryCode: string;
     newPin: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  appLockResetPinWithOnlineGrant?: (payload: {
+    clientId: string;
+    grant: string;
+    newPin: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   appLockSetBiometricEnabled?: (payload: {
     pin: string;
     enabled: boolean;
@@ -97,6 +102,19 @@ export async function resetPinWithRecovery(
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await api()?.appLockResetPinWithRecovery?.({
     recoveryCode,
+    newPin,
+  });
+  return res ?? { ok: false, error: "Funzione non disponibile." };
+}
+
+export async function resetPinWithOnlineGrant(
+  clientId: string,
+  grant: string,
+  newPin: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await api()?.appLockResetPinWithOnlineGrant?.({
+    clientId,
+    grant,
     newPin,
   });
   return res ?? { ok: false, error: "Funzione non disponibile." };
