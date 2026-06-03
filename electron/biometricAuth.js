@@ -27,7 +27,7 @@ export async function checkBiometricAvailable() {
     return {
       available,
       kind: available ? "touchId" : null,
-      label: available ? "Touch ID" : null,
+      label: available ? "riconoscimento biometrico" : null,
     };
   }
 
@@ -42,7 +42,7 @@ export async function checkBiometricAvailable() {
       return {
         available: true,
         kind: "windowsHello",
-        label: "Windows Hello",
+        label: "riconoscimento biometrico",
       };
     } catch {
       return { available: false, kind: null, label: null };
@@ -58,7 +58,7 @@ export async function promptBiometric(mainWindow) {
       typeof systemPreferences.canPromptTouchID !== "function" ||
       !systemPreferences.canPromptTouchID()
     ) {
-      return { ok: false, error: "Touch ID non disponibile su questo Mac." };
+      return { ok: false, error: "Impronta digitale non disponibile su questo Mac." };
     }
     try {
       await systemPreferences.promptTouchID(PROMPT_REASON);
@@ -76,7 +76,7 @@ export async function promptBiometric(mainWindow) {
     if (!factory) {
       return {
         ok: false,
-        error: "Windows Hello non è disponibile su questo sistema.",
+        error: "Il riconoscimento biometrico non è disponibile su questo sistema.",
       };
     }
     try {

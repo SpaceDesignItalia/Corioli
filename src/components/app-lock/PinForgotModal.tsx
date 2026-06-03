@@ -1,14 +1,6 @@
-import { useEffect, useState } from "react";
-import {
-  Button,
-  Input,
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@nextui-org/react";
-import { Mail, KeyRound } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button, Input } from "@nextui-org/react";
+import { ChevronLeft, KeyRound, Mail, WifiOff } from "lucide-react";
 import {
   resetPinWithRecovery,
   resetPinWithOnlineGrant,
@@ -19,9 +11,11 @@ import {
 } from "../../services/PinRecoveryService";
 import { DoctorService } from "../../services/OfflineServices";
 import { doctorValuesFromProfile } from "./DoctorProfileSetupFields";
+import AppLockShell from "./AppLockShell";
 import PinDigitInput from "./PinDigitInput";
 
 const PIN_LENGTH = 4;
+const OTP_LENGTH = 6;
 
 type Props = {
   isOpen: boolean;
@@ -43,6 +37,9 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pinShake, setPinShake] = useState(false);
+  const [confirmShake, setConfirmShake] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
 
   const resetState = () => {
     setView("choose");
@@ -54,6 +51,8 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
     setError(null);
     setInfo(null);
     setLoading(false);
+    setPinShake(false);
+    setConfirmShake(false);
   };
 
   useEffect(() => {
@@ -65,13 +64,41 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
     });
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const syncOnline = () => setOnline(navigator.onLine);
+    window.addEventListener("online", syncOnline);
+    window.addEventListener("offline", syncOnline);
+    return () => {
+      window.removeEventListener("online", syncOnline);
+      window.removeEventListener("offline", syncOnline);
+    };
+  }, [isOpen]);
+
+  const close = () => {
+    onOpenChange(false);
+    resetState();
+  };
+
+  const goBack = () => {
+    setError(null);
+    setInfo(null);
+    if (view === "email-otp") setView("email");
+    else if (view === "email-pin") setView("email-otp");
+    else setView("choose");
+  };
+
   const validateNewPin = (): string | null => {
     const a = newPin.replace(/\D/g, "");
     const b = newPinConfirm.replace(/\D/g, "");
     if (a.length !== PIN_LENGTH) {
+      setPinShake(true);
+      setTimeout(() => setPinShake(false), 600);
       return `Il nuovo PIN deve avere esattamente ${PIN_LENGTH} cifre.`;
     }
     if (a !== b) {
+      setConfirmShake(true);
+      setTimeout(() => setConfirmShake(false), 600);
       return "I PIN non coincidono.";
     }
     return null;
@@ -92,8 +119,7 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
         setError(result.error || "Recupero non riuscito.");
         return;
       }
-      onOpenChange(false);
-      resetState();
+      close();
       onUnlocked(a);
     } finally {
       setLoading(false);
@@ -164,202 +190,287 @@ export default function PinForgotModal({ isOpen, onOpenChange, onUnlocked }: Pro
         setError(result.error || "Impossibile impostare il nuovo PIN.");
         return;
       }
-      onOpenChange(false);
-      resetState();
+      close();
       onUnlocked(a);
     } finally {
       setLoading(false);
     }
   };
 
-  const header = () => {
-    if (view === "choose") return "Recupero PIN";
-    if (view === "code") return "Codice di recupero";
-    if (view === "email") return "Recupero via email";
-    if (view === "email-otp") return "Codice ricevuto via email";
-    return "Nuovo PIN";
-  };
+  const { title, subtitle, icon } = useMemo(() => {
+    if (view === "choose") {
+      return {
+        title: "Recupero PIN",
+        subtitle: "Scegli come reimpostare l'accesso all'app.",
+        icon: "lock" as const,
+      };
+    }
+    if (view === "code") {
+      return {
+        title: "Codice CORI-…",
+        subtitle: "Inserisci il codice salvato alla configurazione, poi un nuovo PIN.",
+        icon: "key" as const,
+      };
+    }
+    if (view === "email") {
+      return {
+        title: "Recupero via email",
+        subtitle: "Passo 1 di 3 — Invieremo un codice all'email del profilo.",
+        icon: "mail" as const,
+      };
+    }
+    if (view === "email-otp") {
+      return {
+        title: "Controlla la email",
+        subtitle: "Passo 2 di 3 — Inserisci il codice a 6 cifre ricevuto.",
+        icon: "mail" as const,
+      };
+    }
+    return {
+      title: "Nuovo PIN",
+      subtitle: "Passo 3 di 3 — Scegli un PIN a 4 cifre.",
+      icon: "lock" as const,
+    };
+  }, [view]);
 
   const pinReady =
     newPin.replace(/\D/g, "").length === PIN_LENGTH &&
     newPinConfirm.replace(/\D/g, "").length === PIN_LENGTH;
 
+  const otpReady = otp.replace(/\D/g, "").length === OTP_LENGTH;
+
+  if (!isOpen) return null;
+
   return (
-    <Modal
-      isOpen={isOpen}
-      onOpenChange={(open) => {
-        onOpenChange(open);
-        if (!open) resetState();
-      }}
-      placement="center"
-      size="lg"
+    <AppLockShell title={title} subtitle={subtitle} icon={icon} overlay>
+      {view === "choose" ? (
+        <div className="space-y-3">
+          <RecoveryOptionCard
+            icon={<KeyRound className="h-5 w-5 text-primary" />}
+            title="Ho il codice CORI-…"
+            description="Salvato durante la configurazione del PIN. Funziona anche offline."
+            onPress={() => {
+              setError(null);
+              setView("code");
+            }}
+          />
+          <RecoveryOptionCard
+            icon={<Mail className="h-5 w-5 text-primary" />}
+            title="Recupero via email"
+            description={
+              online
+                ? "Codice inviato all'email del profilo medico."
+                : "Richiede connessione internet."
+            }
+            disabled={!online}
+            onPress={() => {
+              setError(null);
+              setView("email");
+            }}
+          />
+          {!online ? (
+            <div className="flex items-start gap-2 rounded-xl border border-warning-200 bg-warning-50 px-3 py-2.5">
+              <WifiOff className="h-4 w-4 text-warning-700 shrink-0 mt-0.5" />
+              <p className="text-xs text-warning-800 leading-relaxed">
+                Sei offline. Usa il codice CORI-… oppure un backup dei dati.
+              </p>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="w-full text-sm text-default-500 hover:text-foreground transition-colors pt-1"
+            onClick={close}
+          >
+            Annulla
+          </button>
+        </div>
+      ) : null}
+
+      {view === "code" ? (
+        <div className="space-y-5">
+          <RecoveryCodeField value={recoveryCode} onChange={setRecoveryCode} />
+          <PinPairInputs
+            newPin={newPin}
+            newPinConfirm={newPinConfirm}
+            onNewPin={setNewPin}
+            onConfirm={setNewPinConfirm}
+            pinShake={pinShake}
+            confirmShake={confirmShake}
+            disabled={loading}
+          />
+          {error ? <AlertMessage tone="danger">{error}</AlertMessage> : null}
+          <Button
+            color="primary"
+            className="w-full font-medium"
+            isLoading={loading}
+            isDisabled={!pinReady || !recoveryCode.trim()}
+            onPress={() => void handleCodeReset()}
+          >
+            Imposta nuovo PIN
+          </Button>
+          <NavBack onPress={goBack} />
+        </div>
+      ) : null}
+
+      {view === "email" ? (
+        <div className="space-y-5">
+          <p className="text-sm text-default-600 text-center leading-relaxed">
+            Inserisci l&apos;email del tuo profilo: ti invieremo un codice per reimpostare
+            il PIN.
+          </p>
+          <Input
+            label="Email del profilo"
+            type="email"
+            value={email}
+            onValueChange={setEmail}
+            variant="bordered"
+            classNames={{ input: "text-base" }}
+          />
+          <p className="text-xs text-default-500 text-center leading-relaxed">
+            Non ricordi l&apos;email o non ricevi il codice?{" "}
+            <a
+              href="mailto:info@corioli.it"
+              className="text-primary font-medium hover:underline"
+            >
+              Scrivi a info@corioli.it
+            </a>
+          </p>
+          {error ? <AlertMessage tone="danger">{error}</AlertMessage> : null}
+          <Button
+            color="primary"
+            className="w-full font-medium"
+            isLoading={loading}
+            onPress={() => void handleSendOtp()}
+          >
+            Invia codice
+          </Button>
+          <NavBack onPress={goBack} />
+        </div>
+      ) : null}
+
+      {view === "email-otp" ? (
+        <div className="space-y-5">
+          {info ? <AlertMessage tone="success">{info}</AlertMessage> : null}
+          <p className="text-xs text-default-500 text-center">
+            Inviato a <span className="font-medium text-foreground">{email}</span>
+          </p>
+          <div className="space-y-1">
+            <p className="text-xs text-default-500 text-center">Codice a 6 cifre</p>
+            <PinDigitInput
+              value={otp}
+              onChange={setOtp}
+              length={OTP_LENGTH}
+              autoFocus
+              disabled={loading}
+              showHint={false}
+              onComplete={() => void handleVerifyOtp()}
+              aria-label="Codice OTP"
+            />
+          </div>
+          {error ? <AlertMessage tone="danger">{error}</AlertMessage> : null}
+          <Button
+            color="primary"
+            className="w-full font-medium"
+            isLoading={loading}
+            isDisabled={!otpReady}
+            onPress={() => void handleVerifyOtp()}
+          >
+            Verifica codice
+          </Button>
+          <NavBack onPress={goBack} />
+        </div>
+      ) : null}
+
+      {view === "email-pin" ? (
+        <div className="space-y-5">
+          <PinPairInputs
+            newPin={newPin}
+            newPinConfirm={newPinConfirm}
+            onNewPin={setNewPin}
+            onConfirm={setNewPinConfirm}
+            pinShake={pinShake}
+            confirmShake={confirmShake}
+            disabled={loading}
+            autoFocus
+            onComplete={() => void handleEmailPinReset()}
+          />
+          {error ? <AlertMessage tone="danger">{error}</AlertMessage> : null}
+          <Button
+            color="primary"
+            className="w-full font-medium"
+            isLoading={loading}
+            isDisabled={!pinReady}
+            onPress={() => void handleEmailPinReset()}
+          >
+            Salva nuovo PIN
+          </Button>
+          <NavBack onPress={goBack} />
+        </div>
+      ) : null}
+    </AppLockShell>
+  );
+}
+
+function RecoveryOptionCard({
+  icon,
+  title,
+  description,
+  onPress,
+  disabled = false,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onPress}
+      className={[
+        "w-full text-left rounded-xl border-2 p-4 transition-all",
+        disabled
+          ? "border-default-200 bg-default-50 opacity-60 cursor-not-allowed"
+          : "border-default-200 bg-content1 hover:border-primary hover:bg-primary-50/40 active:scale-[0.99]",
+      ].join(" ")}
     >
-      <ModalContent>
-        <ModalHeader>{header()}</ModalHeader>
-        <ModalBody className="space-y-3">
-          {view === "choose" ? (
-            <>
-              <p className="text-sm text-default-600">
-                Scegli come recuperare l&apos;accesso. L&apos;uso quotidiano dell&apos;app
-                resta possibile anche senza internet; il recupero via email richiede
-                connessione.
-              </p>
-              <Button
-                variant="bordered"
-                className="w-full justify-start"
-                startContent={<KeyRound size={18} />}
-                onPress={() => {
-                  setError(null);
-                  setView("code");
-                }}
-              >
-                Ho il codice CORI-… salvato
-              </Button>
-              <Button
-                variant="bordered"
-                className="w-full justify-start"
-                startContent={<Mail size={18} />}
-                onPress={() => {
-                  setError(null);
-                  setView("email");
-                }}
-                isDisabled={!navigator.onLine}
-              >
-                Recupero via email (serve internet)
-              </Button>
-              {!navigator.onLine ? (
-                <p className="text-xs text-warning-700">
-                  Senza connessione usa il codice di recupero o un backup dei dati.
-                </p>
-              ) : null}
-            </>
-          ) : null}
+      <div className="flex items-start gap-3.5">
+        <div className="h-11 w-11 rounded-xl bg-primary-100 flex items-center justify-center shrink-0">
+          {icon}
+        </div>
+        <div className="min-w-0 pt-0.5">
+          <p className="font-semibold text-foreground">{title}</p>
+          <p className="text-sm text-default-500 mt-0.5 leading-snug">{description}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
 
-          {view === "code" ? (
-            <>
-              <p className="text-sm text-default-600">
-                Inserisci il codice ricevuto alla configurazione del PIN, poi imposta un
-                nuovo PIN a 4 cifre.
-              </p>
-              <Input
-                label="Codice di recupero"
-                value={recoveryCode}
-                onValueChange={setRecoveryCode}
-                variant="bordered"
-                placeholder="CORI-XXXX-XXXX-XXXX"
-              />
-              <PinPairInputs
-                newPin={newPin}
-                newPinConfirm={newPinConfirm}
-                onNewPin={setNewPin}
-                onConfirm={setNewPinConfirm}
-              />
-            </>
-          ) : null}
-
-          {view === "email" ? (
-            <>
-              <p className="text-sm text-default-600">
-                Invieremo un codice a 6 cifre all&apos;email del profilo medico (deve
-                coincidere con quella registrata sul server).
-              </p>
-              <Input
-                label="Email"
-                type="email"
-                value={email}
-                onValueChange={setEmail}
-                variant="bordered"
-              />
-            </>
-          ) : null}
-
-          {view === "email-otp" ? (
-            <>
-              {info ? <p className="text-sm text-success-700">{info}</p> : null}
-              <Input
-                label="Codice a 6 cifre"
-                inputMode="numeric"
-                value={otp}
-                onValueChange={setOtp}
-                variant="bordered"
-                maxLength={6}
-              />
-            </>
-          ) : null}
-
-          {view === "email-pin" ? (
-            <>
-              <p className="text-sm text-default-600">
-                Email verificata. Imposta il nuovo PIN a 4 cifre.
-              </p>
-              <PinPairInputs
-                newPin={newPin}
-                newPinConfirm={newPinConfirm}
-                onNewPin={setNewPin}
-                onConfirm={setNewPinConfirm}
-              />
-            </>
-          ) : null}
-
-          {error ? <p className="text-sm text-danger">{error}</p> : null}
-        </ModalBody>
-        <ModalFooter>
-          {view !== "choose" ? (
-            <Button
-              variant="light"
-              onPress={() => {
-                setError(null);
-                setInfo(null);
-                if (view === "email-otp") setView("email");
-                else if (view === "email-pin") setView("email-otp");
-                else setView("choose");
-              }}
-            >
-              Indietro
-            </Button>
-          ) : (
-            <Button variant="light" onPress={() => onOpenChange(false)}>
-              Annulla
-            </Button>
-          )}
-          {view === "code" ? (
-            <Button
-              color="primary"
-              isLoading={loading}
-              isDisabled={!pinReady || !recoveryCode.trim()}
-              onPress={() => void handleCodeReset()}
-            >
-              Imposta nuovo PIN
-            </Button>
-          ) : null}
-          {view === "email" ? (
-            <Button color="primary" isLoading={loading} onPress={() => void handleSendOtp()}>
-              Invia codice
-            </Button>
-          ) : null}
-          {view === "email-otp" ? (
-            <Button
-              color="primary"
-              isLoading={loading}
-              isDisabled={otp.replace(/\D/g, "").length < 6}
-              onPress={() => void handleVerifyOtp()}
-            >
-              Verifica codice
-            </Button>
-          ) : null}
-          {view === "email-pin" ? (
-            <Button
-              color="primary"
-              isLoading={loading}
-              isDisabled={!pinReady}
-              onPress={() => void handleEmailPinReset()}
-            >
-              Salva PIN
-            </Button>
-          ) : null}
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+function RecoveryCodeField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-default-500 text-center">Codice di recupero</p>
+      <div className="rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/60 px-3 py-2 focus-within:border-primary focus-within:bg-primary-50 transition-colors">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value.toUpperCase())}
+          placeholder="CORI-XXXX-XXXX-XXXX"
+          autoComplete="off"
+          spellCheck={false}
+          className="w-full bg-transparent text-center font-mono text-base sm:text-lg font-bold tracking-wider text-primary-900 placeholder:text-default-400 placeholder:font-normal placeholder:tracking-normal outline-none"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -368,11 +479,21 @@ function PinPairInputs({
   newPinConfirm,
   onNewPin,
   onConfirm,
+  pinShake,
+  confirmShake,
+  disabled,
+  autoFocus,
+  onComplete,
 }: {
   newPin: string;
   newPinConfirm: string;
   onNewPin: (v: string) => void;
   onConfirm: (v: string) => void;
+  pinShake?: boolean;
+  confirmShake?: boolean;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  onComplete?: () => void;
 }) {
   return (
     <>
@@ -382,18 +503,59 @@ function PinPairInputs({
           value={newPin}
           onChange={onNewPin}
           length={PIN_LENGTH}
+          autoFocus={autoFocus}
+          disabled={disabled}
+          invalid={pinShake}
           aria-label="Nuovo PIN"
         />
       </div>
       <div className="space-y-1">
-        <p className="text-xs text-default-500 text-center">Conferma nuovo PIN</p>
+        <p className="text-xs text-default-500 text-center">Conferma PIN</p>
         <PinDigitInput
           value={newPinConfirm}
           onChange={onConfirm}
           length={PIN_LENGTH}
+          disabled={disabled}
+          invalid={confirmShake}
+          onComplete={onComplete}
+          onSubmit={onComplete}
           aria-label="Conferma nuovo PIN"
         />
       </div>
     </>
+  );
+}
+
+function AlertMessage({
+  children,
+  tone,
+}: {
+  children: React.ReactNode;
+  tone: "danger" | "success";
+}) {
+  const styles =
+    tone === "danger"
+      ? "border-danger-200 bg-danger-50 text-danger-700"
+      : "border-success-200 bg-success-50 text-success-800";
+  return (
+    <p
+      className={`text-sm text-center rounded-xl border px-3 py-2.5 leading-relaxed ${styles}`}
+      role="alert"
+    >
+      {children}
+    </p>
+  );
+}
+
+function NavBack({ onPress }: { onPress: () => void }) {
+  return (
+    <button
+      type="button"
+      className="w-full flex items-center justify-center gap-1 text-sm text-primary font-medium hover:underline"
+      onClick={onPress}
+    >
+      <ChevronLeft size={16} />
+      Indietro
+    </button>
   );
 }

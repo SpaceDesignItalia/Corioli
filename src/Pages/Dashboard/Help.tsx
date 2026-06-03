@@ -557,7 +557,7 @@ export default function HelpAndFeedback() {
         {
           title: "PIN, profilo, biometria e recupero",
           content:
-            "Alla prima configurazione (o dopo un aggiornamento) Corioli chiede i dati del profilo medico (nome, cognome, email, telefono, specializzazione) e un PIN. L'uso quotidiano funziona senza internet. Se dimentichi il PIN puoi usare il codice CORI-… salvato alla configurazione oppure, con connessione, il recupero via email all'indirizzo del profilo. Touch ID / Windows Hello sono opzionali in Impostazioni → Sicurezza.",
+            "Alla prima configurazione (o dopo un aggiornamento) Corioli chiede i dati del profilo medico (nome, cognome, email, telefono, specializzazione) e un PIN. L'uso quotidiano funziona senza internet. Se dimentichi il PIN puoi usare il codice CORI-… salvato alla configurazione oppure, con connessione, il recupero via email all'indirizzo del profilo. Il riconoscimento biometrico (impronta o volto) è opzionale in Impostazioni → Sicurezza.",
         },
       ],
     },

@@ -56,6 +56,16 @@ export default function PinDigitInput({
     [onChange, inputMax, length, onComplete],
   );
 
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      if (disabled) return;
+      e.preventDefault();
+      setDigits(e.clipboardData.getData("text"));
+      focusInput();
+    },
+    [disabled, setDigits, focusInput],
+  );
+
   return (
     <div className="w-full">
       <p id={labelId} className="sr-only">
@@ -66,6 +76,7 @@ export default function PinDigitInput({
         aria-labelledby={labelId}
         aria-invalid={invalid}
         onClick={focusInput}
+        onPaste={handlePaste}
         className={[
           "w-full rounded-xl p-1 transition-colors cursor-text",
           invalid ? "animate-pin-shake" : "",
@@ -108,14 +119,20 @@ export default function PinDigitInput({
         type="password"
         inputMode="numeric"
         pattern="[0-9]*"
-        autoComplete={length != null ? "current-password" : "new-password"}
+        autoComplete={
+          length != null && length !== PIN_MAX
+            ? "one-time-code"
+            : length != null
+              ? "current-password"
+              : "new-password"
+        }
         autoFocus={autoFocus}
         disabled={disabled}
         value={trimmed}
-        maxLength={inputMax}
         aria-label={ariaLabel}
         className="sr-only"
         onChange={(e) => setDigits(e.target.value)}
+        onPaste={handlePaste}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onKeyDown={(e) => {

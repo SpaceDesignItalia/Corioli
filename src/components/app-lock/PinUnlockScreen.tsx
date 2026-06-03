@@ -21,15 +21,13 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
   const [loading, setLoading] = useState(false);
   const [shake, setShake] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
-  const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [bioLoading, setBioLoading] = useState(false);
   const autoBioAttempted = useRef(false);
 
   useEffect(() => {
     void getAppLockStatus().then((s) => {
-      if (s?.biometricAvailable && s.biometricEnabled && s.biometricLabel) {
-        setBiometricLabel(s.biometricLabel);
+      if (s?.biometricAvailable && s.biometricEnabled) {
         setBiometricEnabled(true);
       }
     });
@@ -91,13 +89,13 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               </div>
               <h1 className="text-xl font-bold text-foreground">Sblocca Corioli</h1>
               <p className="text-sm text-default-500">
-                {biometricEnabled && biometricLabel
-                  ? `Usa ${biometricLabel} o inserisci il PIN.`
+                {biometricEnabled
+                  ? "Usa impronta o volto, oppure inserisci il PIN."
                   : "Inserisci il PIN a 4 cifre per accedere."}
               </p>
             </div>
 
-            {biometricEnabled && biometricLabel ? (
+            {biometricEnabled ? (
               <Button
                 color="primary"
                 variant="flat"
@@ -106,7 +104,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
                 isLoading={bioLoading}
                 onPress={() => void handleBiometricUnlock()}
               >
-                Sblocca con {biometricLabel}
+                Sblocca con biometria
               </Button>
             ) : null}
 

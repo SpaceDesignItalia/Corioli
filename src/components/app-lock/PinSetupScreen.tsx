@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Card, CardBody, Button } from "@nextui-org/react";
-import { Lock, User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@nextui-org/react";
 import { setupAppLock } from "../../services/AppLockService";
 import { DoctorService } from "../../services/OfflineServices";
 import { sendHeartbeat } from "../../services/HeartbeatService";
@@ -8,6 +7,7 @@ import {
   isDoctorProfileComplete,
   getMissingDoctorProfileFields,
 } from "../../utils/doctorProfile";
+import AppLockShell from "./AppLockShell";
 import RecoveryCodePanel from "./RecoveryCodePanel";
 import PinDigitInput from "./PinDigitInput";
 import DoctorProfileSetupFields, {
@@ -286,38 +286,5 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         </Button>
       </div>
     </AppLockShell>
-  );
-}
-
-function AppLockShell({
-  title,
-  subtitle,
-  children,
-  icon = "lock",
-}: {
-  title: string;
-  subtitle: string;
-  children: ReactNode;
-  icon?: "lock" | "user";
-}) {
-  return (
-    <div className="min-h-screen corioli-auth-bg flex items-center justify-center p-6">
-      <Card className="w-full max-w-md shadow-lg corioli-card">
-        <CardBody className="p-6 sm:p-8 space-y-6">
-          <div className="flex flex-col items-center text-center gap-3">
-            <div className="h-14 w-14 rounded-2xl bg-primary-100 flex items-center justify-center">
-              {icon === "user" ? (
-                <User className="text-primary h-7 w-7" />
-              ) : (
-                <Lock className="text-primary h-7 w-7" />
-              )}
-            </div>
-            <h1 className="text-xl font-bold text-foreground">{title}</h1>
-            <p className="text-sm text-default-500">{subtitle}</p>
-          </div>
-          {children}
-        </CardBody>
-      </Card>
-    </div>
   );
 }

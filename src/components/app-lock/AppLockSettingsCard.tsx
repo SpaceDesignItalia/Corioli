@@ -21,6 +21,7 @@ import PinDigitInput from "./PinDigitInput";
 import { useAppLock } from "../../contexts/AppLockContext";
 
 const PIN_LENGTH = 4;
+const BIOMETRIC_LABEL = "Riconoscimento biometrico";
 type ModalType = null | "reveal" | "regenerate" | "change";
 
 export default function AppLockSettingsCard() {
@@ -35,7 +36,6 @@ export default function AppLockSettingsCard() {
   const [revealedCode, setRevealedCode] = useState<string | null>(null);
   const [regeneratedCode, setRegeneratedCode] = useState<string | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [biometricLabel, setBiometricLabel] = useState<string | null>(null);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [bioToggleLoading, setBioToggleLoading] = useState(false);
   const [bioPinModal, setBioPinModal] = useState(false);
@@ -47,7 +47,6 @@ export default function AppLockSettingsCard() {
     void getAppLockStatus().then((s) => {
       setCanReveal(Boolean(s?.canRevealRecovery));
       setBiometricAvailable(Boolean(s?.biometricAvailable));
-      setBiometricLabel(s?.biometricLabel ?? null);
       setBiometricEnabled(Boolean(s?.biometricEnabled));
     });
   };
@@ -153,8 +152,8 @@ export default function AppLockSettingsCard() {
         </div>
       </div>
 
-      {/* ROW 2 — Windows Hello (condizionale) */}
-      {biometricAvailable && biometricLabel ? (
+      {/* ROW 2 — Biometria (condizionale) */}
+      {biometricAvailable ? (
         <div className="settings-row">
           <div
             className="flex items-center justify-center shrink-0 rounded-lg"
@@ -165,7 +164,7 @@ export default function AppLockSettingsCard() {
 
           <div className="flex-1 min-w-0">
             <p className="text-[14px] font-[500] text-foreground leading-snug">
-              {biometricLabel}
+              {BIOMETRIC_LABEL}
             </p>
             <p className="text-[12px] leading-snug mt-0.5" style={{ color: "var(--color-text-tertiary)" }}>
               Sblocco rapido con impronta o volto
@@ -196,7 +195,7 @@ export default function AppLockSettingsCard() {
         <ModalContent>
           <ModalHeader className="flex items-center gap-2">
             <Fingerprint size={17} className="text-primary" />
-            {bioPendingEnable ? `Attiva ${biometricLabel}` : `Disattiva ${biometricLabel}`}
+            {bioPendingEnable ? `Attiva ${BIOMETRIC_LABEL.toLowerCase()}` : `Disattiva ${BIOMETRIC_LABEL.toLowerCase()}`}
           </ModalHeader>
           <ModalBody className="space-y-4 pb-2">
             <p className="text-sm text-default-600">Conferma con il tuo PIN attuale.</p>
