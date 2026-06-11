@@ -59,6 +59,7 @@ import {
   todayIsoDate,
   validateDateNotAfter,
   validateObstetricWeights,
+  validateOptionalIsoDate,
   validatePastOrSameDate,
   validateVisitDate,
 } from "../../utils/formValidation";
@@ -783,7 +784,7 @@ export default function AddVisit() {
           showToast(lmpErr, "error");
           return false;
         }
-        const dppErr = validatePastOrSameDate(
+        const dppErr = validateOptionalIsoDate(
           ostetriciaData.dataPresunta,
           "Data presunta parto",
         );
@@ -2539,7 +2540,7 @@ export default function AddVisit() {
                                 ostetriciaData.pesoPreGravidanza;
                               const isNegative = diff < 0;
                               const colorClass = isNegative
-                                ? "text-success-600 bg-success-50/80 border-success-200"
+                                ? "corioli-text-brand bg-brand-50/80 border-brand-200"
                                 : "text-primary-600 bg-primary-50/80 border-primary-200";
                               const hasAltezza =
                                 patient?.altezza != null && patient.altezza > 0;

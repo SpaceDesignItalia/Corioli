@@ -35,6 +35,7 @@ import {
 } from "../../utils/activePregnancyUtils";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
+import { brandSuccessAlertSx } from "../../utils/muiBrand";
 import { PageHeader } from "../../components/PageHeader";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -399,7 +400,7 @@ export default function Home() {
                   {stats.totalPatients}
                 </h3>
                 {stats.patientsThisMonth > 0 && (
-                  <p className="text-xs text-success-600 mt-1 flex items-center gap-1">
+                  <p className="text-xs corioli-text-brand mt-1 flex items-center gap-1">
                     <TrendingUp size={12} /> +{stats.patientsThisMonth} questo
                     mese
                   </p>
@@ -427,7 +428,7 @@ export default function Home() {
                   {stats.totalVisits}
                 </h3>
                 {stats.visitsThisMonth > 0 && (
-                  <p className="text-xs text-success-600 mt-1 flex items-center gap-1">
+                  <p className="text-xs corioli-text-brand mt-1 flex items-center gap-1">
                     <TrendingUp size={12} /> +{stats.visitsThisMonth} questo
                     mese
                   </p>
@@ -498,7 +499,7 @@ export default function Home() {
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
-              <Users className="text-emerald-600 shrink-0" size={16} />
+              <Users className="text-brand-700 shrink-0" size={16} />
               <h3 className="text-base font-semibold text-gray-900">
                 Pazienti Recenti
               </h3>
@@ -693,7 +694,7 @@ export default function Home() {
           <CardHeader className="corioli-card-header flex justify-between items-center gap-2">
             <div className="dashboard-column-header-title min-w-0">
               <i
-                className="ti ti-baby-carriage dashboard-column-header-icon text-emerald-700"
+                className="ti ti-baby-carriage dashboard-column-header-icon text-brand-700"
                 aria-hidden
               />
               <h3 className="text-base font-semibold text-gray-900 truncate">
@@ -764,7 +765,7 @@ export default function Home() {
           onClose={() => setToast((t) => ({ ...t, open: false }))}
           severity="success"
           variant="filled"
-          sx={{ width: "100%" }}
+          sx={{ width: "100%", ...brandSuccessAlertSx }}
         >
           {toast.message}
         </Alert>

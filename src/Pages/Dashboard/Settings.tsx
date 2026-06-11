@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { SignatureStampCropModal } from "../../components/SignatureStampCropModal";
 import {
   Card,
   CardBody,
@@ -8,7 +9,6 @@ import {
   Select,
   SelectItem,
   Switch,
-  Avatar,
   Divider,
   Input,
   Chip,
@@ -115,7 +115,7 @@ function SettingsSectionNotice({
       role="status"
       className={`mb-3 rounded-lg border px-3 py-2 text-sm animate-in fade-in duration-200 ${
         notice.type === "success"
-          ? "border-success/30 bg-success-50 text-success-800"
+          ? "corioli-feedback-success"
           : "border-danger/30 bg-danger-50 text-danger-800"
       }`}
     >
@@ -129,7 +129,15 @@ const SettingsScreen = () => {
   // ... state declarations ...
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [pdfTheme, setPdfTheme] = useState("light");
-  const [profilePic, setProfilePic] = useState("");
+  const [signatureStampImage, setSignatureStampImage] = useState("");
+  const [pendingSignatureCrop, setPendingSignatureCrop] = useState<string | null>(
+    null,
+  );
+  const {
+    isOpen: isSignatureCropOpen,
+    onOpen: onSignatureCropOpen,
+    onClose: onSignatureCropClose,
+  } = useDisclosure();
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState<SettingsNotice | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -306,16 +314,7 @@ const SettingsScreen = () => {
     setNotificationsEnabled(!notificationsEnabled);
   };
 
-  const [cropImageOpen, setCropImageOpen] = useState(false);
-  const [cropImageDataUrl, setCropImageDataUrl] = useState("");
-  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
-  const cropDragRef = React.useRef<{
-    startX: number;
-    startY: number;
-    startOffset: { x: number; y: number };
-  } | null>(null);
-
-  const handleProfilePicChange = (
+  const handleSignatureStampChange = (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
@@ -323,63 +322,23 @@ const SettingsScreen = () => {
     const reader = new FileReader();
     reader.onloadend = () => {
       const dataUrl = (reader.result as string) || "";
-      setCropImageDataUrl(dataUrl);
-      setCropOffset({ x: 0, y: 0 });
-      setCropImageOpen(true);
+      if (!dataUrl) return;
+      setPendingSignatureCrop(dataUrl);
+      onSignatureCropOpen();
     };
     reader.readAsDataURL(file);
     event.target.value = "";
   };
 
-  useEffect(() => {
-    if (!cropImageOpen) return;
-    const onMove = (e: MouseEvent) => {
-      if (!cropDragRef.current) return;
-      const { startX, startY, startOffset } = cropDragRef.current;
-      setCropOffset({
-        x: startOffset.x + (e.clientX - startX),
-        y: startOffset.y + (e.clientY - startY),
-      });
-    };
-    const onUp = () => {
-      cropDragRef.current = null;
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [cropImageOpen]);
+  const handleSignatureCropConfirm = (dataUrl: string) => {
+    setSignatureStampImage(dataUrl);
+    setPendingSignatureCrop(null);
+    onSignatureCropClose();
+  };
 
-  const applyCrop = () => {
-    if (!cropImageDataUrl) return;
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const D = 256;
-      const canvas = document.createElement("canvas");
-      canvas.width = D;
-      canvas.height = D;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const scale = Math.max(D / img.width, D / img.height);
-      const sw = D / scale;
-      const sh = D / scale;
-      let sx = -cropOffset.x / scale;
-      let sy = -cropOffset.y / scale;
-      sx = Math.max(0, Math.min(img.width - sw, sx));
-      sy = Math.max(0, Math.min(img.height - sh, sy));
-      ctx.beginPath();
-      ctx.arc(D / 2, D / 2, D / 2, 0, 2 * Math.PI);
-      ctx.closePath();
-      ctx.clip();
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, D, D);
-      setProfilePic(canvas.toDataURL("image/jpeg", 0.9));
-      setCropImageOpen(false);
-      setCropImageDataUrl("");
-    };
-    img.src = cropImageDataUrl;
+  const handleSignatureCropCancel = () => {
+    setPendingSignatureCrop(null);
+    onSignatureCropClose();
   };
 
   // Carica dati iniziali
@@ -529,9 +488,8 @@ const SettingsScreen = () => {
           specializzazione: doctor.specializzazione || "",
         });
         setAmbulatori(doctor.ambulatori || []);
-        // Force read of profileImage bypassing potential type issues
-        const img = (doctor as any).profileImage;
-        if (img) setProfilePic(img);
+        const sig = (doctor as any).signatureStampImage;
+        if (sig) setSignatureStampImage(sig);
       }
     } catch (error) {
       console.error("Errore nel caricamento dati dottore:", error);
@@ -1375,7 +1333,7 @@ const SettingsScreen = () => {
         telefono: doctorInfo.telefono.trim(),
         specializzazione: doctorInfo.specializzazione.trim(),
         ambulatori: ambulatori,
-        profileImage: profilePic || undefined,
+        signatureStampImage: signatureStampImage || undefined,
       });
 
       savePreferences();
@@ -1477,15 +1435,20 @@ const SettingsScreen = () => {
             </CardHeader>
             <CardBody>
               <SettingsSectionNotice scope="profilo" notice={notice} />
-              <div className="flex items-center gap-4 flex-shrink-0">
-                <Avatar
-                  key={profilePic} // Force re-render on change
-                  src={profilePic || undefined}
-                  name={`${doctorInfo.nome} ${doctorInfo.cognome}`}
-                  size="lg"
-                  className="w-20 h-20"
-                  showFallback={!profilePic}
-                />
+              <div className="flex items-start gap-4 flex-shrink-0">
+                <div className="w-[7.5rem] aspect-[3/1] rounded-lg border border-dashed border-default-300 bg-white flex items-center justify-center overflow-hidden shrink-0">
+                  {signatureStampImage ? (
+                    <img
+                      src={signatureStampImage}
+                      alt="Timbro e firma"
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-[10px] text-default-400 text-center px-1">
+                      Timbro / firma
+                    </span>
+                  )}
+                </div>
                 <div className="flex-1">
                   <Button
                     variant="flat"
@@ -1494,17 +1457,28 @@ const SettingsScreen = () => {
                     as="label"
                     className="cursor-pointer"
                   >
-                    Cambia Foto
+                    Carica timbro e firma
                     <input
                       type="file"
                       accept="image/*"
                       hidden
-                      onChange={handleProfilePicChange}
+                      onChange={handleSignatureStampChange}
                     />
                   </Button>
+                  {signatureStampImage ? (
+                    <Button
+                      variant="light"
+                      color="danger"
+                      size="sm"
+                      className="ml-2"
+                      onPress={() => setSignatureStampImage("")}
+                    >
+                      Rimuovi
+                    </Button>
+                  ) : null}
                   <p className="text-xs text-default-500 mt-1">
-                    Seleziona un&apos;immagine: si aprirà l&apos;anteprima per
-                    scegliere la porzione circolare.
+                    Carica una foto del timbro e della firma: potrai ritagliarla nel
+                    riquadro orizzontale usato nei PDF di ricette e certificati.
                   </p>
                 </div>
               </div>
@@ -1610,7 +1584,7 @@ const SettingsScreen = () => {
                           shadow="none"
                           className={`bg-white border flex-shrink-0 transition-colors ${
                             amb.isPrimario
-                              ? "border-success/60 ring-1 ring-success/20"
+                              ? "border-primary/40 ring-1 ring-primary/20"
                               : "border-default-200 hover:border-primary/40 cursor-pointer"
                           }`}
                         >
@@ -1639,7 +1613,7 @@ const SettingsScreen = () => {
                                       </h4>
                                       <Chip
                                         size="sm"
-                                        color="success"
+                                        color="primary"
                                         variant="flat"
                                         className="invisible flex-shrink-0"
                                         aria-hidden
@@ -1662,7 +1636,7 @@ const SettingsScreen = () => {
                                 <div className="flex min-w-0 flex-1 items-start gap-2">
                                   <Tooltip content="Sede attualmente in uso">
                                     <span
-                                      className="mt-0.5 inline-flex shrink-0 rounded-full p-0.5 text-success"
+                                      className="mt-0.5 inline-flex shrink-0 rounded-full p-0.5 corioli-text-brand"
                                       aria-hidden
                                     >
                                       <CheckCircle2 className="w-4 h-4" />
@@ -1675,7 +1649,7 @@ const SettingsScreen = () => {
                                       </h4>
                                       <Chip
                                         size="sm"
-                                        color="success"
+                                        color="primary"
                                         variant="flat"
                                         className="flex-shrink-0"
                                       >
@@ -1875,7 +1849,7 @@ const SettingsScreen = () => {
                       <span>Ultimo backup</span>
                     </div>
                     <span
-                      className={`font-semibold ${!lastBackupDate ? "text-warning-600" : "text-success-600"}`}
+                      className={`font-semibold ${!lastBackupDate ? "text-warning-600" : "corioli-text-brand"}`}
                     >
                       {lastBackupDate
                         ? new Date(lastBackupDate).toLocaleDateString() +
@@ -2396,58 +2370,6 @@ const SettingsScreen = () => {
         </CardBody>
       </Card>
 
-      {/* Modal crop foto profilo: trascina l'immagine per scegliere la porzione circolare */}
-      <Modal
-        isOpen={cropImageOpen}
-        onClose={() => {
-          setCropImageOpen(false);
-          setCropImageDataUrl("");
-        }}
-        size="md"
-        classNames={{ wrapper: "z-[100]" }}
-        scrollBehavior="inside"
-      >
-        <ModalContent>
-          <ModalHeader>Scegli la porzione da mostrare</ModalHeader>
-          <ModalBody>
-            <p className="text-sm text-default-500 mb-3">
-              Trascina l&apos;immagine per posizionare la parte che vuoi nel
-              cerchio, poi clicca Applica.
-            </p>
-            <div
-              className="w-[256px] h-[256px] mx-auto rounded-full overflow-hidden border-2 border-default-200 cursor-move select-none"
-              style={{
-                backgroundImage: `url(${cropImageDataUrl})`,
-                backgroundSize: "cover",
-                backgroundPosition: `${cropOffset.x}px ${cropOffset.y}px`,
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                cropDragRef.current = {
-                  startX: e.clientX,
-                  startY: e.clientY,
-                  startOffset: { ...cropOffset },
-                };
-              }}
-            />
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="flat"
-              onPress={() => {
-                setCropImageOpen(false);
-                setCropImageDataUrl("");
-              }}
-            >
-              Annulla
-            </Button>
-            <Button color="primary" onPress={applyCrop}>
-              Applica
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
       <Modal
         isOpen={mergeConflictOpen}
         onClose={() => {
@@ -2712,6 +2634,13 @@ const SettingsScreen = () => {
           Verranno eliminate anche le visite collegate.
         </p>
       </ConfirmDangerModal>
+
+      <SignatureStampCropModal
+        isOpen={isSignatureCropOpen}
+        imageSrc={pendingSignatureCrop}
+        onClose={handleSignatureCropCancel}
+        onConfirm={handleSignatureCropConfirm}
+      />
     </div>
   );
 };

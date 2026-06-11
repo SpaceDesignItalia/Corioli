@@ -1004,7 +1004,7 @@ export default function Visite() {
                   isLoading={pdfLoading}
                   isDisabled={pdfLoading}
                 >
-                  {pdfLoading ? "Generazione..." : "Genera PDF"}
+                  {pdfLoading ? "Scaricamento..." : "Scarica referto"}
                 </Button>
                 <Button
                   color="primary"

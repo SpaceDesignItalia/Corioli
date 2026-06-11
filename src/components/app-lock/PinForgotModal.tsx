@@ -536,7 +536,7 @@ function AlertMessage({
   const styles =
     tone === "danger"
       ? "border-danger-200 bg-danger-50 text-danger-700"
-      : "border-success-200 bg-success-50 text-success-800";
+      : "corioli-feedback-success";
   return (
     <p
       className={`text-sm text-center rounded-xl border px-3 py-2.5 leading-relaxed ${styles}`}

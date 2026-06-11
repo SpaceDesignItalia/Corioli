@@ -365,9 +365,9 @@ export default function PatientFiles() {
       )}
 
       {success && (
-        <Card className="border-l-4 border-l-success shadow-sm">
+        <Card className="border-l-4 border-l-primary shadow-sm">
           <CardBody className="py-3">
-            <p className="text-success text-sm">{success}</p>
+            <p className="corioli-text-brand text-sm">{success}</p>
           </CardBody>
         </Card>
       )}
@@ -453,7 +453,7 @@ export default function PatientFiles() {
                     </CardHeader>
                     <CardBody className="pt-0 flex-1 flex flex-col min-h-0">
                       <div className="space-y-3 flex-1 min-h-0">
-                        <Chip color={isImage ? "success" : "primary"} variant="flat" size="sm">
+                        <Chip color="primary" variant="flat" size="sm">
                           {typeLabel}
                         </Chip>
 

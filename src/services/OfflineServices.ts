@@ -1,5 +1,5 @@
 import { storageService } from './StorageServiceFallback';
-import { Patient, Visit, Doctor, Document, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente } from '../types/Storage';
+import { Patient, Visit, Doctor, Document, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
 
 // Servizio per gestire i pazienti offline
 export class PatientService {
@@ -155,6 +155,35 @@ export class CertificatoService {
   }
 }
 
+// Ricette paziente (PDF cartaceo / promemoria terapia)
+export class RicettaService {
+  static async getByPatientId(patientId: string): Promise<RicettaPaziente[]> {
+    return await storageService.getRicetteByPatientId(patientId);
+  }
+
+  static async getById(id: string): Promise<RicettaPaziente | null> {
+    return await storageService.getRicettaById(id);
+  }
+
+  static async add(data: {
+    patientId: string;
+    tipo: RicettaPaziente['tipo'];
+    dataRicetta: string;
+    farmaci: RicettaPaziente['farmaci'];
+    note?: string;
+  }): Promise<RicettaPaziente> {
+    return await storageService.addRicetta(data);
+  }
+
+  static async update(id: string, data: Partial<Pick<RicettaPaziente, 'tipo' | 'dataRicetta' | 'farmaci' | 'note'>>): Promise<RicettaPaziente> {
+    return await storageService.updateRicetta(id, data);
+  }
+
+  static async delete(id: string): Promise<void> {
+    return await storageService.deleteRicetta(id);
+  }
+}
+
 // Servizio per gestire il dottore offline
 export class DoctorService {
   static async getDoctor(): Promise<Doctor | null> {
@@ -169,6 +198,7 @@ export class DoctorService {
     specializzazione?: string;
     ambulatori?: any[];
     profileImage?: string;
+    signatureStampImage?: string;
   }): Promise<Doctor> {
     return await storageService.updateDoctor(doctorData);
   }

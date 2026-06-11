@@ -54,12 +54,24 @@ export function validateVisitDate(iso: string): string | null {
   return null;
 }
 
-export function validatePastOrSameDate(
+export function validateOptionalIsoDate(
   iso: string | undefined,
   label = "Data",
 ): string | null {
   if (!iso) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return `${label} non valida`;
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return `${label} non valida`;
+  return null;
+}
+
+export function validatePastOrSameDate(
+  iso: string | undefined,
+  label = "Data",
+): string | null {
+  const formatErr = validateOptionalIsoDate(iso, label);
+  if (formatErr) return formatErr;
+  if (!iso) return null;
   if (iso > todayIsoDate()) return `${label} non può essere nel futuro`;
   return null;
 }

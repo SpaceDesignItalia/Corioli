@@ -3,6 +3,7 @@ import {
   Patient, Visit, Doctor,
   RichiestaEsameComplementare,
   CertificatoPaziente,
+  RicettaPaziente,
 } from "../types/Storage";
 import { DoctorService, PreferenceService } from "./OfflineServices";
 import { calcolaStimePesoFetale } from "../utils/fetalWeightUtils";
@@ -22,6 +23,12 @@ import {
   getBiometryReferenceAtGa,
   type BiometryParam,
 } from "../utils/biometryCentiles";
+import {
+  normalizeSignatureStampImage,
+  signatureStampPdfFormat,
+  SIGNATURE_STAMP_PDF_LAYOUT_W,
+  SIGNATURE_STAMP_PDF_LAYOUT_H,
+} from "../utils/signatureStamp";
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 const ML = 15;
@@ -41,6 +48,32 @@ const K200: [number, number, number] = [200, 200, 200];
 const K235: [number, number, number] = [235, 235, 235];
 const K240: [number, number, number] = [240, 240, 240];
 const K245: [number, number, number] = [245, 245, 245] as const;
+
+/** Layout e palette dedicati al PDF ricetta (px → mm @ 96dpi) */
+const RX = 0.264583;
+const RPT = (px: number) => px * 0.75;
+const RML = 56 * RX;
+const RMR = 210 - RML;
+const RPW = RMR - RML;
+const RCX = RML + RPW / 2;
+const RMT = 48 * RX;
+const RFOOT_Y = 297 - 48 * RX;
+/** Larghezze colonne tabella ricetta (rapporto 62:78:40 su RPW) */
+const RIC_COL_W = [(62 / 180) * RPW, (78 / 180) * RPW, (40 / 180) * RPW] as const;
+const RC = {
+  label: [138, 138, 138] as const,
+  text: [26, 26, 26] as const,
+  muted: [176, 176, 176] as const,
+  rule: [208, 208, 208] as const,
+  row: [224, 224, 224] as const,
+  foot: [160, 160, 160] as const,
+};
+
+function ricettaCell(val: string | undefined | null): { text: string; muted: boolean } {
+  const t = val?.trim();
+  if (!t || t === "-") return { text: "\u2014", muted: true };
+  return { text: t, muted: false };
+}
 
 // EFW centile calculation uses getCentileForWeight from fetalGrowthCentiles (Hadlock-based)
 // This ensures UI and PDF use the same consistent weight centile reference.
@@ -839,6 +872,369 @@ export class PdfService {
     doc.text(parts.join("   |   "), 105, FOOT_Y + 5, { align: "center" });
   }
 
+  private static ricettaRule(
+    doc: jsPDF, y: number, color: readonly number[], px: number, x1 = RML, x2 = RMR,
+  ) {
+    this.dc(doc, color);
+    doc.setLineWidth(px * RX);
+    doc.line(x1, y, x2, y);
+  }
+
+  /** Centratura nel contenuto — charSpace non incluso in getTextWidth né in align:center */
+  private static ricettaCenterText(
+    doc: jsPDF,
+    text: string,
+    y: number,
+    font: "helvetica" | "times",
+    style: "normal" | "bold" | "italic",
+    sizePt: number,
+    color: readonly number[],
+    charSpace = 0,
+  ) {
+    doc.setFont(font, style);
+    doc.setFontSize(sizePt);
+    this.tc(doc, color);
+    const t = san(text);
+    doc.setCharSpace(0);
+    if (charSpace) {
+      const baseW = doc.getTextWidth(t);
+      const totalW = baseW + charSpace * Math.max(0, t.length - 1);
+      doc.setCharSpace(charSpace);
+      doc.text(t, RCX - totalW / 2, y);
+      doc.setCharSpace(0);
+      return;
+    }
+    doc.text(t, RCX, y, { align: "center" });
+  }
+
+  /** Allineamento a destra nel margine contenuto */
+  private static ricettaRightText(
+    doc: jsPDF,
+    text: string,
+    y: number,
+    font: "helvetica" | "times",
+    style: "normal" | "bold" | "italic",
+    sizePt: number,
+    color: readonly number[],
+    charSpace = 0,
+  ) {
+    doc.setFont(font, style);
+    doc.setFontSize(sizePt);
+    this.tc(doc, color);
+    const t = san(text);
+    doc.setCharSpace(0);
+    if (charSpace) {
+      const baseW = doc.getTextWidth(t);
+      const totalW = baseW + charSpace * Math.max(0, t.length - 1);
+      doc.setCharSpace(charSpace);
+      doc.text(t, RMR - totalW, y);
+      doc.setCharSpace(0);
+      return;
+    }
+    doc.text(t, RMR, y, { align: "right" });
+  }
+
+  private static ricettaLabel(
+    doc: jsPDF, text: string, x: number, y: number, align: "left" | "right" = "left",
+  ) {
+    const upper = san(text).toUpperCase();
+    if (align === "right") {
+      this.ricettaRightText(doc, upper, y, "helvetica", "normal", RPT(8), RC.label, 0.45);
+      return;
+    }
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(RPT(8));
+    this.tc(doc, RC.label);
+    doc.setCharSpace(0.45);
+    doc.text(upper, x, y);
+    doc.setCharSpace(0);
+  }
+
+  private static ricettaValue(
+    doc: jsPDF, text: string, x: number, y: number, maxW: number,
+  ): number {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(RPT(11));
+    this.tc(doc, RC.text);
+    const lines = doc.splitTextToSize(san(text), maxW);
+    doc.text(lines, x, y);
+    return y + lines.length * RPT(11) * 0.42;
+  }
+
+  private static drawRicettaHeader(
+    doc: jsPDF,
+    title: string,
+    subtitle: string,
+    doctor: Doctor | null,
+  ): number {
+    doc.setCharSpace(0);
+    let y = RMT;
+
+    if (doctor) {
+      this.ricettaCenterText(
+        doc,
+        `Dott. ${doctor.nome} ${doctor.cognome}`.trim(),
+        y,
+        "times",
+        "normal",
+        RPT(20),
+        RC.text,
+      );
+      y += RPT(20) * 0.45 + 2;
+    }
+
+    this.ricettaRule(doc, y, RC.text, 1);
+    y += 3 * RX;
+    this.ricettaRule(doc, y, RC.rule, 0.5);
+    y += 8;
+
+    this.ricettaCenterText(
+      doc,
+      title.toUpperCase(),
+      y,
+      "times",
+      "normal",
+      RPT(18),
+      RC.text,
+      1.1,
+    );
+    y += RPT(18) * 0.55 + 3;
+
+    if (subtitle) {
+      this.ricettaCenterText(
+        doc,
+        subtitle,
+        y,
+        "helvetica",
+        "normal",
+        RPT(9),
+        RC.label,
+      );
+      y += RPT(9) * 0.45 + 2;
+    }
+
+    this.ricettaRule(doc, y, RC.text, 1);
+    y += 3 * RX;
+    this.ricettaRule(doc, y, RC.rule, 0.5);
+    return y + 10;
+  }
+
+  /** Scheda anagrafica — righe sottili sopra/sotto, 3 colonne allineate alla tabella */
+  private static drawRicettaPatientBlock(
+    doc: jsPDF, patient: Patient, dataRicetta: string, y: number,
+  ): number {
+    const padV = 14 * RX;
+    const [col1W, col2W, col3W] = RIC_COL_W;
+    const fieldPad = 2;
+    const labelH = RPT(8) * 0.42;
+    const valueGap = 1.2;
+
+    const paziente = `${patient.nome} ${patient.cognome}`.trim() || "\u2014";
+    const cf = patient.codiceFiscale?.trim() || "\u2014";
+
+    this.ricettaRule(doc, y, RC.rule, 0.5);
+    y += padV;
+
+    const x1 = RML;
+    const x2 = RML + col1W;
+    const x3 = RML + col1W + col2W;
+    const top = y;
+    const valueY = top + labelH + valueGap;
+
+    this.ricettaLabel(doc, "Paziente", x1, top);
+    this.ricettaLabel(doc, "Cod. Fiscale", x2, top);
+    this.ricettaLabel(doc, "Data ricetta", x3, top);
+
+    const v1End = this.ricettaValue(doc, paziente, x1, valueY, col1W - fieldPad);
+    const v2End = this.ricettaValue(doc, cf, x2, valueY, col2W - fieldPad);
+    const v3End = this.ricettaValue(doc, fd(dataRicetta), x3, valueY, col3W - fieldPad);
+
+    y = Math.max(v1End, v2End, v3End) + padV;
+    this.ricettaRule(doc, y, RC.rule, 0.5);
+    return y + 8;
+  }
+
+  private static drawRicettaFarmaciTable(
+    doc: jsPDF,
+    y: number,
+    farmaci: RicettaPaziente["farmaci"],
+  ): number {
+    const cols = [
+      { header: "FARMACO", w: RIC_COL_W[0] },
+      { header: "POSOLOGIA", w: RIC_COL_W[1] },
+      { header: "DURATA", w: RIC_COL_W[2] },
+    ];
+    const rowPad = 10 * RX;
+    const fontVal = RPT(11);
+    const fontHdr = RPT(9);
+    const lineH = fontVal * 0.42;
+
+    const items = (farmaci || []).filter((f) => f.nome?.trim() || f.posologia?.trim());
+    if (items.length === 0) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(fontVal);
+      this.tc(doc, RC.muted);
+      doc.text("Nessun farmaco indicato.", RML, y + 4);
+      return y + 10;
+    }
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(fontHdr);
+    this.tc(doc, RC.text);
+    doc.setCharSpace(0.35);
+    let cx = RML;
+    for (const col of cols) {
+      doc.text(col.header, cx, y + 3.5);
+      cx += col.w;
+    }
+    doc.setCharSpace(0);
+    y += 5;
+    this.ricettaRule(doc, y, RC.text, 1.5);
+    y += rowPad;
+
+    for (const f of items) {
+      const cells = [
+        ricettaCell(f.nome),
+        ricettaCell(f.posologia),
+        ricettaCell(f.durata),
+      ];
+      const cellLines: string[][] = [];
+      let maxLines = 1;
+      cols.forEach((col, ci) => {
+        doc.setFont("helvetica", ci === 0 ? "bold" : "normal");
+        doc.setFontSize(fontVal);
+        const lines = doc.splitTextToSize(san(cells[ci].text), col.w - 2);
+        cellLines.push(lines);
+        maxLines = Math.max(maxLines, lines.length);
+      });
+
+      const rowH = rowPad * 2 + maxLines * lineH;
+      cx = RML;
+      for (let ci = 0; ci < cols.length; ci++) {
+        const col = cols[ci];
+        const cell = cells[ci];
+        doc.setFont("helvetica", ci === 0 ? "bold" : "normal");
+        doc.setFontSize(fontVal);
+        this.tc(doc, cell.muted ? RC.muted : RC.text);
+        let ty = y + rowPad + lineH * 0.85;
+        for (const line of cellLines[ci]) {
+          doc.text(line, cx, ty);
+          ty += lineH;
+        }
+        cx += col.w;
+      }
+
+      y += rowH;
+      this.ricettaRule(doc, y, RC.row, 0.5);
+    }
+
+    return y + 6;
+  }
+
+  private static drawRicettaIndicazioni(
+    doc: jsPDF, y: number, note: string,
+  ): number {
+    y += 4;
+    this.ricettaLabel(doc, "Indicazioni", RML, y);
+    y += 5;
+    return this.block(doc, note, RML, y, RPW, RPT(11) * 0.42, {
+      font: "helvetica",
+      style: "normal",
+      fontSize: RPT(11),
+      color: RC.text,
+    });
+  }
+
+  /** Firma in flusso — margin-top 48px, blocco allineato a destra (riquadro 3:1) */
+  private static async drawRicettaSignatureBlock(
+    doc: jsPDF, doctor: Doctor | null, y: number,
+  ): Promise<number> {
+    y += 48 * RX;
+
+    const lineW = 200 * RX;
+    const blockLeft = RMR - lineW;
+    const imgW = SIGNATURE_STAMP_PDF_LAYOUT_W * RX;
+    const imgH = SIGNATURE_STAMP_PDF_LAYOUT_H * RX;
+    const sigLabelH = RPT(8) * 0.42;
+    let cy = y;
+
+    this.ricettaLabel(doc, "Il Medico", RMR, cy, "right");
+    cy += sigLabelH + 3;
+
+    if (doctor?.signatureStampImage) {
+      try {
+        const img = await normalizeSignatureStampImage(doctor.signatureStampImage);
+        const format = signatureStampPdfFormat(img);
+        doc.addImage(img, format, RMR - imgW, cy, imgW, imgH);
+        cy += imgH + 3;
+      } catch {
+        // continua senza immagine
+      }
+    }
+
+    this.ricettaRule(doc, cy, RC.text, 1, blockLeft, RMR);
+    cy += 5;
+
+    const rawName = san(`${doctor?.nome || ""} ${doctor?.cognome || ""}`.trim());
+    const doctorName = rawName ? `Dott. ${rawName}` : "";
+    this.ricettaRightText(
+      doc,
+      doctorName || "_________________________",
+      cy,
+      "helvetica",
+      "normal",
+      RPT(11),
+      RC.text,
+    );
+    cy += RPT(11) * 0.45 + 1.5;
+
+    if (doctor?.specializzazione) {
+      this.ricettaRightText(
+        doc,
+        doctor.specializzazione,
+        cy,
+        "helvetica",
+        "normal",
+        RPT(9),
+        RC.label,
+      );
+      cy += RPT(9) * 0.45;
+    }
+
+    return cy + 4;
+  }
+
+  private static drawRicettaFooter(
+    doc: jsPDF, doctor: Doctor | null, vis?: FooterVisibilityOptions,
+  ) {
+    const parts: string[] = [];
+    if (doctor?.ambulatori?.length) {
+      const a = doctor.ambulatori.find((x) => x.isPrimario) || doctor.ambulatori[0];
+      parts.push(san(`${a.nome} - ${a.indirizzo}, ${a.citta}`));
+    }
+    if (vis?.showDoctorPhoneInPdf !== false && doctor?.telefono) {
+      parts.push(`Tel: ${doctor.telefono}`);
+    }
+    if (vis?.showDoctorEmailInPdf !== false && doctor?.email) {
+      parts.push(san(doctor.email));
+    }
+    if (!parts.length) return;
+
+    this.ricettaRule(doc, RFOOT_Y - 3, RC.row, 0.5);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(RPT(7.5));
+    this.tc(doc, RC.foot);
+    this.ricettaCenterText(
+      doc,
+      parts.join("   |   "),
+      RFOOT_Y + 2,
+      "helvetica",
+      "normal",
+      RPT(7.5),
+      RC.foot,
+    );
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // FLAT NORMALISERS
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1212,6 +1608,35 @@ export class PdfService {
     });
     const prefs = await PreferenceService.getPreferences();
     this.drawFooter(doc, doctor, {
+      showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
+      showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
+    });
+    return doc.output("blob") as Blob;
+  }
+
+  // ─── RICETTA ──────────────────────────────────────────────────────────────
+  static async generateRicettaPDF(
+    patient: Patient, ricetta: RicettaPaziente, doctor: Doctor | null
+  ): Promise<Blob> {
+    const doc = new jsPDF();
+    const subtitle = "Ricetta bianca";
+    let y = this.drawRicettaHeader(
+      doc,
+      "RICETTA MEDICA",
+      subtitle,
+      doctor,
+    );
+    y = this.drawRicettaPatientBlock(doc, patient, ricetta.dataRicetta, y);
+    y = this.drawRicettaFarmaciTable(doc, y, ricetta.farmaci);
+
+    if (ricetta.note?.trim()) {
+      y = this.drawRicettaIndicazioni(doc, y, ricetta.note);
+    }
+
+    y = await this.drawRicettaSignatureBlock(doc, doctor, y);
+
+    const prefs = await PreferenceService.getPreferences();
+    this.drawRicettaFooter(doc, doctor, {
       showDoctorPhoneInPdf: prefs?.showDoctorPhoneInPdf as boolean | undefined,
       showDoctorEmailInPdf: prefs?.showDoctorEmailInPdf as boolean | undefined,
     });

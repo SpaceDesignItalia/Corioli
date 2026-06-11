@@ -1,4 +1,4 @@
-import { StorageService, Patient, Visit, Doctor, Document, AppData, MedicalTemplate, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente } from '../types/Storage';
+import { StorageService, Patient, Visit, Doctor, Document, AppData, MedicalTemplate, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
 import { MedicalTemplates } from '../data/medicalTemplates';
 
 declare global {
@@ -164,6 +164,7 @@ class LocalStorageFallbackService implements StorageService {
     const visits = await this.getVisits();
     const richiesteEsami = await this.getFromStorage<RichiestaEsameComplementare>('richieste_esami');
     const certificati = await this.getFromStorage<CertificatoPaziente>('certificati_paziente');
+    const ricette = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
 
     const filteredVisits = visits.filter(v => v.patientId !== id);
     await this.saveToStorage('visits', filteredVisits);
@@ -173,6 +174,9 @@ class LocalStorageFallbackService implements StorageService {
 
     const filteredCertificati = certificati.filter(c => c.patientId !== id);
     await this.saveToStorage('certificati_paziente', filteredCertificati);
+
+    const filteredRicette = ricette.filter(r => r.patientId !== id);
+    await this.saveToStorage('ricette_paziente', filteredRicette);
 
     const documents = await this.getDocuments();
     const filteredDocuments = documents.filter(d => d.patientId !== id);
@@ -268,6 +272,50 @@ class LocalStorageFallbackService implements StorageService {
     const list = await this.getFromStorage<CertificatoPaziente>('certificati_paziente');
     const filtered = list.filter(c => c.id !== id);
     await this.saveToStorage('certificati_paziente', filtered);
+  }
+
+  // Ricette paziente
+  async getRicetteByPatientId(patientId: string): Promise<RicettaPaziente[]> {
+    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
+    return list.filter(r => r.patientId === patientId).sort((a, b) => new Date(b.dataRicetta).getTime() - new Date(a.dataRicetta).getTime());
+  }
+
+  async getRicettaById(id: string): Promise<RicettaPaziente | null> {
+    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
+    return list.find(r => r.id === id) || null;
+  }
+
+  async addRicetta(data: Omit<RicettaPaziente, 'id' | 'createdAt' | 'updatedAt'>): Promise<RicettaPaziente> {
+    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
+    const ricetta: RicettaPaziente = {
+      ...data,
+      id: this.generateId(),
+      createdAt: this.getCurrentTimestamp(),
+      updatedAt: this.getCurrentTimestamp(),
+    };
+    list.push(ricetta);
+    await this.saveToStorage('ricette_paziente', list);
+    return ricetta;
+  }
+
+  async updateRicetta(id: string, data: Partial<RicettaPaziente>): Promise<RicettaPaziente> {
+    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
+    const index = list.findIndex(r => r.id === id);
+    if (index === -1) throw new Error('Ricetta non trovata');
+    list[index] = {
+      ...list[index],
+      ...data,
+      id,
+      updatedAt: this.getCurrentTimestamp(),
+    };
+    await this.saveToStorage('ricette_paziente', list);
+    return list[index];
+  }
+
+  async deleteRicetta(id: string): Promise<void> {
+    const list = await this.getFromStorage<RicettaPaziente>('ricette_paziente');
+    const filtered = list.filter(r => r.id !== id);
+    await this.saveToStorage('ricette_paziente', filtered);
   }
 
   // Visite
@@ -544,11 +592,12 @@ class LocalStorageFallbackService implements StorageService {
 
   // Backup/Export
   async exportData(): Promise<AppData> {
-    const [patients, visits, richiesteEsami, certificatiPaziente, doctor, documents, templates] = await Promise.all([
+    const [patients, visits, richiesteEsami, certificatiPaziente, ricettePaziente, doctor, documents, templates] = await Promise.all([
       this.getPatients(),
       this.getVisits(),
       this.getFromStorage<RichiestaEsameComplementare>('richieste_esami'),
       this.getFromStorage<CertificatoPaziente>('certificati_paziente'),
+      this.getFromStorage<RicettaPaziente>('ricette_paziente'),
       this.getDoctor(),
       this.getDocuments(),
       this.getTemplates()
@@ -559,6 +608,7 @@ class LocalStorageFallbackService implements StorageService {
       visits,
       richiesteEsami,
       certificatiPaziente,
+      ricettePaziente,
       documents,
       templates,
       doctor: doctor || {
@@ -595,6 +645,10 @@ class LocalStorageFallbackService implements StorageService {
         await this.saveToStorage('certificati_paziente', data.certificatiPaziente);
       }
 
+      if (data.ricettePaziente && data.ricettePaziente.length > 0) {
+        await this.saveToStorage('ricette_paziente', data.ricettePaziente);
+      }
+
       if (data.doctor) {
         const fullKey = this.getStorageKey('doctor');
         const value = JSON.stringify(data.doctor);
@@ -616,11 +670,12 @@ class LocalStorageFallbackService implements StorageService {
     }
 
     // Modalità merge: mantiene i dati attuali e aggiunge solo quelli non presenti.
-    const [currentPatients, currentVisits, currentRichiesteEsami, currentCertificati, currentDocuments, currentTemplates, currentDoctor] = await Promise.all([
+    const [currentPatients, currentVisits, currentRichiesteEsami, currentCertificati, currentRicette, currentDocuments, currentTemplates, currentDoctor] = await Promise.all([
       this.getPatients(),
       this.getVisits(),
       this.getFromStorage<RichiestaEsameComplementare>('richieste_esami'),
       this.getFromStorage<CertificatoPaziente>('certificati_paziente'),
+      this.getFromStorage<RicettaPaziente>('ricette_paziente'),
       this.getDocuments(),
       this.getTemplates(),
       this.getDoctor(),
@@ -630,6 +685,7 @@ class LocalStorageFallbackService implements StorageService {
     const incomingVisits = data.visits || [];
     const incomingRichiesteEsami = data.richiesteEsami || [];
     const incomingCertificati = data.certificatiPaziente || [];
+    const incomingRicette = data.ricettePaziente || [];
     const incomingDocuments = data.documents || [];
     const incomingTemplates = data.templates || [];
 
@@ -637,6 +693,7 @@ class LocalStorageFallbackService implements StorageService {
     const mergedVisits = [...currentVisits];
     const mergedRichiesteEsami = [...currentRichiesteEsami];
     const mergedCertificati = [...currentCertificati];
+    const mergedRicette = [...currentRicette];
     const mergedDocuments = [...currentDocuments];
     const mergedTemplates = [...currentTemplates];
 
@@ -729,11 +786,21 @@ class LocalStorageFallbackService implements StorageService {
       mergedCertificati.push({ ...c, id: nextId, patientId: newPatientId });
     }
 
+    const existingRicettaIds = new Set(currentRicette.map((r) => r.id));
+    for (const r of incomingRicette) {
+      const newPatientId = patientIdMap.get(r.patientId) ?? r.patientId;
+      if (!newPatientId) continue;
+      const nextId = existingRicettaIds.has(r.id) ? this.generateId() : r.id;
+      existingRicettaIds.add(nextId);
+      mergedRicette.push({ ...r, id: nextId, patientId: newPatientId });
+    }
+
     await Promise.all([
       this.saveToStorage('patients', mergedPatients),
       this.saveToStorage('visits', mergedVisits),
       this.saveToStorage('richieste_esami', mergedRichiesteEsami),
       this.saveToStorage('certificati_paziente', mergedCertificati),
+      this.saveToStorage('ricette_paziente', mergedRicette),
       this.saveToStorage('documents', mergedDocuments),
       this.saveToStorage('templates', mergedTemplates),
     ]);
@@ -786,6 +853,7 @@ class LocalStorageFallbackService implements StorageService {
           telefono: currentDoctor.telefono || incomingDoctor.telefono,
           specializzazione: currentDoctor.specializzazione || incomingDoctor.specializzazione,
           profileImage: currentDoctor.profileImage || incomingDoctor.profileImage,
+          signatureStampImage: currentDoctor.signatureStampImage || incomingDoctor.signatureStampImage,
           ambulatori: mergedAmbulatori,
           updatedAt: this.getCurrentTimestamp(),
         };
@@ -809,6 +877,7 @@ class LocalStorageFallbackService implements StorageService {
       localStorage.removeItem(this.getStorageKey('visits'));
       localStorage.removeItem(this.getStorageKey('richieste_esami'));
       localStorage.removeItem(this.getStorageKey('certificati_paziente'));
+      localStorage.removeItem(this.getStorageKey('ricette_paziente'));
       localStorage.removeItem(this.getStorageKey('doctor'));
       localStorage.removeItem(this.getStorageKey('documents'));
       localStorage.removeItem(this.getStorageKey('templates'));

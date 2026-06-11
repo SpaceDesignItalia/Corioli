@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
+import { brandSuccessAlertSx } from "../utils/muiBrand";
 
 type ToastSeverity = "success" | "error" | "info";
 
@@ -34,7 +35,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           onClose={() => setOpen(false)}
           severity={severity}
           variant="filled"
-          sx={{ width: "100%" }}
+          sx={{ width: "100%", ...brandSuccessAlertSx }}
         >
           {message}
         </Alert>

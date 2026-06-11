@@ -633,7 +633,7 @@ const BackupManager: React.FC = () => {
 
                 {message && (
                   <div className={`p-3 mb-4 rounded-md flex items-center gap-2 ${message.type === 'success'
-                    ? 'bg-success-50 text-success-700 border border-success-200'
+                    ? 'corioli-feedback-success'
                     : 'bg-danger-50 text-danger-700 border border-danger-200'
                     }`}>
                     {message.text}
@@ -803,9 +803,9 @@ const BackupManager: React.FC = () => {
                         </CardBody>
                       </Card>
 
-                      <Card className="md:col-span-2 bg-success-50">
+                      <Card className="md:col-span-2 bg-brand-50">
                         <CardBody className="gap-4">
-                          <div className="flex items-center gap-3 text-success">
+                          <div className="flex items-center gap-3 corioli-text-brand">
                             <FileSpreadsheet size={24} />
                             <h3 className="text-lg font-semibold">Import CSV Pazienti + Appuntamenti</h3>
                           </div>

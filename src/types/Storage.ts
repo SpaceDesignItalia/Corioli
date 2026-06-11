@@ -48,6 +48,26 @@ export interface CertificatoPaziente {
   updatedAt: string;
 }
 
+/** Singolo farmaco in una ricetta */
+export interface RicettaFarmaco {
+  nome: string;
+  posologia: string;
+  durata?: string;
+}
+
+/** Ricetta / promemoria terapia rilasciato al paziente (PDF cartaceo) */
+export interface RicettaPaziente {
+  id: string;
+  patientId: string;
+  /** SSN dematerializzata (promemoria), bianca fuori SSN, promemoria terapia */
+  tipo: 'ssn' | 'bianca' | 'promemoria';
+  dataRicetta: string; // ISO date
+  farmaci: RicettaFarmaco[];
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Visit {
   id: string;
   patientId: string;
@@ -188,6 +208,8 @@ export interface Doctor {
   ambulatori?: Ambulatorio[];
   /** Data URL (base64) della foto profilo */
   profileImage?: string;
+  /** Data URL (base64) immagine timbro e/o firma per i PDF */
+  signatureStampImage?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -225,6 +247,7 @@ export interface AppData {
   visits: Visit[];
   richiesteEsami?: RichiestaEsameComplementare[];
   certificatiPaziente?: CertificatoPaziente[];
+  ricettePaziente?: RicettaPaziente[];
   doctor: Doctor;
   documents: Document[];
   templates?: MedicalTemplate[];
@@ -263,6 +286,13 @@ export interface StorageService {
   addCertificato(data: Omit<CertificatoPaziente, 'id' | 'createdAt' | 'updatedAt'>): Promise<CertificatoPaziente>;
   updateCertificato(id: string, data: Partial<CertificatoPaziente>): Promise<CertificatoPaziente>;
   deleteCertificato(id: string): Promise<void>;
+
+  // Ricette paziente
+  getRicetteByPatientId(patientId: string): Promise<RicettaPaziente[]>;
+  getRicettaById(id: string): Promise<RicettaPaziente | null>;
+  addRicetta(data: Omit<RicettaPaziente, 'id' | 'createdAt' | 'updatedAt'>): Promise<RicettaPaziente>;
+  updateRicetta(id: string, data: Partial<RicettaPaziente>): Promise<RicettaPaziente>;
+  deleteRicetta(id: string): Promise<void>;
 
   // Dottore
   getDoctor(): Promise<Doctor | null>;

@@ -23,7 +23,7 @@ export function PageHeader({
       case "primary":
         return "bg-slate-800 text-white";
       case "success":
-        return "bg-success-100 text-success-700";
+        return "corioli-icon-badge-brand";
       case "warning":
         return "bg-warning-100 text-warning-700";
       case "danger":

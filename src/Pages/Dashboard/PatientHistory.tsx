@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentType } from "react";
 import {
   Card,
   CardHeader,
@@ -42,6 +42,7 @@ import {
   ChevronUp,
   Award,
   StickyNote,
+  Pill,
 } from "lucide-react";
 import { RefertoTextarea } from "../../components/RefertoTextarea";
 import { useParams, useNavigate } from "react-router-dom";
@@ -53,6 +54,7 @@ import {
   DoctorService,
   RichiestaEsameService,
   CertificatoService,
+  RicettaService,
   TemplateService,
   PreferenceService,
 } from "../../services/OfflineServices";
@@ -63,6 +65,8 @@ import {
   Doctor,
   RichiestaEsameComplementare,
   CertificatoPaziente,
+  RicettaPaziente,
+  RicettaFarmaco,
   MedicalTemplate,
 } from "../../types/Storage";
 import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
@@ -134,11 +138,52 @@ function sortRichiesteEsamiByDateAndCreation(
   });
 }
 
+const EMPTY_FARMACO: RicettaFarmaco = { nome: "", posologia: "", durata: "" };
+
+function parseTerapiaTemplate(text: string): RicettaFarmaco[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^(per os|vaginale|orale):?$/i.test(line))
+    .map((line) => {
+      const cleaned = line.replace(/^[-•*]\s*/, "");
+      const colonIdx = cleaned.indexOf(":");
+      if (colonIdx > 0) {
+        return {
+          nome: cleaned.slice(0, colonIdx).trim(),
+          posologia: cleaned.slice(colonIdx + 1).trim(),
+          durata: "",
+        };
+      }
+      return { nome: cleaned, posologia: "", durata: "" };
+    })
+    .filter((f) => f.nome.length > 0);
+}
+
+function PatientDocEmptyState({
+  icon: Icon,
+  title,
+  hint,
+}: {
+  icon: ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+  title: string;
+  hint: string;
+}) {
+  return (
+    <div className="patient-doc-empty">
+      <Icon size={32} className="patient-doc-empty__icon" strokeWidth={1.5} />
+      <p className="patient-doc-empty__title">{title}</p>
+      <p className="patient-doc-empty__hint">{hint}</p>
+    </div>
+  );
+}
+
 type PendingDelete =
   | { kind: "visita"; id: string }
   | { kind: "paziente" }
   | { kind: "esame"; id: string }
-  | { kind: "certificato"; id: string };
+  | { kind: "certificato"; id: string }
+  | { kind: "ricetta"; id: string };
 
 export default function PatientHistory() {
   const { patientId: patientIdParam } = useParams<{ patientId: string }>();
@@ -239,7 +284,28 @@ export default function PatientHistory() {
   );
   const [certDescrizione, setCertDescrizione] = useState("");
   const [savingCertificato, setSavingCertificato] = useState(false);
-  const [rightColumnTab, setRightColumnTab] = useState<"esami" | "certificati">("esami");
+  const [ricette, setRicette] = useState<RicettaPaziente[]>([]);
+  const [terapiaTemplates, setTerapiaTemplates] = useState<MedicalTemplate[]>([]);
+  const {
+    isOpen: isRicettaOpen,
+    onOpen: onRicettaOpen,
+    onClose: onRicettaClose,
+  } = useDisclosure();
+  const {
+    isOpen: isRicettaPreviewOpen,
+    onOpen: onRicettaPreviewOpen,
+    onClose: onRicettaPreviewClose,
+  } = useDisclosure();
+  const [selectedRicettaPreview, setSelectedRicettaPreview] = useState<RicettaPaziente | null>(null);
+  const [ricettaPreviewPdfBlobUrl, setRicettaPreviewPdfBlobUrl] = useState<string | null>(null);
+  const [ricettaPreviewPdfLoading, setRicettaPreviewPdfLoading] = useState(false);
+  const [ricettaPreviewFullscreen, setRicettaPreviewFullscreen] = useState(false);
+  const [editingRicetta, setEditingRicetta] = useState<RicettaPaziente | null>(null);
+  const [ricettaData, setRicettaData] = useState(() => new Date().toISOString().slice(0, 10));
+  const [ricettaFarmaci, setRicettaFarmaci] = useState<RicettaFarmaco[]>([{ ...EMPTY_FARMACO }]);
+  const [ricettaNote, setRicettaNote] = useState("");
+  const [savingRicetta, setSavingRicetta] = useState(false);
+  const [rightColumnTab, setRightColumnTab] = useState<"ricette" | "esami" | "certificati">("ricette");
   const navigate = useNavigate();
   const { showToast } = useToast();
   const {
@@ -294,6 +360,9 @@ export default function PatientHistory() {
 
       const certList = await CertificatoService.getByPatientId(patientData.id);
       setCertificati(certList);
+
+      const ricetteList = await RicettaService.getByPatientId(patientData.id);
+      setRicette(ricetteList);
     } catch (error) {
       console.error("Errore durante il recupero dei dati:", error);
       setError("Errore durante il recupero delle visite");
@@ -315,6 +384,7 @@ export default function PatientHistory() {
           results.filter((t) => t.category === "esame_complementare"),
         );
         setCertTemplates(results.filter((t) => t.category === "certificato"));
+        setTerapiaTemplates(results.filter((t) => t.category === "terapie"));
       })
       .catch(console.error);
   }, [patientIdParam]);
@@ -543,6 +613,42 @@ export default function PatientHistory() {
     };
   }, [isCertificatoPreviewOpen, selectedCertificatoPreview?.id, patient?.id]);
 
+  // Anteprima ricetta: genera PDF e mostra in iframe
+  useEffect(() => {
+    if (!isRicettaPreviewOpen || !selectedRicettaPreview || !patient) {
+      setRicettaPreviewPdfBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setRicettaPreviewPdfLoading(false);
+      return;
+    }
+    let revoked = false;
+    setRicettaPreviewPdfLoading(true);
+    (async () => {
+      try {
+        const doc = await DoctorService.getDoctor();
+        const blob = await PdfService.generateRicettaPDF(patient, selectedRicettaPreview, doc ?? null);
+        if (revoked) return;
+        const url = URL.createObjectURL(blob);
+        setRicettaPreviewPdfBlobUrl(url);
+      } catch (e) {
+        console.error("Errore generazione PDF anteprima ricetta:", e);
+        if (!revoked) setRicettaPreviewPdfBlobUrl(null);
+      } finally {
+        if (!revoked) setRicettaPreviewPdfLoading(false);
+      }
+    })();
+    return () => {
+      revoked = true;
+      setRicettaPreviewPdfBlobUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setRicettaPreviewPdfLoading(false);
+    };
+  }, [isRicettaPreviewOpen, selectedRicettaPreview?.id, patient?.id]);
+
   const handleVisitClick = (visit: Visit) => {
     setSelectedVisit(visit);
     onOpen();
@@ -734,6 +840,19 @@ export default function PatientHistory() {
           showToast("Certificato eliminato.");
           break;
         }
+        case "ricetta": {
+          await RicettaService.delete(pendingDelete.id);
+          if (patient) {
+            const list = await RicettaService.getByPatientId(patient.id);
+            setRicette(list);
+          }
+          handleCloseRicettaModal();
+          if (selectedRicettaPreview?.id === pendingDelete.id) {
+            handleCloseRicettaPreview();
+          }
+          showToast("Ricetta eliminata.");
+          break;
+        }
       }
       onDeleteClose();
       setPendingDelete(null);
@@ -780,6 +899,12 @@ export default function PatientHistory() {
           title: "Elimina certificato",
           confirmLabel: "Elimina certificato",
           message: "Sei sicuro di voler eliminare questo certificato?",
+        };
+      case "ricetta":
+        return {
+          title: "Elimina ricetta",
+          confirmLabel: "Elimina ricetta",
+          message: "Sei sicuro di voler eliminare questa ricetta?",
         };
     }
   };
@@ -897,14 +1022,270 @@ export default function PatientHistory() {
           a.click();
           showToast("PDF scaricato.");
         }
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        URL.revokeObjectURL(url);
       }
-    } catch (err) {
-      console.error("Errore generazione PDF certificato:", err);
-      showToast("Errore generazione PDF.", "error");
+    } catch (e) {
+      console.error(e);
+      showToast("Errore nella generazione del PDF.", "error");
     } finally {
       setPdfLoading(false);
     }
+  };
+
+  const getRicettaTipoLabel = (_tipo?: RicettaPaziente["tipo"]) => "Bianca";
+
+  const getRicettaSummary = (r: RicettaPaziente) => {
+    const names = (r.farmaci || []).map((f) => f.nome?.trim()).filter(Boolean);
+    if (names.length === 0) return "Nessun farmaco";
+    if (names.length === 1) return names[0];
+    return `${names[0]} +${names.length - 1}`;
+  };
+
+  const resetRicettaForm = () => {
+    setRicettaData(new Date().toISOString().slice(0, 10));
+    setRicettaFarmaci([{ ...EMPTY_FARMACO }]);
+    setRicettaNote("");
+  };
+
+  const handleOpenNuovaRicetta = () => {
+    if (!ensureDoctorProfileComplete(doctor)) return;
+    setEditingRicetta(null);
+    resetRicettaForm();
+    onRicettaOpen();
+  };
+
+  const handleOpenEditRicetta = (r: RicettaPaziente) => {
+    setEditingRicetta(r);
+    setRicettaData(r.dataRicetta.slice(0, 10));
+    setRicettaFarmaci(
+      r.farmaci?.length ? r.farmaci.map((f) => ({ ...f })) : [{ ...EMPTY_FARMACO }],
+    );
+    setRicettaNote(r.note ?? "");
+    onRicettaOpen();
+  };
+
+  const handleCloseRicettaModal = () => {
+    onRicettaClose();
+    setEditingRicetta(null);
+  };
+
+  const handleSaveRicetta = async (openPreviewAfterSave = false) => {
+    if (!patient) return;
+    const farmaciValidi = ricettaFarmaci
+      .map((f) => ({
+        nome: f.nome.trim(),
+        posologia: f.posologia.trim(),
+        durata: f.durata?.trim() || undefined,
+      }))
+      .filter((f) => f.nome.length > 0);
+    if (farmaciValidi.length === 0) {
+      showToast("Inserisci almeno un farmaco.", "warning");
+      return;
+    }
+    setSavingRicetta(true);
+    try {
+      let saved: RicettaPaziente;
+      if (editingRicetta) {
+        saved = await RicettaService.update(editingRicetta.id, {
+          tipo: "bianca",
+          dataRicetta: ricettaData,
+          farmaci: farmaciValidi,
+          note: ricettaNote.trim() || undefined,
+        });
+        showToast("Ricetta aggiornata.");
+      } else {
+        saved = await RicettaService.add({
+          patientId: patient.id,
+          tipo: "bianca",
+          dataRicetta: ricettaData,
+          farmaci: farmaciValidi,
+          note: ricettaNote.trim() || undefined,
+        });
+        showToast("Ricetta salvata.");
+      }
+      const list = await RicettaService.getByPatientId(patient.id);
+      setRicette(list);
+      handleCloseRicettaModal();
+      if (openPreviewAfterSave) {
+        setSelectedRicettaPreview(saved);
+        onRicettaPreviewOpen();
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Errore nel salvataggio della ricetta.", "error");
+    } finally {
+      setSavingRicetta(false);
+    }
+  };
+
+  const handleOpenRicettaPreview = (r: RicettaPaziente) => {
+    setSelectedRicettaPreview(r);
+    onRicettaPreviewOpen();
+  };
+
+  const handleCloseRicettaPreview = () => {
+    onRicettaPreviewClose();
+    setSelectedRicettaPreview(null);
+  };
+
+  const handleFromRicettaPreviewToEdit = () => {
+    const r = selectedRicettaPreview;
+    if (!r) return;
+    handleCloseRicettaPreview();
+    handleOpenEditRicetta(r);
+  };
+
+  const downloadPdfBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPdfUrl = (blobUrl: string, filename: string) => {
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    a.click();
+  };
+
+  const handleDownloadRicetta = async (ricetta: RicettaPaziente) => {
+    if (!patient) return;
+    const filename = `Ricetta_${patient.cognome}_${ricetta.dataRicetta}.pdf`;
+    if (
+      ricettaPreviewPdfBlobUrl &&
+      selectedRicettaPreview?.id === ricetta.id
+    ) {
+      downloadPdfUrl(ricettaPreviewPdfBlobUrl, filename);
+      showToast("Ricetta scaricata.");
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      const doc = await DoctorService.getDoctor();
+      const blob = await PdfService.generateRicettaPDF(
+        patient,
+        ricetta,
+        doc ?? null,
+      );
+      downloadPdfBlob(blob, filename);
+      showToast("Ricetta scaricata.");
+    } catch (e) {
+      console.error(e);
+      showToast("Errore nel download della ricetta.", "error");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handleDownloadRichiestaEsame = async (
+    richiesta: RichiestaEsameComplementare,
+  ) => {
+    if (!patient) return;
+    const filename = `Richiesta_esame_${patient.cognome}_${richiesta.dataRichiesta}.pdf`;
+    if (
+      esamePreviewPdfBlobUrl &&
+      selectedRichiestaEsamePreview?.id === richiesta.id
+    ) {
+      downloadPdfUrl(esamePreviewPdfBlobUrl, filename);
+      showToast("Richiesta esame scaricata.");
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      const doc = await DoctorService.getDoctor();
+      const blob = await PdfService.generateRichiestaEsamePDF(
+        patient,
+        richiesta,
+        doc ?? null,
+      );
+      downloadPdfBlob(blob, filename);
+      showToast("Richiesta esame scaricata.");
+    } catch (e) {
+      console.error(e);
+      showToast("Errore nel download della richiesta.", "error");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handleDownloadCertificato = async (cert: CertificatoPaziente) => {
+    if (!patient) return;
+    const filename = `Certificato_${patient.cognome}_${cert.dataCertificato}.pdf`;
+    if (
+      certificatoPreviewPdfBlobUrl &&
+      selectedCertificatoPreview?.id === cert.id
+    ) {
+      downloadPdfUrl(certificatoPreviewPdfBlobUrl, filename);
+      showToast("Certificato scaricato.");
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      const doc = await DoctorService.getDoctor();
+      const blob = await PdfService.generateCertificatoPDF(
+        patient,
+        cert,
+        doc ?? null,
+      );
+      downloadPdfBlob(blob, filename);
+      showToast("Certificato scaricato.");
+    } catch (e) {
+      console.error(e);
+      showToast("Errore nel download del certificato.", "error");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const handlePrintRicetta = async (ricetta: RicettaPaziente) => {
+    if (!patient) return;
+    setPdfLoading(true);
+    try {
+      const doc = await DoctorService.getDoctor();
+      const blob = await PdfService.generateRicettaPDF(patient, ricetta, doc ?? null);
+      const electronAPI = (window as unknown as { electronAPI?: { openPdfForPrint: (b64: string) => Promise<unknown> } }).electronAPI;
+      if (electronAPI?.openPdfForPrint) {
+        const base64 = await blobToBase64(blob);
+        await electronAPI.openPdfForPrint(base64);
+        showToast("PDF aperto per la stampa.");
+      } else {
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, "_blank");
+        if (!w) {
+          downloadPdfBlob(
+            blob,
+            `Ricetta_${patient.cognome}_${ricetta.dataRicetta}.pdf`,
+          );
+          showToast("Ricetta scaricata.");
+        } else {
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("Errore nella generazione del PDF.", "error");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const updateRicettaFarmaco = (index: number, field: keyof RicettaFarmaco, value: string) => {
+    setRicettaFarmaci((prev) =>
+      prev.map((f, i) => (i === index ? { ...f, [field]: value } : f)),
+    );
+  };
+
+  const addRicettaFarmacoRow = () => {
+    setRicettaFarmaci((prev) => [...prev, { ...EMPTY_FARMACO }]);
+  };
+
+  const removeRicettaFarmacoRow = (index: number) => {
+    setRicettaFarmaci((prev) =>
+      prev.length <= 1 ? [{ ...EMPTY_FARMACO }] : prev.filter((_, i) => i !== index),
+    );
   };
 
   // ── Patient Edit ──
@@ -1266,7 +1647,6 @@ export default function PatientHistory() {
         });
         if (b) blob = b;
         filename = `Ginecologia_${patient.cognome}_${visit.dataVisita}.pdf`;
-        showToast("PDF ginecologico generato.");
       } else if (visit.tipo === "ostetrica") {
         const b = await PdfService.generateObstetricPDF(patient, visit, {
           includeEcografiaImages,
@@ -1275,16 +1655,11 @@ export default function PatientHistory() {
         });
         if (b) blob = b;
         filename = `Ostetricia_${patient.cognome}_${visit.dataVisita}.pdf`;
-        showToast("PDF ostetrico generato.");
       }
 
       if (blob && filename) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadPdfBlob(blob, filename);
+        showToast("Referto scaricato.");
       }
     } catch (err) {
       console.error("Errore generazione PDF da anteprima:", err);
@@ -1613,11 +1988,11 @@ export default function PatientHistory() {
         )}
       </div>
 
-      {/* 2. Layout a Griglia: Visite a sinistra, Esami a destra */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* 2. Layout a Griglia: Visite a sinistra, documenti a destra (stessa altezza) */}
+      <div className="patient-history-panels grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* COLONNA SINISTRA: VISITE (2/3) */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="corioli-section-bar">
+        <div className="patient-history-panel patient-history-panel--visits corioli-card lg:col-span-2 flex flex-col overflow-hidden">
+          <div className="corioli-section-bar flex-shrink-0 rounded-none border-0 border-b border-default-100 bg-default-50/50">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-default-100 text-default-600 rounded-lg">
                 <FileTextIcon size={20} />
@@ -1643,8 +2018,9 @@ export default function PatientHistory() {
             </Button>
           </div>
 
+          <div className="p-3">
           {visits.length === 0 ? (
-            <Card className="bg-default-50 border-dashed border-default-300">
+            <Card className="bg-default-50 border-dashed border-default-300 shadow-none">
               <CardBody className="text-center py-10">
                 <div className="text-4xl mb-3">📋</div>
                 <h3 className="text-base font-semibold text-gray-900">
@@ -1809,82 +2185,131 @@ export default function PatientHistory() {
               ))}
             </div>
           )}
+          </div>
         </div>
 
-        {/* COLONNA DESTRA: Esami e Certificati a tab + pulsante sulla stessa riga */}
-        <div className="lg:col-span-1 flex flex-col min-h-0 bg-white rounded-xl border border-default-100 shadow-sm overflow-hidden">
-          {/* Riga unica: tab testuali a sinistra, pulsante azione a destra */}
-          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-default-100 bg-default-50/50">
-            <div className="flex gap-0 rounded-lg bg-default-100 p-0.5">
-              <button
-                type="button"
-                onClick={() => setRightColumnTab("esami")}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  rightColumnTab === "esami"
-                    ? "corioli-tab-active"
-                    : "corioli-tab-inactive"
-                }`}
-              >
-                <FlaskConical size={16} />
-                Esami
-                <span className={`text-xs ${rightColumnTab === "esami" ? "text-default-700" : "text-default-500"}`}>
-                  {richiesteEsami.length}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightColumnTab("certificati")}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                  rightColumnTab === "certificati"
-                    ? "bg-white text-warning-700 shadow-sm"
-                    : "text-default-600 hover:text-default-800"
-                }`}
-              >
-                <Award size={16} />
-                Certificati
-                <span className={`text-xs ${rightColumnTab === "certificati" ? "text-warning-600" : "text-default-500"}`}>
-                  {certificati.length}
-                </span>
-              </button>
+        {/* COLONNA DESTRA: documenti paziente (ricette, esami, certificati) */}
+        <div className="patient-history-panel patient-history-panel--docs corioli-card lg:col-span-1 lg:self-start flex flex-col overflow-hidden">
+          <div className="patient-doc-panel-header">
+            <div className="patient-doc-tabs" role="tablist" aria-label="Documenti paziente">
+              {(
+                [
+                  { key: "ricette" as const, label: "Ricette", icon: Pill },
+                  { key: "esami" as const, label: "Esami", icon: FlaskConical },
+                  { key: "certificati" as const, label: "Certificati", icon: Award },
+                ] as const
+              ).map(({ key, label, icon: Icon }) => {
+                const active = rightColumnTab === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setRightColumnTab(key)}
+                    className={`patient-doc-tab ${active ? "patient-doc-tab--active" : "patient-doc-tab--inactive"}`}
+                  >
+                    <Icon size={17} strokeWidth={active ? 2.25 : 2} />
+                    <span className="patient-doc-tab__label">{label}</span>
+                  </button>
+                );
+              })}
             </div>
-            {rightColumnTab === "esami" ? (
+            {rightColumnTab === "ricette" ? (
               <Button
                 color="primary"
                 size="sm"
-                variant="solid"
-                className="flex-shrink-0 font-medium"
+                variant="flat"
+                className="patient-doc-panel-cta"
+                onPress={handleOpenNuovaRicetta}
+                startContent={<PlusIcon size={16} />}
+              >
+                Nuova ricetta
+              </Button>
+            ) : rightColumnTab === "esami" ? (
+              <Button
+                color="primary"
+                size="sm"
+                variant="flat"
+                className="patient-doc-panel-cta"
                 onPress={handleOpenNuovaRichiestaEsame}
                 startContent={<PlusIcon size={16} />}
               >
-                Nuovo Esame
+                Nuovo esame
               </Button>
             ) : (
               <Button
-                color="warning"
+                color="primary"
                 size="sm"
                 variant="flat"
-                className="flex-shrink-0 font-medium"
+                className="patient-doc-panel-cta"
                 onPress={handleOpenNuovoCertificato}
                 startContent={<PlusIcon size={16} />}
               >
-                Nuovo Certificato
+                Nuovo certificato
               </Button>
             )}
           </div>
 
           {/* Contenuto lista (solo il tab attivo) */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-3">
+          <div className="patient-doc-panel-body">
+            {rightColumnTab === "ricette" && (
+              <div className="space-y-3">
+                {ricette.length === 0 ? (
+                  <PatientDocEmptyState
+                    icon={Pill}
+                    title="Nessuna ricetta emessa"
+                    hint="Le ricette create per questa paziente appariranno qui"
+                  />
+                ) : (
+                  ricette.map((r) => (
+                    <Card
+                      key={r.id}
+                      isPressable
+                      onPress={() => handleOpenRicettaPreview(r)}
+                      className="border border-default-200 shadow-sm hover:border-primary/40 group cursor-pointer w-full min-h-[5rem]"
+                    >
+                      <CardBody className="p-3 min-h-[5rem] flex flex-col">
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="right-col-card-title break-words">
+                                {getRicettaSummary(r)}
+                              </h4>
+                              <Chip size="sm" variant="flat" color="primary" className="h-5">
+                                {getRicettaTipoLabel(r.tipo)}
+                              </Chip>
+                            </div>
+                            <p className="right-col-card-date">
+                              {formatCardDateSubtle(r.dataRicetta)}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handleOpenEditRicetta(r)} title="Modifica">
+                              <EditIcon size={14} />
+                            </Button>
+                            <Button size="sm" color="primary" variant="light" isIconOnly className="h-6 w-6 min-w-0" onPress={() => handlePrintRicetta(r)} isLoading={pdfLoading} title="Stampa PDF">
+                              <Printer size={14} />
+                            </Button>
+                          </div>
+                        </div>
+                        {r.note ? (
+                          <p className="text-xs text-gray-500 line-clamp-2 break-words">{r.note}</p>
+                        ) : null}
+                      </CardBody>
+                    </Card>
+                  ))
+                )}
+              </div>
+            )}
             {rightColumnTab === "esami" && (
               <div className="space-y-3">
                 {richiesteEsami.length === 0 ? (
-                  <Card className="bg-default-50 border-dashed border-default-300 shadow-none">
-                    <CardBody className="text-center py-8 px-4">
-                      <p className="text-sm text-gray-500 mb-3">Nessuna prescrizione attiva.</p>
-                      <Button color="primary" size="sm" onPress={handleOpenNuovaRichiestaEsame}>
-                        Crea Richiesta
-                      </Button>
-                    </CardBody>
-                  </Card>
+                  <PatientDocEmptyState
+                    icon={FlaskConical}
+                    title="Nessuna richiesta esame"
+                    hint="Le prescrizioni di esami per questa paziente appariranno qui"
+                  />
                 ) : (
                   richiesteEsami.map((r) => (
                     <Card
@@ -1926,14 +2351,11 @@ export default function PatientHistory() {
             {rightColumnTab === "certificati" && (
               <div className="space-y-3">
                 {certificati.length === 0 ? (
-                  <Card className="bg-default-50 border-dashed border-default-300 shadow-none">
-                    <CardBody className="text-center py-8 px-4">
-                      <p className="text-sm text-gray-500 mb-3">Nessun certificato.</p>
-                      <Button color="warning" variant="flat" size="sm" onPress={handleOpenNuovoCertificato}>
-                        Aggiungi certificato
-                      </Button>
-                    </CardBody>
-                  </Card>
+                  <PatientDocEmptyState
+                    icon={Award}
+                    title="Nessun certificato emesso"
+                    hint="I certificati rilasciati a questa paziente appariranno qui"
+                  />
                 ) : (
                   certificati.map((c) => (
                     <Card
@@ -2234,7 +2656,7 @@ export default function PatientHistory() {
                   isLoading={pdfLoading}
                   isDisabled={pdfLoading}
                 >
-                  {pdfLoading ? "Generazione..." : "Genera PDF"}
+                  {pdfLoading ? "Scaricamento..." : "Scarica referto"}
                 </Button>
                 <Button
                   color="primary"
@@ -2272,7 +2694,7 @@ export default function PatientHistory() {
           </ModalHeader>
           <ModalBody>
             {successMsg && (
-              <div className="bg-success-50 border border-success-200 text-success-700 px-4 py-3 rounded-lg text-sm font-medium">
+              <div className="corioli-feedback-success px-4 py-3 rounded-lg text-sm font-medium">
                 {successMsg}
               </div>
             )}
@@ -2518,7 +2940,8 @@ export default function PatientHistory() {
               <ModalFooter className="border-t border-default-200 gap-2 flex-wrap">
                 <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={() => { if (!selectedRichiestaEsamePreview) return; requestDelete({ kind: "esame", id: selectedRichiestaEsamePreview.id }); }} aria-label="Elimina richiesta esame" title="Elimina richiesta esame">Elimina</Button>
                 <Button variant="light" startContent={esamePreviewFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} onPress={() => setEsamePreviewFullscreen(!esamePreviewFullscreen)}>{esamePreviewFullscreen ? "Riduci" : "Espandi"}</Button>
-                <Button color="primary" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedRichiestaEsamePreview && handlePrintRichiestaEsame(selectedRichiestaEsamePreview)} isLoading={pdfLoading}>Stampa PDF</Button>
+                <Button color="primary" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedRichiestaEsamePreview && handlePrintRichiestaEsame(selectedRichiestaEsamePreview)} isLoading={pdfLoading}>Stampa</Button>
+                <Button color="default" variant="flat" startContent={<DownloadIcon size={16} />} onPress={() => selectedRichiestaEsamePreview && handleDownloadRichiestaEsame(selectedRichiestaEsamePreview)} isLoading={pdfLoading} isDisabled={pdfLoading}>{pdfLoading ? "Scaricamento..." : "Scarica richiesta"}</Button>
                 <Button color="primary" startContent={<EditIcon size={18} />} onPress={handleFromPreviewToEdit}>Modifica</Button>
               </ModalFooter>
             </>
@@ -2565,7 +2988,8 @@ export default function PatientHistory() {
               <ModalFooter className="border-t border-default-200 gap-2 flex-wrap">
                 <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={() => { if (!selectedCertificatoPreview) return; requestDelete({ kind: "certificato", id: selectedCertificatoPreview.id }); }} aria-label="Elimina certificato">Elimina</Button>
                 <Button variant="light" startContent={certificatoPreviewFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} onPress={() => setCertificatoPreviewFullscreen(!certificatoPreviewFullscreen)}>{certificatoPreviewFullscreen ? "Riduci" : "Espandi"}</Button>
-                <Button color="warning" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedCertificatoPreview && handlePrintCertificato(selectedCertificatoPreview)} isLoading={pdfLoading}>Stampa PDF</Button>
+                <Button color="warning" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedCertificatoPreview && handlePrintCertificato(selectedCertificatoPreview)} isLoading={pdfLoading}>Stampa</Button>
+                <Button color="default" variant="flat" startContent={<DownloadIcon size={16} />} onPress={() => selectedCertificatoPreview && handleDownloadCertificato(selectedCertificatoPreview)} isLoading={pdfLoading} isDisabled={pdfLoading}>{pdfLoading ? "Scaricamento..." : "Scarica certificato"}</Button>
                 <Button color="primary" startContent={<EditIcon size={18} />} onPress={handleFromCertificatoPreviewToEdit}>Modifica</Button>
               </ModalFooter>
             </>
@@ -2798,6 +3222,202 @@ export default function PatientHistory() {
               startContent={editingCertificato ? <SaveIcon size={18} /> : <PlusIcon size={18} />}
             >
               {editingCertificato ? "Salva modifiche" : "Salva certificato"}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Modal Anteprima ricetta = PDF in iframe */}
+      <Modal
+        isOpen={isRicettaPreviewOpen}
+        onClose={() => {
+          handleCloseRicettaPreview();
+          setRicettaPreviewFullscreen(false);
+        }}
+        size={ricettaPreviewFullscreen ? "full" : "5xl"}
+        scrollBehavior="inside"
+        classNames={ricettaPreviewFullscreen ? { base: "m-0 max-w-[100vw] max-h-[100vh] h-[100vh] rounded-none" } : undefined}
+      >
+        <ModalContent className={ricettaPreviewFullscreen ? "flex flex-col max-h-[100vh] h-[100vh]" : undefined}>
+          {selectedRicettaPreview && patient && (
+            <>
+              <ModalHeader className="flex flex-col gap-1">
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-2">
+                    <Pill size={22} className="corioli-text-brand" />
+                    <h2 className="text-xl font-bold">Anteprima ricetta</h2>
+                  </div>
+                  <Chip size="sm" variant="flat" color="primary">{getRicettaTipoLabel(selectedRicettaPreview.tipo)}</Chip>
+                </div>
+              </ModalHeader>
+              <ModalBody className={ricettaPreviewFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : undefined}>
+                {ricettaPreviewPdfLoading ? (
+                  <div className="flex justify-center items-center min-h-[60vh]">
+                    <Spinner size="lg" color="primary" label="Generazione anteprima PDF..." />
+                  </div>
+                ) : ricettaPreviewPdfBlobUrl ? (
+                  <div className={ricettaPreviewFullscreen ? "flex-1 min-h-0 flex flex-col rounded-lg p-2 bg-[#e5e5e5]" : "bg-[#e5e5e5] rounded-lg p-2 flex flex-col min-h-[70vh]"}>
+                    <iframe src={ricettaPreviewPdfBlobUrl} title="Anteprima ricetta" className={ricettaPreviewFullscreen ? "flex-1 w-full min-h-0 rounded border border-gray-300 bg-white" : "flex-1 w-full min-h-[70vh] rounded border border-gray-300 bg-white"} />
+                  </div>
+                ) : (
+                  <div className="flex justify-center items-center min-h-[60vh] text-default-500">Anteprima non disponibile.</div>
+                )}
+              </ModalBody>
+              <ModalFooter className="border-t border-default-200 gap-2 flex-wrap">
+                <Button color="danger" variant="light" className="mr-auto" startContent={<Trash2Icon size={18} />} onPress={() => { if (!selectedRicettaPreview) return; requestDelete({ kind: "ricetta", id: selectedRicettaPreview.id }); }}>Elimina</Button>
+                <Button variant="light" startContent={ricettaPreviewFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />} onPress={() => setRicettaPreviewFullscreen(!ricettaPreviewFullscreen)}>{ricettaPreviewFullscreen ? "Riduci" : "Espandi"}</Button>
+                <Button color="primary" variant="flat" startContent={<Printer size={18} />} onPress={() => selectedRicettaPreview && handlePrintRicetta(selectedRicettaPreview)} isLoading={pdfLoading}>Stampa</Button>
+                <Button color="default" variant="flat" startContent={<DownloadIcon size={16} />} onPress={() => selectedRicettaPreview && handleDownloadRicetta(selectedRicettaPreview)} isLoading={pdfLoading} isDisabled={pdfLoading}>{pdfLoading ? "Scaricamento..." : "Scarica ricetta"}</Button>
+                <Button color="primary" startContent={<EditIcon size={18} />} onPress={handleFromRicettaPreviewToEdit}>Modifica</Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* Modal Nuovo/Modifica Ricetta */}
+      <Modal isOpen={isRicettaOpen} onClose={handleCloseRicettaModal} size="3xl" scrollBehavior="inside">
+        <ModalContent>
+          <ModalHeader className="flex items-center gap-2 pb-2">
+            <Pill size={22} className="text-primary-700" />
+            <span className="text-lg">
+              {editingRicetta ? "Modifica ricetta" : "Nuova ricetta"}
+            </span>
+          </ModalHeader>
+          <ModalBody className="gap-5 pb-6">
+            {terapiaTemplates.length > 0 && (
+              <div className="flex justify-end">
+                <Dropdown>
+                  <DropdownTrigger>
+                    <Button size="sm" variant="flat" color="primary" startContent={<ClipboardList size={16} />}>
+                      Modelli Terapia
+                    </Button>
+                  </DropdownTrigger>
+                  <DropdownMenu
+                    aria-label="Modelli Terapia"
+                    onAction={(key) => {
+                      const t = terapiaTemplates.find((x) => x.id === key);
+                      if (t) {
+                        const parsed = parseTerapiaTemplate(t.text);
+                        if (parsed.length > 0) setRicettaFarmaci(parsed);
+                        if (t.note) setRicettaNote(t.note);
+                      }
+                    }}
+                    className="max-h-[300px] overflow-y-auto"
+                  >
+                    {terapiaTemplates.map((t) => (
+                      <DropdownItem key={t.id} description={t.label}>
+                        {t.label}
+                      </DropdownItem>
+                    ))}
+                  </DropdownMenu>
+                </Dropdown>
+              </div>
+            )}
+            <Input
+              type="date"
+              label="Data ricetta"
+              value={ricettaData}
+              onValueChange={setRicettaData}
+              variant="bordered"
+              className="max-w-xs"
+            />
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-default-700">Farmaci prescritti</p>
+                <Button size="sm" variant="flat" color="primary" onPress={addRicettaFarmacoRow} startContent={<PlusIcon size={14} />}>
+                  Aggiungi farmaco
+                </Button>
+              </div>
+              {ricettaFarmaci.map((farmaco, index) => (
+                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-default-100 rounded-lg p-3 bg-default-50/50">
+                  <Input
+                    className="md:col-span-4"
+                    label="Farmaco"
+                    placeholder="Es. Meclon ovuli"
+                    value={farmaco.nome}
+                    onValueChange={(v) => updateRicettaFarmaco(index, "nome", v)}
+                    variant="bordered"
+                    size="sm"
+                  />
+                  <Input
+                    className="md:col-span-4"
+                    label="Posologia"
+                    placeholder="Es. 1 ovulo la sera"
+                    value={farmaco.posologia}
+                    onValueChange={(v) => updateRicettaFarmaco(index, "posologia", v)}
+                    variant="bordered"
+                    size="sm"
+                  />
+                  <Input
+                    className="md:col-span-3"
+                    label="Durata"
+                    placeholder="Es. 7 giorni"
+                    value={farmaco.durata ?? ""}
+                    onValueChange={(v) => updateRicettaFarmaco(index, "durata", v)}
+                    variant="bordered"
+                    size="sm"
+                  />
+                  <Button
+                    className="md:col-span-1"
+                    size="sm"
+                    color="danger"
+                    variant="light"
+                    isIconOnly
+                    onPress={() => removeRicettaFarmacoRow(index)}
+                    aria-label="Rimuovi farmaco"
+                  >
+                    <Trash2Icon size={16} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <Textarea
+              label="Note aggiuntive"
+              placeholder="Es. assumere a stomaco pieno, evitare alcol..."
+              value={ricettaNote}
+              onValueChange={setRicettaNote}
+              variant="bordered"
+              minRows={2}
+            />
+          </ModalBody>
+          <ModalFooter>
+            {editingRicetta ? (
+              <Button
+                color="danger"
+                variant="light"
+                startContent={<Trash2Icon size={18} />}
+                onPress={() => requestDelete({ kind: "ricetta", id: editingRicetta.id })}
+              >
+                Elimina
+              </Button>
+            ) : (
+              <div />
+            )}
+            <div className="flex-1" />
+            <Button variant="light" onPress={handleCloseRicettaModal}>
+              Annulla
+            </Button>
+            {editingRicetta ? (
+              <Button
+                color="primary"
+                onPress={() => handleSaveRicetta(false)}
+                isLoading={savingRicetta}
+                startContent={<SaveIcon size={18} />}
+              >
+                Salva modifiche
+              </Button>
+            ) : null}
+            <Button
+              color="primary"
+              variant={editingRicetta ? "flat" : "solid"}
+              onPress={() => handleSaveRicetta(true)}
+              isLoading={savingRicetta}
+              startContent={<Printer size={18} />}
+            >
+              {editingRicetta ? "Genera PDF" : "Conferma e genera PDF"}
             </Button>
           </ModalFooter>
         </ModalContent>

@@ -802,7 +802,7 @@ export default function HelpAndFeedback() {
                 <div className="flex items-center gap-1.5">
                   <span
                     className={`w-2 h-2 rounded-full shrink-0 ${
-                      chatError ? "bg-warning-500" : "bg-success-500"
+                      chatError ? "bg-warning-500" : "corioli-indicator-active"
                     }`}
                   />
                   <p className="text-xs text-default-500 font-medium">

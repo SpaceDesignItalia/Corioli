@@ -44,7 +44,7 @@ const getCategoryColor = (category: string) => {
     case "corso_aggiornamento":
       return "primary";
     case "certificato":
-      return "success";
+      return "primary";
     case "altro":
       return "primary";
     default:
@@ -314,9 +314,9 @@ export default function Documents() {
       )}
 
       {success && (
-        <Card className="border-l-4 border-l-success shadow-sm">
+        <Card className="border-l-4 border-l-primary shadow-sm">
           <CardBody className="py-3">
-            <p className="text-success text-sm">{success}</p>
+            <p className="corioli-text-brand text-sm">{success}</p>
           </CardBody>
         </Card>
       )}

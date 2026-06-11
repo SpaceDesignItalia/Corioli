@@ -122,7 +122,7 @@ const ExportManager: React.FC = () => {
                       <div className="text-sm text-gray-600">Visite</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-success">{stats.visitsThisMonth}</div>
+                      <div className="text-2xl font-bold corioli-text-brand">{stats.visitsThisMonth}</div>
                       <div className="text-sm text-gray-600">Questo Mese</div>
                     </div>
                     <div className="text-center">
@@ -268,9 +268,9 @@ const ExportManager: React.FC = () => {
               </div>
 
               {message && (
-                <Card className={`border-l-4 ${message.type === 'success' ? 'border-l-success' : 'border-l-danger'}`}>
+                <Card className={`border-l-4 ${message.type === 'success' ? 'border-l-primary' : 'border-l-danger'}`}>
                   <CardBody className="py-3">
-                    <p className={`text-sm ${message.type === 'success' ? 'text-success' : 'text-danger'}`}>
+                    <p className={`text-sm ${message.type === 'success' ? 'corioli-text-brand' : 'text-danger'}`}>
                       {message.text}
                     </p>
                   </CardBody>

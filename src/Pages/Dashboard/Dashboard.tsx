@@ -17,6 +17,7 @@ import {
 } from "@nextui-org/react";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
+import { brandSuccessAlertSx } from "../../utils/muiBrand";
 import { SearchIcon } from "../../components/navbar/SearchIcon";
 import {
   PatientService,
@@ -642,7 +643,7 @@ export default function Dashboard() {
           onClose={() => setToast((t) => ({ ...t, open: false }))}
           severity="success"
           variant="filled"
-          sx={{ width: "100%" }}
+          sx={{ width: "100%", ...brandSuccessAlertSx }}
         >
           {toast.message}
         </Alert>
