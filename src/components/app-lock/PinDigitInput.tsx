@@ -14,6 +14,8 @@ type Props = {
   onSubmit?: () => void;
   /** Chiamato quando sono state inserite tutte le cifre (solo con `length` impostato) */
   onComplete?: (value: string) => void;
+  /** Notifica focus/blur del campo PIN — usato dalla mascotte */
+  onFocusChange?: (focused: boolean) => void;
   showHint?: boolean;
   "aria-label"?: string;
 };
@@ -27,6 +29,7 @@ export default function PinDigitInput({
   invalid = false,
   onSubmit,
   onComplete,
+  onFocusChange,
   showHint = length == null,
   "aria-label": ariaLabel = "PIN",
 }: Props) {
@@ -83,30 +86,55 @@ export default function PinDigitInput({
           disabled ? "opacity-60 pointer-events-none" : "",
         ].join(" ")}
       >
-        <div className="flex justify-center gap-2 sm:gap-2.5">
+        <div className="flex justify-center" style={{ gap: "12px" }}>
           {Array.from({ length: boxCount }, (_, i) => {
             const filled = i < trimmed.length;
             const active = focused && !disabled && i === activeIndex;
+            const isInvalid = invalid;
+
+            let borderStyle = "1.5px solid var(--color-border-secondary, #e2e8f0)";
+            let boxShadow = "none";
+            let background = "#fff";
+
+            if (isInvalid && filled) {
+              borderStyle = "2px solid #e24b4a";
+              background = "#fff5f5";
+            } else if (isInvalid) {
+              borderStyle = "1.5px solid rgba(226,75,74,0.4)";
+            } else if (filled) {
+              borderStyle = "2px solid var(--brand-cta, #244843)";
+              background = "#F1F7F6";
+            } else if (active) {
+              borderStyle = "2px solid var(--brand-cta, #244843)";
+              boxShadow = "0 0 0 3px rgba(36,72,67,0.15)";
+            }
+
             return (
               <div
                 key={i}
-                className={[
-                  "h-12 w-10 sm:h-[3.25rem] sm:w-11 rounded-lg border-2 flex items-center justify-center transition-all duration-150",
-                  filled
-                    ? "border-primary bg-primary-50"
-                    : "border-default-300 bg-content1",
-                  active && !filled ? "border-primary shadow-sm" : "",
-                  invalid && filled ? "border-danger bg-danger-50" : "",
-                  invalid && !filled ? "border-danger/40" : "",
-                ].join(" ")}
+                style={{
+                  width: 56,
+                  height: 64,
+                  borderRadius: 14,
+                  border: borderStyle,
+                  boxShadow,
+                  background,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "border-color 0.15s, box-shadow 0.15s, background 0.15s",
+                }}
                 aria-hidden
               >
                 {filled ? (
                   <span
-                    className={[
-                      "block rounded-full",
-                      invalid ? "h-2.5 w-2.5 bg-danger" : "h-2.5 w-2.5 bg-foreground",
-                    ].join(" ")}
+                    style={{
+                      display: "block",
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: isInvalid ? "#e24b4a" : "var(--color-text-primary, #0f172a)",
+                    }}
                   />
                 ) : null}
               </div>
@@ -133,8 +161,14 @@ export default function PinDigitInput({
         className="sr-only"
         onChange={(e) => setDigits(e.target.value)}
         onPaste={handlePaste}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onFocus={() => {
+          setFocused(true);
+          onFocusChange?.(true);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          onFocusChange?.(false);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") onSubmit?.();
         }}

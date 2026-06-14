@@ -1,4 +1,3 @@
-import { Card, CardBody } from "@nextui-org/react";
 import { KeyRound, Lock, Mail, User } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -9,16 +8,47 @@ type Props = {
   subtitle?: string;
   children: ReactNode;
   icon?: AppLockShellIcon;
+  /** Mascotte animata: se presente sostituisce il cerchio con l'icona statica */
+  mascot?: ReactNode;
   /** Schermata a tutto schermo (setup) o overlay sopra lo sblocco PIN */
   overlay?: boolean;
+  stepProgress?: { current: number; total: number };
 };
 
 function ShellIcon({ icon }: { icon: AppLockShellIcon }) {
-  const className = "text-primary h-7 w-7";
-  if (icon === "user") return <User className={className} />;
-  if (icon === "key") return <KeyRound className={className} />;
-  if (icon === "mail") return <Mail className={className} />;
-  return <Lock className={className} />;
+  const className = "h-7 w-7" ;
+  const style = { color: "#0F6E56" };
+  if (icon === "user") return <User className={className} style={style} />;
+  if (icon === "key") return <KeyRound className={className} style={style} />;
+  if (icon === "mail") return <Mail className={className} style={style} />;
+  return <Lock className={className} style={style} />;
+}
+
+function StepPills({ current, total }: { current: number; total: number }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <p className="onboarding-step-label">Passo {current} di {total}</p>
+      <div
+        className="flex items-center gap-2"
+        role="progressbar"
+        aria-valuenow={current}
+        aria-valuemin={1}
+        aria-valuemax={total}
+        aria-label={`Passo ${current} di ${total}`}
+      >
+        {Array.from({ length: total }, (_, i) => {
+          const state =
+            i + 1 < current ? "done" : i + 1 === current ? "active" : "future";
+          return (
+            <div
+              key={i}
+              className={`onboarding-step-pill onboarding-step-pill--${state}`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function AppLockShell({
@@ -26,21 +56,44 @@ export default function AppLockShell({
   subtitle,
   children,
   icon = "lock",
+  mascot,
   overlay = false,
+  stepProgress,
 }: Props) {
   const card = (
-    <Card className="w-full max-w-md shadow-lg corioli-card">
-      <CardBody className="p-6 sm:p-8 space-y-6">
+    <div className="onboarding-card">
+      <div className="p-6 sm:p-8 space-y-6">
         <div className="flex flex-col items-center text-center gap-3">
-          <div className="h-14 w-14 rounded-2xl bg-primary-100 flex items-center justify-center">
-            <ShellIcon icon={icon} />
+          {stepProgress ? (
+            <StepPills current={stepProgress.current} total={stepProgress.total} />
+          ) : null}
+
+          {mascot ? (
+            <div className="onboarding-mascot-wrap">{mascot}</div>
+          ) : (
+            <div className="onboarding-icon-circle">
+              <ShellIcon icon={icon} />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <h1 className="onboarding-title">{title}</h1>
+            {stepProgress ? (
+              <span className="onboarding-fase-badge">
+                Fase {stepProgress.current} di {stepProgress.total}
+              </span>
+            ) : null}
           </div>
-          <h1 className="text-xl font-bold text-foreground">{title}</h1>
-          {subtitle ? <p className="text-sm text-default-500">{subtitle}</p> : null}
+
+          {subtitle ? (
+            <p className="text-sm leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
+              {subtitle}
+            </p>
+          ) : null}
         </div>
         {children}
-      </CardBody>
-    </Card>
+      </div>
+    </div>
   );
 
   const centered = (

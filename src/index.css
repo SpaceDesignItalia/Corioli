@@ -41,6 +41,125 @@
     @apply rounded-xl border border-default-200 bg-white shadow-sm;
   }
 
+  /* ── Onboarding / App Lock shell ─────────────────────────────────── */
+
+  .corioli-auth-bg {
+    background: linear-gradient(180deg, #EAF6F2 0%, #F8FDFB 100%);
+  }
+
+  .onboarding-card {
+    width: 100%;
+    max-width: 28rem;
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.10);
+  }
+
+  .onboarding-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    line-height: 1.25;
+  }
+
+  .onboarding-fase-badge {
+    display: inline-block;
+    background: #E1F5EE;
+    color: #0F6E56;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.02em;
+  }
+
+  .onboarding-step-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+  }
+
+  .onboarding-step-pill {
+    height: 8px;
+    width: 28px;
+    border-radius: 4px;
+    transition: opacity 0.25s, background-color 0.25s;
+  }
+
+  .onboarding-step-pill--active {
+    background: var(--brand-cta);
+    opacity: 1;
+  }
+
+  .onboarding-step-pill--done {
+    background: var(--brand-cta);
+    opacity: 0.4;
+  }
+
+  .onboarding-step-pill--future {
+    background: #e2e8f0;
+    opacity: 1;
+  }
+
+  .onboarding-icon-circle {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #E1F5EE;
+    border: 2px solid rgba(29, 158, 117, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .onboarding-mascot-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+  }
+
+  .onboarding-field-icon {
+    display: flex;
+    align-items: center;
+    color: var(--color-text-tertiary);
+    pointer-events: none;
+    flex-shrink: 0;
+  }
+
+  .onboarding-cta-btn {
+    height: 48px !important;
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+    font-size: 15px !important;
+    background: var(--brand-cta) !important;
+    color: #ffffff !important;
+    transition: background-color 0.15s ease, transform 0.15s ease !important;
+  }
+
+  .onboarding-cta-btn:hover:not([disabled]) {
+    background: #1F3C38 !important;
+    transform: translateY(-1px);
+  }
+
+  .onboarding-back-btn {
+    height: 40px !important;
+    border-radius: 10px !important;
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    color: var(--color-text-secondary) !important;
+  }
+
+  .onboarding-cta-btn:disabled,
+  .onboarding-cta-btn[data-disabled="true"] {
+    opacity: 0.5;
+    transform: none;
+  }
+
   /** Feedback positivo / trend — teal brand, non NextUI success (#22C55E) */
   .corioli-feedback-success {
     border: 1px solid var(--cf-autofill-border);

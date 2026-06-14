@@ -14,7 +14,7 @@ export default function RecoveryCodePanel({
   recoveryCode,
   storedSecurely = true,
   onConfirmSaved,
-  confirmLabel = "Ho salvato il codice, continua",
+  confirmLabel = "Confermo — Continua",
   loading = false,
 }: Props) {
   const [ack, setAck] = useState(false);
@@ -33,17 +33,16 @@ export default function RecoveryCodePanel({
   return (
     <div className="space-y-4">
       <p className="text-sm text-default-600 leading-relaxed">
-        Conserva questo codice in un posto sicuro (stampa o gestore password). Serve se
-        dimentichi il PIN. Senza PIN e senza questo codice non potrai sbloccare l&apos;app.
+        Conservare il codice di recupero in un luogo sicuro (gestore di password o stampa).
+        Sarà necessario per ripristinare l&apos;accesso in caso di smarrimento del PIN.
       </p>
       {!storedSecurely ? (
         <p className="text-sm text-warning-700 bg-warning-50 border border-warning-200 rounded-lg px-3 py-2">
-          Su questo dispositivo il codice non può essere mostrato di nuovo in Impostazioni:
-          salvalo ora.
+          Su questo dispositivo il codice non potrà essere visualizzato nuovamente: salvarlo adesso.
         </p>
       ) : (
         <p className="text-xs text-default-500">
-          Potrai rivederlo in seguito da Impostazioni → Sicurezza, inserendo il PIN.
+          Sarà possibile consultarlo in seguito da Impostazioni → Sicurezza, inserendo il PIN.
         </p>
       )}
       <div className="flex items-center gap-2 rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/80 px-4 py-3">
@@ -61,7 +60,7 @@ export default function RecoveryCodePanel({
         </Button>
       </div>
       <Checkbox isSelected={ack} onValueChange={setAck} size="sm">
-        Ho annotato o stampato il codice di recupero
+        Confermo di aver salvato il codice di recupero
       </Checkbox>
       <Button
         color="primary"

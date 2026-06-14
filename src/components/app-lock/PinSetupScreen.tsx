@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@nextui-org/react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { setupAppLock } from "../../services/AppLockService";
 import { DoctorService } from "../../services/OfflineServices";
 import { sendHeartbeat } from "../../services/HeartbeatService";
@@ -10,6 +11,7 @@ import {
 import AppLockShell from "./AppLockShell";
 import RecoveryCodePanel from "./RecoveryCodePanel";
 import PinDigitInput from "./PinDigitInput";
+import DoctorMascot, { type MascotField } from "./DoctorMascot";
 import DoctorProfileSetupFields, {
   doctorValuesFromProfile,
   validateDoctorProfileForm,
@@ -48,6 +50,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const [loading, setLoading] = useState(false);
   const [pinShake, setPinShake] = useState(false);
   const [confirmShake, setConfirmShake] = useState(false);
+  const [activeField, setActiveField] = useState<MascotField>(null);
 
   useEffect(() => {
     void (async () => {
@@ -87,10 +90,10 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
 
   const title = useMemo(() => {
     if (step === "profile") {
-      return mode === "first-run" ? "Benvenuto in Corioli" : "Completa il profilo";
+      return mode === "first-run" ? "Configurazione profilo medico" : "Completamento profilo";
     }
     if (step === "pin") {
-      return mode === "migration" ? "Imposta il PIN di accesso" : "Proteggi l'app con un PIN";
+      return mode === "migration" ? "Configurazione accesso sicuro" : "Accesso sicuro";
     }
     return "Codice di recupero";
   }, [step, mode]);
@@ -98,24 +101,24 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const subtitle = useMemo(() => {
     if (step === "profile") {
       return mode === "first-run"
-        ? "Inserisci i tuoi dati e un PIN per iniziare. I campi coincidono con il profilo in Impostazioni."
-        : "Prima del PIN servono alcuni dati del profilo medico (come in Impostazioni).";
+        ? "Inserisci i tuoi dati professionali per personalizzare l'app."
+        : "Completa i dati del profilo medico prima di procedere.";
     }
     if (step === "pin") {
       return mode === "migration"
-        ? "Con l'aggiornamento è richiesto un PIN a 4 cifre per proteggere la cartella clinica."
-        : "Scegli un PIN a 4 cifre per sbloccare l'app.";
+        ? "Scegli un PIN a 4 cifre per proteggere i dati clinici."
+        : "Scegli un PIN a 4 cifre per proteggere l'accesso.";
     }
-    return "Conservalo in un luogo sicuro oppure usa il recupero via email quando sei online.";
+    return "Conserva il codice in un luogo sicuro. Ti servirà per recuperare l'accesso.";
   }, [step, mode]);
 
-  const stepLabel = useMemo(() => {
+  const stepProgress = useMemo(() => {
     const order: Step[] =
       step === "profile" || profileFieldsToShow.length > 0
         ? ["profile", "pin", "recovery"]
         : ["pin", "recovery"];
     const idx = order.indexOf(step);
-    return `Passo ${idx + 1} di ${order.length}`;
+    return { current: idx + 1, total: order.length };
   }, [step, profileFieldsToShow.length]);
 
   const handleProfileContinue = async () => {
@@ -148,10 +151,10 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     }
   };
 
-  const handleCreatePin = async () => {
+  const handleCreatePin = async (resolvedPin?: string, resolvedConfirm?: string) => {
     setError(null);
-    const a = pin.replace(/\D/g, "");
-    const b = pinConfirm.replace(/\D/g, "");
+    const a = (resolvedPin ?? pin).replace(/\D/g, "");
+    const b = (resolvedConfirm ?? pinConfirm).replace(/\D/g, "");
     if (a.length !== PIN_LENGTH) {
       setError(`Il PIN deve avere esattamente ${PIN_LENGTH} cifre.`);
       setPinShake(true);
@@ -183,17 +186,48 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     pin.replace(/\D/g, "").length === PIN_LENGTH &&
     pinConfirm.replace(/\D/g, "").length === PIN_LENGTH;
 
+  const pinsMatch =
+    bothFilled && pin.replace(/\D/g, "") === pinConfirm.replace(/\D/g, "");
+
+  const canGoBackToProfile = profileFieldsToShow.length > 0;
+
+  const pinMascotComplete =
+    activeField === "pin"
+      ? pin.replace(/\D/g, "").length === PIN_LENGTH
+      : activeField === "pin-confirm"
+        ? pinConfirm.replace(/\D/g, "").length === PIN_LENGTH
+        : false;
+
+  const handleBackToProfile = () => {
+    setError(null);
+    setActiveField(null);
+    setStep("profile");
+  };
+
+  const profileFilled = useMemo(() => {
+    for (const key of profileFieldsToShow) {
+      if (!String(profileValues[key] ?? "").trim()) return false;
+    }
+    if (
+      profileFieldsToShow.includes("email") &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileValues.email.trim())
+    ) {
+      return false;
+    }
+    return true;
+  }, [profileValues, profileFieldsToShow]);
+
   if (profileLoading) {
     return (
-      <AppLockShell title="Configurazione" subtitle="Caricamento…" icon="lock">
-        <p className="text-sm text-center text-default-500">Attendere…</p>
+      <AppLockShell title="Configurazione" subtitle="Caricamento dati in corso…" icon="lock">
+        <p className="text-sm text-center text-default-500">Attendere prego…</p>
       </AppLockShell>
     );
   }
 
   if (step === "recovery" && recoveryCode) {
     return (
-      <AppLockShell title={title} subtitle={`${stepLabel} — ${subtitle}`} icon="lock">
+      <AppLockShell title={title} subtitle={subtitle} icon="lock" stepProgress={stepProgress}>
         <RecoveryCodePanel
           recoveryCode={recoveryCode}
           storedSecurely={recoveryStoredSecurely}
@@ -210,7 +244,13 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   if (step === "profile") {
     const missingLabels = getMissingDoctorProfileFields(profileValues);
     return (
-      <AppLockShell title={title} subtitle={`${stepLabel} — ${subtitle}`} icon="user">
+      <AppLockShell
+        title={title}
+        subtitle={subtitle}
+        icon="user"
+        mascot={<DoctorMascot activeField={activeField} />}
+        stepProgress={stepProgress}
+      >
         <div className="space-y-4">
           {mode === "migration" && missingLabels.length > 0 ? (
             <p className="text-xs text-default-500">
@@ -223,6 +263,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
               setProfileValues((prev) => ({ ...prev, [field]: value }))
             }
             showFields={profileFieldsToShow}
+            onFieldFocus={(field) => setActiveField(field)}
           />
           {error ? (
             <p className="text-sm text-danger" role="alert">
@@ -231,9 +272,11 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
           ) : null}
           <Button
             color="primary"
-            className="w-full font-medium"
+            className="onboarding-cta-btn w-full"
             isLoading={loading}
+            isDisabled={!profileFilled}
             onPress={() => void handleProfileContinue()}
+            endContent={!loading ? <ArrowRight size={18} /> : null}
           >
             Continua
           </Button>
@@ -243,10 +286,16 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   }
 
   return (
-    <AppLockShell title={title} subtitle={`${stepLabel} — ${subtitle}`} icon="lock">
+    <AppLockShell
+      title={title}
+      subtitle={subtitle}
+      icon="lock"
+      mascot={<DoctorMascot activeField={activeField} pinComplete={pinMascotComplete} />}
+      stepProgress={stepProgress}
+    >
       <div className="space-y-5">
-        <div className="space-y-1">
-          <p className="text-xs text-default-500 text-center">Scegli un PIN a 4 cifre</p>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-default-500 text-center tracking-wide">Nuovo PIN</p>
           <PinDigitInput
             value={pin}
             onChange={setPin}
@@ -254,19 +303,20 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
             autoFocus
             disabled={loading}
             invalid={pinShake}
+            onFocusChange={(f) => setActiveField(f ? "pin" : null)}
             aria-label="Nuovo PIN"
           />
         </div>
-        <div className="space-y-1">
-          <p className="text-xs text-default-500 text-center">Conferma PIN</p>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-default-500 text-center tracking-wide">Conferma PIN</p>
           <PinDigitInput
             value={pinConfirm}
             onChange={setPinConfirm}
             length={PIN_LENGTH}
             disabled={loading}
             invalid={confirmShake}
-            onComplete={() => void handleCreatePin()}
             onSubmit={() => void handleCreatePin()}
+            onFocusChange={(f) => setActiveField(f ? "pin-confirm" : null)}
             aria-label="Conferma PIN"
           />
         </div>
@@ -274,13 +324,29 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
           <p className="text-sm text-danger text-center" role="alert">
             {error}
           </p>
+        ) : bothFilled && !pinsMatch ? (
+          <p className="text-sm text-danger text-center" role="alert">
+            I PIN non coincidono.
+          </p>
+        ) : null}
+        {canGoBackToProfile ? (
+          <Button
+            variant="light"
+            className="onboarding-back-btn w-full"
+            isDisabled={loading}
+            onPress={handleBackToProfile}
+            startContent={<ArrowLeft size={16} />}
+          >
+            Indietro
+          </Button>
         ) : null}
         <Button
           color="primary"
-          className="w-full font-medium"
+          className="onboarding-cta-btn w-full"
           isLoading={loading}
-          isDisabled={!bothFilled}
+          isDisabled={!pinsMatch}
           onPress={() => void handleCreatePin()}
+          endContent={!loading ? <ArrowRight size={18} /> : null}
         >
           Continua
         </Button>

@@ -87,11 +87,11 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               <div className="h-14 w-14 rounded-2xl bg-primary-100 flex items-center justify-center">
                 <Lock className="text-primary h-7 w-7" />
               </div>
-              <h1 className="text-xl font-bold text-foreground">Sblocca Corioli</h1>
+              <h1 className="text-xl font-bold text-foreground">Accesso a Corioli</h1>
               <p className="text-sm text-default-500">
                 {biometricEnabled
-                  ? "Usa impronta o volto, oppure inserisci il PIN."
-                  : "Inserisci il PIN a 4 cifre per accedere."}
+                  ? "Autenticazione biometrica disponibile. Inserire il PIN in alternativa."
+                  : "Inserire il PIN per accedere alla cartella clinica."}
               </p>
             </div>
 
@@ -104,7 +104,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
                 isLoading={bioLoading}
                 onPress={() => void handleBiometricUnlock()}
               >
-                Sblocca con biometria
+                Accesso biometrico
               </Button>
             ) : null}
 
@@ -133,7 +133,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
               isDisabled={pin.replace(/\D/g, "").length !== PIN_LENGTH}
               onPress={() => void handleUnlock(pin.replace(/\D/g, ""))}
             >
-              Sblocca
+              Accedi
             </Button>
 
             <button
@@ -144,7 +144,7 @@ export default function PinUnlockScreen({ onUnlocked }: Props) {
                 setError(null);
               }}
             >
-              Ho dimenticato il PIN
+              PIN dimenticato — Recupera l&apos;accesso
             </button>
           </CardBody>
         </Card>
