@@ -530,7 +530,11 @@ export default function HelpAndFeedback() {
     }
   };
 
-  const faqGroups = [
+  const faqGroups: {
+    category: string;
+    topicId?: string;
+    items: { id?: string; title: string; content: string; node?: React.ReactNode }[];
+  }[] = [
     {
       category: "Modelli Referti",
       topicId: "modelli-referti",
@@ -876,6 +880,7 @@ export default function HelpAndFeedback() {
                             classNames={{ title: "text-sm", content: "text-sm text-gray-600 px-2" }}
                           >
                             <p className="pb-2 pl-1 whitespace-pre-line leading-relaxed">{item.content}</p>
+                            {"node" in item && item.node ? item.node : null}
                           </AccordionItem>
                         ))}
                       </Accordion>
