@@ -11,7 +11,7 @@ import {
   SelectItem,
   Divider,
 } from "@nextui-org/react";
-import { FileText, ClipboardList, ChevronDown } from "lucide-react";
+import { FileText, ClipboardList, ChevronDown, Pill } from "lucide-react";
 import type { MedicalTemplate } from "../types/Storage";
 import { RefertoTextarea } from "./RefertoTextarea";
 
@@ -22,6 +22,7 @@ const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   ginecologia: "Ginecologia",
   ostetricia: "Ostetricia",
   terapie: "Terapie",
+  ricette: "Ricette",
   esame_complementare: "Esami complementari",
   certificato: "Certificati",
 };
@@ -30,6 +31,7 @@ const SECTIONS_BY_CATEGORY: Record<TemplateCategory, TemplateSection[]> = {
   ginecologia: ["prestazione", "esameObiettivo", "conclusioni"],
   ostetricia: ["prestazione", "esameObiettivo", "conclusioni"],
   terapie: ["generale"],
+  ricette: ["generale"],
   esame_complementare: ["nome"],
   certificato: ["generale"],
 };
@@ -38,6 +40,7 @@ const DEFAULT_SECTION: Record<TemplateCategory, TemplateSection> = {
   ginecologia: "prestazione",
   ostetricia: "prestazione",
   terapie: "generale",
+  ricette: "generale",
   esame_complementare: "nome",
   certificato: "generale",
 };
@@ -70,6 +73,7 @@ type LivePreviewContent = {
 function getContentLabel(category: TemplateCategory): string {
   if (category === "esame_complementare") return "Nome dell'esame";
   if (category === "certificato") return "Testo del certificato";
+  if (category === "ricette") return "Elenco farmaci (uno per riga)";
   return "Testo da inserire nel referto";
 }
 
@@ -79,6 +83,12 @@ function getContentPlaceholder(category: TemplateCategory): string {
   }
   if (category === "certificato") {
     return "Testo del certificato. Puoi usare ___ per i campi da compilare manualmente.";
+  }
+  if (category === "ricette") {
+    return "Un farmaco per riga (es. \"Tachipirina 1000 mg: 1 cp 2 volte/die\"). I farmaci compariranno nella ricetta già compilati.";
+  }
+  if (category === "terapie") {
+    return "Scrivi le indicazioni in forma discorsiva. Comparirà nella sezione Conclusioni e Terapie della visita.";
   }
   return "Scrivi il testo completo che verrà inserito quando selezioni questo modello...";
 }
@@ -349,6 +359,56 @@ function CertificatoFormMock({ preview }: { preview: LivePreviewContent }) {
   );
 }
 
+function RicettaFormMock({ preview }: { preview: LivePreviewContent }) {
+  const menuOpen = Boolean(preview.menuLabel.trim());
+  const menuDisplay = preview.menuLabel.trim() || "Il tuo modello";
+  const righe = preview.fieldText
+    .split("\n")
+    .map((r) => r.trim())
+    .filter((r) => r.length > 0)
+    .slice(0, 5);
+
+  return (
+    <div className="rounded-xl border-2 border-primary/20 bg-default-50/80 shadow-sm">
+      <div className="rounded-t-xl border-b border-default-200 bg-white px-3 py-2">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-primary">
+          Anteprima live
+        </p>
+        <p className="text-xs font-semibold text-gray-800">
+          Scheda paziente · Nuova ricetta
+        </p>
+      </div>
+      <div className="space-y-2 p-3">
+        <div className="flex justify-end">
+          <MockModelloControl label="Modelli Ricetta" open={menuOpen} menuLabel={menuDisplay} />
+        </div>
+        <div className="rounded-lg border border-primary bg-primary-50/80 px-2.5 py-2 ring-2 ring-primary/20">
+          <span className="text-xs font-bold text-primary-900">Farmaci prescritti</span>
+          {righe.length > 0 ? (
+            <div className="mt-1.5 space-y-1">
+              {righe.map((r, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 rounded-md border border-default-200 bg-white px-2 py-1 text-[11px] text-gray-800"
+                >
+                  <Pill size={11} className="shrink-0 text-primary" />
+                  <span className="truncate">{r}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <MockLiveField
+              value=""
+              placeholder="I farmaci del modello compariranno qui, già compilati..."
+              active
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TemplatePlacementMap({
   category,
   section,
@@ -380,6 +440,10 @@ function TemplatePlacementMap({
 
   if (category === "esame_complementare") {
     return <EsameFormMock preview={preview} />;
+  }
+
+  if (category === "ricette") {
+    return <RicettaFormMock preview={preview} />;
   }
 
   return <CertificatoFormMock preview={preview} />;
@@ -527,13 +591,50 @@ export function TemplateEditorModal({
                 <p className="text-sm font-medium text-default-800">
                   {category === "terapie"
                     ? "4. Conclusioni e Terapie"
-                    : category === "esame_complementare"
-                      ? "Richiesta esame"
-                      : "Certificato"}
+                    : category === "ricette"
+                      ? "Nuova ricetta"
+                      : category === "esame_complementare"
+                        ? "Richiesta esame"
+                        : "Certificato"}
                 </p>
               </div>
             )}
           </div>
+
+          {category === "terapie" && (
+            <div className="flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-3">
+              <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-gray-900">
+                  Modello di Terapia (visita)
+                </p>
+                <p className="text-xs leading-relaxed text-default-600">
+                  Comparirà nella sezione <strong>Conclusioni e Terapie</strong> della
+                  visita. Scrivilo in forma <strong>discorsiva</strong> (indicazioni e
+                  raccomandazioni). Per l&apos;elenco dei farmaci da stampare in ricetta
+                  usa invece la categoria <strong>Ricette</strong>.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {category === "ricette" && (
+            <div className="flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-3">
+              <Pill className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-gray-900">
+                  Modello di Ricetta (elenco farmaci)
+                </p>
+                <p className="text-xs leading-relaxed text-default-600">
+                  Comparirà nel menu <strong>Modelli Ricetta</strong> quando emetti una
+                  ricetta. Scrivi <strong>un farmaco per riga</strong> nel formato{" "}
+                  <em>Nome farmaco: posologia</em> (es.{" "}
+                  <em>Tachipirina 1000 mg: 1 cp 2 volte/die</em>): i campi della ricetta
+                  si compileranno da soli.
+                </p>
+              </div>
+            </div>
+          )}
 
           <TemplatePlacementMap
             category={category}

@@ -48,6 +48,7 @@ import {
   CheckCircle2,
   HelpCircle,
   ArrowUpCircle,
+  Pill,
 } from "lucide-react";
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
 import { ExportService } from "../../services/ExportService";
@@ -2263,9 +2264,35 @@ const SettingsScreen = () => {
             <Tab key="ginecologia" title="Ginecologia" />
             <Tab key="ostetricia" title="Ostetricia" />
             <Tab key="terapie" title="Terapie" />
+            <Tab key="ricette" title="Ricette" />
             <Tab key="esame_complementare" title="Esami" />
             <Tab key="certificato" title="Certificati" />
           </Tabs>
+
+          {selectedCategory === "terapie" && (
+            <div className="flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4">
+              <FileText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <p className="text-xs leading-relaxed text-default-600">
+                I modelli <strong>Terapie</strong> compaiono nella sezione{" "}
+                <strong>Conclusioni e Terapie</strong> della visita. Scrivili in forma{" "}
+                <strong>discorsiva</strong> (indicazioni e raccomandazioni). Per
+                l&apos;elenco dei farmaci da stampare in ricetta usa la scheda{" "}
+                <strong>Ricette</strong>.
+              </p>
+            </div>
+          )}
+
+          {selectedCategory === "ricette" && (
+            <div className="flex items-start gap-3 rounded-xl border border-primary-200 bg-primary-50/60 p-4">
+              <Pill className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              <p className="text-xs leading-relaxed text-default-600">
+                I modelli <strong>Ricette</strong> compaiono nel menu{" "}
+                <strong>Modelli Ricetta</strong> quando emetti una ricetta. Scrivi un
+                farmaco per riga (<em>Nome: posologia</em>) per compilare la ricetta
+                con un clic.
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-4 rounded-xl border border-default-200 bg-default-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0 space-y-1">
@@ -2311,9 +2338,13 @@ const SettingsScreen = () => {
                       <Chip size="sm" variant="flat" className="capitalize">
                         {template.section === "esameObiettivo"
                           ? "Esame Ob."
-                          : template.section === "generale" && template.category === "certificato"
-                            ? "Testo"
-                            : template.section}
+                          : template.category === "ricette"
+                            ? "Farmaci"
+                            : template.category === "terapie"
+                              ? "Terapia"
+                              : template.section === "generale" && template.category === "certificato"
+                                ? "Testo"
+                                : template.section}
                       </Chip>
                     </TableCell>
                     <TableCell>

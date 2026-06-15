@@ -490,8 +490,11 @@ class LocalStorageFallbackService implements StorageService {
       MedicalTemplates.ostetricia.esameObiettivo.forEach(t => defaultTemplates.push({ id: generateId(), category: 'ostetricia', section: 'esameObiettivo', label: t.label, text: t.text, isDefault: true }));
       MedicalTemplates.ostetricia.conclusioni.forEach(t => defaultTemplates.push({ id: generateId(), category: 'ostetricia', section: 'conclusioni', label: t.label, text: t.text, isDefault: true }));
 
-      // Terapie
+      // Terapie (discorsive — sezione Conclusioni e Terapie della visita)
       MedicalTemplates.terapie.forEach(t => defaultTemplates.push({ id: generateId(), category: 'terapie', section: 'generale', label: t.label, text: t.text, isDefault: true }));
+
+      // Ricette (a elenco — modal Nuova ricetta)
+      MedicalTemplates.ricette.forEach(t => defaultTemplates.push({ id: generateId(), category: 'ricette', section: 'generale', label: t.label, text: t.text, isDefault: true }));
 
       // Esami complementari
       MedicalTemplates.esami_complementari.forEach(t => defaultTemplates.push({ id: generateId(), category: 'esame_complementare', section: 'nome', label: t.label, text: t.text, note: t.note, isDefault: true }));
@@ -517,6 +520,20 @@ class LocalStorageFallbackService implements StorageService {
         isDefault: true,
       }));
       templates.push(...certDefaults);
+      await this.saveToStorage('templates', templates);
+    }
+
+    // For existing users: seed ricette if not yet present (categoria separata da terapie)
+    if (MedicalTemplates.ricette && !templates.some(t => t.category === 'ricette')) {
+      const ricetteDefaults: MedicalTemplate[] = MedicalTemplates.ricette.map(t => ({
+        id: generateId(),
+        category: 'ricette' as const,
+        section: 'generale' as const,
+        label: t.label,
+        text: t.text,
+        isDefault: true,
+      }));
+      templates.push(...ricetteDefaults);
       await this.saveToStorage('templates', templates);
     }
 

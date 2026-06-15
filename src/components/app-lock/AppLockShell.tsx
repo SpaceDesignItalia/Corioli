@@ -13,6 +13,8 @@ type Props = {
   /** Schermata a tutto schermo (setup) o overlay sopra lo sblocco PIN */
   overlay?: boolean;
   stepProgress?: { current: number; total: number };
+  /** Altezza minima del corpo: tiene le card dei vari passi della stessa dimensione */
+  bodyMinHeight?: number;
 };
 
 function ShellIcon({ icon }: { icon: AppLockShellIcon }) {
@@ -27,7 +29,6 @@ function ShellIcon({ icon }: { icon: AppLockShellIcon }) {
 function StepPills({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex flex-col items-center gap-2">
-      <p className="onboarding-step-label">Passo {current} di {total}</p>
       <div
         className="flex items-center gap-2"
         role="progressbar"
@@ -59,6 +60,7 @@ export default function AppLockShell({
   mascot,
   overlay = false,
   stepProgress,
+  bodyMinHeight,
 }: Props) {
   const card = (
     <div className="onboarding-card">
@@ -91,7 +93,16 @@ export default function AppLockShell({
             </p>
           ) : null}
         </div>
-        {children}
+        {bodyMinHeight ? (
+          <div
+            className="flex flex-col justify-center"
+            style={{ minHeight: bodyMinHeight }}
+          >
+            {children}
+          </div>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );

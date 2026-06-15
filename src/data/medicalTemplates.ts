@@ -93,6 +93,24 @@ export const MedicalTemplates = {
   },
   terapie: [
     {
+      label: "Controllo regolare",
+      text: "Si consiglia di proseguire i controlli ginecologici di routine secondo il protocollo regionale e di mantenere uno stile di vita sano. Continuare la prevenzione oncologica come da programma."
+    },
+    {
+      label: "Rivalutazione dopo terapia",
+      text: "Si imposta la terapia indicata e si programma una rivalutazione clinica ed ecografica al termine del trattamento. Si raccomanda di tornare a controllo in caso di persistenza o peggioramento dei sintomi."
+    },
+    {
+      label: "Terapia sintomatica al bisogno",
+      text: "Si consiglia terapia sintomatica al bisogno. In caso di mancato beneficio o comparsa di nuovi sintomi si raccomanda una nuova valutazione specialistica."
+    },
+    {
+      label: "Raccomandazioni in gravidanza",
+      text: "Si raccomanda il monitoraggio dei movimenti fetali e il controllo della pressione arteriosa. Tornare in Pronto Soccorso in caso di perdite ematiche, perdita di liquido o attivita' contrattile dolorosa."
+    }
+  ],
+  ricette: [
+    {
       label: "Vaginosi Batterica",
       text: "- Meclon ovuli: 1 sera per 7 giorni\n- Metronidazolo 250 mg: 2 cpr mattina e 2 cpr sera per 2 giorni\n- Clindax (clindamicina): 1 ovulo la sera per 3 giorni"
     },

@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@nextui-org/react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { setupAppLock } from "../../services/AppLockService";
+import {
+  setupAppLock,
+  changeAppLockPin,
+  getAppLockStatus,
+  revealRecoveryCode,
+} from "../../services/AppLockService";
 import { DoctorService } from "../../services/OfflineServices";
 import { sendHeartbeat } from "../../services/HeartbeatService";
 import {
@@ -20,6 +25,10 @@ import DoctorProfileSetupFields, {
 } from "./DoctorProfileSetupFields";
 
 const PIN_LENGTH = 4;
+// Altezza comune del corpo card per i passi profilo/PIN → niente "scatto" tra uno e l'altro
+const STEP_BODY_MIN_HEIGHT = 372;
+// Versione dedicata: la specializzazione è precompilata per impostazione predefinita
+const DEFAULT_SPECIALIZZAZIONE = "Ginecologia e Ostetricia";
 
 type Props = {
   mode: "first-run" | "migration";
@@ -36,7 +45,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     cognome: "",
     email: "",
     telefono: "",
-    specializzazione: "",
+    specializzazione: DEFAULT_SPECIALIZZAZIONE,
   });
   const [profileFieldsToShow, setProfileFieldsToShow] = useState<
     Array<keyof DoctorProfileFormValues>
@@ -44,6 +53,8 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
 
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
+  // PIN effettivamente configurato (per gestire il ritorno indietro dal passo recupero)
+  const [configuredPin, setConfiguredPin] = useState<string | null>(null);
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [recoveryStoredSecurely, setRecoveryStoredSecurely] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +62,12 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
   const [pinShake, setPinShake] = useState(false);
   const [confirmShake, setConfirmShake] = useState(false);
   const [activeField, setActiveField] = useState<MascotField>(null);
+  // Consensi del passo "Codice di recupero" → reazioni della mascotte
+  const [recoveryConsent, setRecoveryConsent] = useState({
+    ack: false,
+    policyAck: false,
+  });
+  const [mascotNod, setMascotNod] = useState(0);
 
   useEffect(() => {
     void (async () => {
@@ -58,6 +75,10 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         await DoctorService.initializeDefaultDoctor();
         const doctor = await DoctorService.getDoctor();
         const values = doctorValuesFromProfile(doctor);
+        // Precompila la specializzazione se non già impostata (versione dedicata)
+        if (!values.specializzazione.trim()) {
+          values.specializzazione = DEFAULT_SPECIALIZZAZIONE;
+        }
         setProfileValues(values);
 
         if (mode === "first-run") {
@@ -169,6 +190,30 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
     }
     setLoading(true);
     try {
+      // Fonte di verità: se il lock è GIÀ configurato (siamo tornati indietro dal
+      // passo "Codice di recupero"), il setup non si può rifare → si aggiorna il PIN.
+      const status = await getAppLockStatus();
+      if (status?.configured) {
+        // PIN cambiato → aggiorna usando il vecchio PIN (il codice di recupero resta valido)
+        if (configuredPin && a !== configuredPin) {
+          const changed = await changeAppLockPin(configuredPin, a);
+          if (!changed.ok) {
+            setError(changed.error || "Impossibile aggiornare il PIN.");
+            return;
+          }
+          setConfiguredPin(a);
+        }
+        // assicura di avere un codice di recupero da mostrare
+        if (!recoveryCode) {
+          const revealed = await revealRecoveryCode(a);
+          if (revealed.ok && revealed.recoveryCode) {
+            setRecoveryCode(revealed.recoveryCode);
+          }
+        }
+        setStep("recovery");
+        return;
+      }
+
       const result = await setupAppLock(a);
       if (!result.ok || !result.recoveryCode) {
         setError(result.error || "Impossibile configurare il PIN.");
@@ -176,6 +221,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
       }
       setRecoveryCode(result.recoveryCode);
       setRecoveryStoredSecurely(result.recoveryStoredSecurely !== false);
+      setConfiguredPin(a);
       setStep("recovery");
     } finally {
       setLoading(false);
@@ -191,17 +237,29 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
 
   const canGoBackToProfile = profileFieldsToShow.length > 0;
 
-  const pinMascotComplete =
-    activeField === "pin"
-      ? pin.replace(/\D/g, "").length === PIN_LENGTH
-      : activeField === "pin-confirm"
-        ? pinConfirm.replace(/\D/g, "").length === PIN_LENGTH
-        : false;
+  // Felice SOLO quando entrambi i PIN sono inseriti e coincidono
+  const pinMascotComplete = pinsMatch;
+  // Dispiaciuto quando entrambi sono inseriti ma NON coincidono
+  const pinMascotMismatch = bothFilled && !pinsMatch;
 
   const handleBackToProfile = () => {
     setError(null);
     setActiveField(null);
     setStep("profile");
+  };
+
+  // Ogni spunta dei consensi → il gufo fa un cenno; tutti dati → resta sorridente
+  const recoveryAllConsented =
+    recoveryConsent.ack && recoveryConsent.policyAck;
+  const handleRecoveryConsentChange = (next: {
+    ack: boolean;
+    policyAck: boolean;
+  }) => {
+    const becameChecked =
+      (next.ack && !recoveryConsent.ack) ||
+      (next.policyAck && !recoveryConsent.policyAck);
+    if (becameChecked) setMascotNod((n) => n + 1);
+    setRecoveryConsent(next);
   };
 
   const profileFilled = useMemo(() => {
@@ -227,11 +285,31 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
 
   if (step === "recovery" && recoveryCode) {
     return (
-      <AppLockShell title={title} subtitle={subtitle} icon="lock" stepProgress={stepProgress}>
+      <AppLockShell
+        title={title}
+        subtitle={subtitle}
+        icon="lock"
+        mascot={
+          <DoctorMascot happy={recoveryAllConsented} nodSignal={mascotNod} />
+        }
+        stepProgress={stepProgress}
+        bodyMinHeight={STEP_BODY_MIN_HEIGHT}
+      >
         <RecoveryCodePanel
           recoveryCode={recoveryCode}
           storedSecurely={recoveryStoredSecurely}
           loading={loading}
+          showIntro={false}
+          showEmailRecoveryNote
+          recoveryEmail={profileValues.email.trim() || undefined}
+          requirePolicyConsent
+          onboardingStyle
+          onConsentChange={handleRecoveryConsentChange}
+          onBack={() => {
+            setError(null);
+            setRecoveryConsent({ ack: false, policyAck: false });
+            setStep("pin");
+          }}
           onConfirmSaved={() => {
             setLoading(true);
             onComplete();
@@ -250,6 +328,7 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
         icon="user"
         mascot={<DoctorMascot activeField={activeField} />}
         stepProgress={stepProgress}
+        bodyMinHeight={STEP_BODY_MIN_HEIGHT}
       >
         <div className="space-y-4">
           {mode === "migration" && missingLabels.length > 0 ? (
@@ -290,8 +369,15 @@ export default function PinSetupScreen({ mode, onComplete }: Props) {
       title={title}
       subtitle={subtitle}
       icon="lock"
-      mascot={<DoctorMascot activeField={activeField} pinComplete={pinMascotComplete} />}
+      mascot={
+        <DoctorMascot
+          activeField={activeField}
+          pinComplete={pinMascotComplete}
+          pinMismatch={pinMascotMismatch}
+        />
+      }
       stepProgress={stepProgress}
+      bodyMinHeight={STEP_BODY_MIN_HEIGHT}
     >
       <div className="space-y-5">
         <div className="space-y-1.5">

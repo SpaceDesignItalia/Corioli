@@ -13,8 +13,14 @@ export type MascotField =
 
 type Props = {
   activeField?: MascotField;
-  /** PIN completo (4 cifre) → celebrazione. */
+  /** Entrambi i PIN inseriti e coincidono → celebrazione. */
   pinComplete?: boolean;
+  /** Entrambi i PIN inseriti ma NON coincidono → espressione dispiaciuta. */
+  pinMismatch?: boolean;
+  /** Occhietti sorridenti fissi (es. tutti i consensi dati). */
+  happy?: boolean;
+  /** Contatore: a ogni incremento il gufo fa un cenno di approvazione. */
+  nodSignal?: number;
   /** Diametro del cerchio di sfondo in px. */
   size?: number;
 };
@@ -38,6 +44,8 @@ const BROWS: Record<string, [string, string]> = {
   telefono: ["M 64 70 Q 78 64 92 68", "M 108 68 Q 122 64 136 70"],
   pin: ["M 64 70 Q 78 65 92 69", "M 108 69 Q 122 65 136 70"],
   happy: ["M 62 60 Q 78 54 92 58", "M 108 58 Q 122 54 138 60"],
+  // dispiaciuto: interno alto, esterno basso (sguardo preoccupato)
+  sad: ["M 62 70 Q 78 64 92 58", "M 108 58 Q 122 64 138 70"],
 };
 
 const WING_REST = {
@@ -51,19 +59,52 @@ const WING_COVER = {
 
 const SPRING = { type: "spring" as const, stiffness: 300, damping: 22 };
 const WING_SPRING = { type: "spring" as const, stiffness: 220, damping: 18 };
+// Copertura: spring più elastico → le ali salgono con un rimbalzino carino
+const COVER_SPRING = { type: "spring" as const, stiffness: 260, damping: 12 };
+
+// ── Effetti celebrazione ────────────────────────────────────────────────
+const STAR_PATH =
+  "M 0 -7 C 1.2 -2.2 2.2 -1.2 7 0 C 2.2 1.2 1.2 2.2 0 7 C -1.2 2.2 -2.2 1.2 -7 0 C -2.2 -1.2 -1.2 -2.2 0 -7 Z";
+
+const STARS = [
+  { id: 0, cx: 38, cy: 56, s: 1.15, color: "#FFD45C", delay: 0.04 },
+  { id: 1, cx: 162, cy: 62, s: 1.35, color: "#FFFFFF", delay: 0.16 },
+  { id: 2, cx: 28, cy: 122, s: 0.9, color: "#9FE1CB", delay: 0.1 },
+  { id: 3, cx: 172, cy: 120, s: 1.0, color: "#FF8FA3", delay: 0.22 },
+  { id: 4, cx: 100, cy: 24, s: 1.25, color: "#FFD45C", delay: 0.3 },
+  { id: 5, cx: 134, cy: 28, s: 0.85, color: "#7FD0FF", delay: 0.36 },
+];
+
+const CONFETTI = Array.from({ length: 11 }, (_, i) => {
+  const angle = (i / 11) * Math.PI * 2 + 0.3;
+  const dist = 58 + (i % 3) * 16;
+  return {
+    id: i,
+    x: Math.cos(angle) * dist,
+    y: Math.sin(angle) * dist * 0.9 - 6,
+    r: 2.2 + (i % 3) * 1.1,
+    color: ["#FFD45C", "#9FE1CB", "#FF8FA3", "#7FD0FF", "#FFFFFF"][i % 5],
+    delay: (i % 4) * 0.04,
+  };
+});
 
 export default function DoctorMascot({
   activeField = null,
   pinComplete = false,
+  pinMismatch = false,
+  happy = false,
+  nodSignal = 0,
   size = 96,
 }: Props) {
   const isPin = activeField === "pin" || activeField === "pin-confirm";
   const af = activeField ?? "idle";
 
-  // CELEBRAZIONE: PIN completo → ali giù, occhi felici, rimbalzo
+  // CELEBRAZIONE: entrambi i PIN coincidono → ali su a festa, occhi felici, rimbalzo
   const celebrate = isPin && pinComplete;
-  // le ali coprono solo se PIN attivo MA non completo
-  const wingsCover = isPin && !pinComplete;
+  // DISPIACIUTO: i due PIN non coincidono → scopre gli occhi e fa il broncio
+  const sad = isPin && pinMismatch && !pinComplete;
+  // le ali coprono solo se PIN attivo, non completo e senza errore di mismatch
+  const wingsCover = isPin && !pinComplete && !sad;
 
   // ANTICIPO: occhi spalancati per ~220ms quando il PIN si attiva
   const [anticipate, setAnticipate] = useState(false);
@@ -76,8 +117,80 @@ export default function DoctorMascot({
     setAnticipate(false);
   }, [isPin, pinComplete]);
 
-  const browKey = celebrate ? "happy" : isPin ? "pin" : BROWS[af] ? af : "idle";
-  const o = LOOK[af] ?? LOOK.idle;
+  // DUCK: quando passa da occhi scoperti → coperti fa un tuffetto timido (una volta sola)
+  const [coverDuck, setCoverDuck] = useState(false);
+  useEffect(() => {
+    if (!wingsCover) {
+      setCoverDuck(false);
+      return;
+    }
+    setCoverDuck(true);
+    const t = setTimeout(() => setCoverDuck(false), 460);
+    return () => clearTimeout(t);
+  }, [wingsCover]);
+
+  // SHAKE: piccola scrollata di testa quando i PIN non coincidono (una volta sola)
+  const [shake, setShake] = useState(false);
+  useEffect(() => {
+    if (!sad) {
+      setShake(false);
+      return;
+    }
+    setShake(true);
+    const t = setTimeout(() => setShake(false), 480);
+    return () => clearTimeout(t);
+  }, [sad]);
+
+  // PEEK-A-BOO: mentre copre il PIN, ogni tanto sbircia tra le ali
+  const [peek, setPeek] = useState(false);
+  useEffect(() => {
+    if (!wingsCover) {
+      setPeek(false);
+      return;
+    }
+    let alive = true;
+    const id = setInterval(() => {
+      if (!alive) return;
+      setPeek(true);
+      setTimeout(() => {
+        if (alive) setPeek(false);
+      }, 340);
+    }, 1700);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [wingsCover]);
+
+  const wide = anticipate || peek;
+
+  // NOD: cenno di approvazione one-shot a ogni spunta dei consensi
+  const [nod, setNod] = useState(false);
+  useEffect(() => {
+    if (!nodSignal) return;
+    setNod(true);
+    const t = setTimeout(() => setNod(false), 480);
+    return () => clearTimeout(t);
+  }, [nodSignal]);
+
+  // occhietti sorridenti durante festa, stato "happy" o cenno
+  const happyEyes = celebrate || happy || nod;
+
+  const browKey = happyEyes
+    ? "happy"
+    : sad
+      ? "sad"
+      : isPin
+        ? "pin"
+        : BROWS[af]
+          ? af
+          : "idle";
+  // sguardo: triste → in basso; sbirciamento → in su oltre le ali
+  const o = sad
+    ? { x: 0, y: 7 }
+    : peek
+      ? { x: 0, y: -7 }
+      : (LOOK[af] ?? LOOK.idle);
   const brow = BROWS[browKey];
 
   // posizioni pupille (occhio sx centro 78,92 — dx 122,92)
@@ -89,21 +202,64 @@ export default function DoctorMascot({
   const [blink, setBlink] = useState(false);
   useEffect(() => {
     if (isPin) return;
-    const id = setInterval(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const wink = () => {
       setBlink(true);
-      setTimeout(() => setBlink(false), 110);
-    }, 4200);
-    return () => clearInterval(id);
+      setTimeout(() => alive && setBlink(false), 110);
+      // ogni tanto un doppio battito di ciglia per più vita
+      if (Math.random() < 0.3) {
+        setTimeout(() => alive && setBlink(true), 230);
+        setTimeout(() => alive && setBlink(false), 320);
+      }
+    };
+    const loop = () => {
+      timer = setTimeout(() => {
+        if (!alive) return;
+        wink();
+        loop();
+      }, 2600 + Math.random() * 2600);
+    };
+    loop();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
   }, [isPin]);
 
   return (
     <motion.div
+      initial={{ scale: 0.55, opacity: 0 }}
       animate={
         celebrate
-          ? { scale: [1, 1.12, 0.96, 1.04, 1], y: [0, -6, 0] }
-          : { scale: 1, y: 0 }
+          ? { scale: [1, 1.18, 0.93, 1.07, 1], y: [0, -12, 0], opacity: 1 }
+          : sad
+            ? { scale: 1, y: 0, rotate: shake ? [0, -5, 5, -4, 3, 0] : 0, opacity: 1 }
+            : isPin
+              ? coverDuck
+                ? { scale: [1, 0.92, 1.05, 1], y: [0, 6, -1, 0], opacity: 1 }
+                : { scale: 1, y: 0, opacity: 1 }
+              : nod
+                ? { scale: [1, 1.07, 1], y: [0, 7, 0], opacity: 1 }
+                : { scale: 1, y: [0, -3.5, 0], opacity: 1 }
       }
-      transition={celebrate ? { duration: 0.6, ease: "easeOut" } : { duration: 0.2 }}
+      transition={
+        celebrate
+          ? { duration: 0.7, ease: "easeOut" }
+          : sad
+            ? { duration: shake ? 0.5 : 0.2, ease: "easeOut" }
+            : isPin
+              ? coverDuck
+                ? { duration: 0.5, ease: "easeOut" }
+                : { duration: 0.25 }
+              : nod
+                ? { duration: 0.45, ease: "easeOut" }
+                : {
+                    opacity: { duration: 0.4 },
+                    scale: { type: "spring", stiffness: 260, damping: 18 },
+                    y: { duration: 3.4, repeat: Infinity, ease: "easeInOut" },
+                  }
+      }
       style={{
         width: size,
         height: size,
@@ -114,6 +270,9 @@ export default function DoctorMascot({
         justifyContent: "center",
         overflow: "visible",
         transition: "background 0.3s",
+        boxShadow: celebrate
+          ? "0 0 0 6px rgba(159,225,203,0.45), 0 10px 30px rgba(15,110,86,0.28)"
+          : "none",
       }}
     >
       <svg
@@ -124,6 +283,22 @@ export default function DoctorMascot({
         aria-label="Mascotte gufo Corioli"
         style={{ overflow: "visible" }}
       >
+        {/* anello luminoso di celebrazione */}
+        {celebrate ? (
+          <motion.circle
+            cx="100"
+            cy="108"
+            r="58"
+            fill="none"
+            stroke="#FFD45C"
+            strokeWidth="3"
+            style={{ transformOrigin: "100px 108px" }}
+            initial={{ opacity: 0.75, scale: 0.55 }}
+            animate={{ opacity: 0, scale: 1.7 }}
+            transition={{ duration: 0.85, ease: "easeOut" }}
+          />
+        ) : null}
+
         {/* corpo */}
         <ellipse cx="100" cy="118" rx="56" ry="60" fill={FEATHER} />
         {/* ciuffi */}
@@ -133,7 +308,7 @@ export default function DoctorMascot({
         <ellipse cx="100" cy="126" rx="34" ry="44" fill="#F4EFE4" />
 
         {/* occhi */}
-        {celebrate ? (
+        {happyEyes ? (
           <>
             {/* occhi sorridenti (archi verso l'alto) */}
             <path
@@ -150,6 +325,31 @@ export default function DoctorMascot({
               fill="none"
               strokeLinecap="round"
             />
+            {/* guance arrossate (solo nella festa vera) */}
+            {celebrate ? (
+              <>
+                <motion.ellipse
+                  cx="64"
+                  cy="104"
+                  rx="9"
+                  ry="6"
+                  fill="#FF8FA3"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.55 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                />
+                <motion.ellipse
+                  cx="136"
+                  cy="104"
+                  rx="9"
+                  ry="6"
+                  fill="#FF8FA3"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.55 }}
+                  transition={{ duration: 0.3, delay: 0.1 }}
+                />
+              </>
+            ) : null}
           </>
         ) : (
           <motion.g
@@ -161,13 +361,13 @@ export default function DoctorMascot({
             <circle cx="78" cy="92" r="25" fill="#9FE1CB" />
             <circle cx="78" cy="92" r="19" fill="#FFFFFF" />
             <motion.circle
-              r={anticipate ? 13 : 11}
+              r={wide ? 13 : 11}
               fill="#163A33"
               animate={{ cx: lIr.cx, cy: lIr.cy }}
               transition={SPRING}
             />
             <motion.circle
-              r={anticipate ? 6.5 : 5.5}
+              r={wide ? 6.5 : 5.5}
               fill="#000"
               animate={lP}
               transition={SPRING}
@@ -183,13 +383,13 @@ export default function DoctorMascot({
             <circle cx="122" cy="92" r="25" fill="#9FE1CB" />
             <circle cx="122" cy="92" r="19" fill="#FFFFFF" />
             <motion.circle
-              r={anticipate ? 13 : 11}
+              r={wide ? 13 : 11}
               fill="#163A33"
               animate={{ cx: rIr.cx, cy: rIr.cy }}
               transition={SPRING}
             />
             <motion.circle
-              r={anticipate ? 6.5 : 5.5}
+              r={wide ? 6.5 : 5.5}
               fill="#000"
               animate={rP}
               transition={SPRING}
@@ -240,17 +440,86 @@ export default function DoctorMascot({
           fill="none"
         />
 
-        {/* ALI — ULTIME, sempre sopra gli occhi. Cambiano FORMA, non ruotano */}
-        <motion.path
-          fill={FEATHER}
-          animate={{ d: wingsCover ? WING_COVER.l : WING_REST.l }}
-          transition={WING_SPRING}
-        />
-        <motion.path
-          fill={FEATHER}
-          animate={{ d: wingsCover ? WING_COVER.r : WING_REST.r }}
-          transition={WING_SPRING}
-        />
+        {/* ALI — ULTIME, sempre sopra gli occhi. Cambiano FORMA, non ruotano.
+            In celebrazione battono a festa; durante il PIN si abbassano per lo sbirciamento. */}
+        <motion.g
+          style={{ transformOrigin: "50px 114px" }}
+          animate={
+            celebrate
+              ? { rotate: [0, -24, -6, -16, 0], y: 0 }
+              : { rotate: 0, y: wingsCover && peek ? 18 : 0 }
+          }
+          transition={
+            celebrate
+              ? { duration: 0.7, ease: "easeOut" }
+              : { type: "spring", stiffness: 240, damping: 17 }
+          }
+        >
+          <motion.path
+            fill={FEATHER}
+            animate={{ d: wingsCover ? WING_COVER.l : WING_REST.l }}
+            transition={wingsCover ? COVER_SPRING : WING_SPRING}
+          />
+        </motion.g>
+        <motion.g
+          style={{ transformOrigin: "150px 114px" }}
+          animate={
+            celebrate
+              ? { rotate: [0, 24, 6, 16, 0], y: 0 }
+              : { rotate: 0, y: wingsCover && peek ? 18 : 0 }
+          }
+          transition={
+            celebrate
+              ? { duration: 0.7, ease: "easeOut" }
+              : { type: "spring", stiffness: 240, damping: 17 }
+          }
+        >
+          <motion.path
+            fill={FEATHER}
+            animate={{ d: wingsCover ? WING_COVER.r : WING_REST.r }}
+            transition={wingsCover ? COVER_SPRING : WING_SPRING}
+          />
+        </motion.g>
+
+        {/* CELEBRAZIONE: stelline scintillanti + coriandoli che esplodono */}
+        {celebrate ? (
+          <>
+            {STARS.map((st) => (
+              <motion.g
+                key={`star-${st.id}`}
+                style={{ transformOrigin: `${st.cx}px ${st.cy}px` }}
+                initial={{ opacity: 0, scale: 0, rotate: -40 }}
+                animate={{
+                  opacity: [0, 1, 0.85, 0],
+                  scale: [0, st.s, st.s * 0.9, 0],
+                  rotate: [-40, 0, 25],
+                }}
+                transition={{ duration: 1.1, delay: st.delay, ease: "easeOut" }}
+              >
+                <path
+                  d={STAR_PATH}
+                  fill={st.color}
+                  transform={`translate(${st.cx} ${st.cy})`}
+                />
+              </motion.g>
+            ))}
+            {CONFETTI.map((c) => (
+              <motion.circle
+                key={`conf-${c.id}`}
+                r={c.r}
+                fill={c.color}
+                initial={{ cx: 100, cy: 106, opacity: 0, scale: 0 }}
+                animate={{
+                  cx: 100 + c.x,
+                  cy: 106 + c.y,
+                  opacity: [0, 1, 1, 0],
+                  scale: [0, 1, 1, 0.4],
+                }}
+                transition={{ duration: 0.9, delay: c.delay, ease: "easeOut" }}
+              />
+            ))}
+          </>
+        ) : null}
       </svg>
     </motion.div>
   );

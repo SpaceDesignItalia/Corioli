@@ -85,6 +85,94 @@ function getFileIcon(mimeType: string) {
   return FileText;
 }
 
+/** Schema: dove finisce ogni categoria di modello. */
+function ModelliMapSchema() {
+  const rows = [
+    { cat: "Ginecologia", dest: "Campi della visita ginecologica", hot: false },
+    { cat: "Ostetricia", dest: "Campi della visita ostetrica", hot: false },
+    { cat: "Terapie", dest: "Visita → “Conclusioni e Terapie” (testo discorsivo)", hot: true },
+    { cat: "Ricette", dest: "Nuova ricetta → elenco farmaci", hot: true },
+    { cat: "Esami", dest: "Nuova richiesta esame", hot: false },
+    { cat: "Certificati", dest: "Nuovo certificato", hot: false },
+  ];
+  return (
+    <div className="my-2 rounded-xl border border-default-200 bg-default-50/60 p-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-default-500">
+        Dove finisce ogni modello
+      </p>
+      <div className="space-y-1.5">
+        {rows.map((r) => (
+          <div key={r.cat} className="flex items-center gap-2">
+            <span
+              className={`inline-flex min-w-[96px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${
+                r.hot ? "bg-primary-100 text-primary-700" : "bg-default-100 text-default-600"
+              }`}
+            >
+              {r.cat}
+            </span>
+            <span className="text-default-400" aria-hidden>→</span>
+            <span className="text-xs leading-snug text-default-700">{r.dest}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Schema: differenza Terapie (discorsivo) vs Ricette (elenco). */
+function TerapieVsRicetteSchema() {
+  return (
+    <div className="my-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="rounded-xl border border-default-200 bg-default-50/60 p-3">
+        <p className="text-sm font-semibold text-gray-900">Terapie</p>
+        <p className="mt-0.5 text-[11px] text-default-500">Visita · Conclusioni e Terapie</p>
+        <div className="mt-2 rounded-md border border-default-200 bg-white p-2 text-[11px] leading-relaxed text-default-700">
+          Si consiglia di proseguire i controlli di routine e mantenere uno stile di vita sano…
+        </div>
+        <p className="mt-2 text-[11px] text-default-500">
+          Testo <strong>discorsivo</strong>, a frasi intere.
+        </p>
+      </div>
+      <div className="rounded-xl border border-primary-200 bg-primary-50/40 p-3">
+        <p className="text-sm font-semibold text-gray-900">Ricette</p>
+        <p className="mt-0.5 text-[11px] text-default-500">Nuova ricetta · elenco farmaci</p>
+        <div className="mt-2 space-y-0.5 rounded-md border border-default-200 bg-white p-2 text-[11px] leading-relaxed text-default-700">
+          <div>Tachipirina 1000 mg: 1 cp 2 volte/die</div>
+          <div>Augmentin 1 g: 1 cp ogni 12 h</div>
+        </div>
+        <p className="mt-2 text-[11px] text-default-500">
+          <strong>Un farmaco per riga</strong> (Nome: posologia).
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Schema: passi per creare un modello. */
+function CreaModelloSteps() {
+  const steps = [
+    "Impostazioni → Gestione Modelli",
+    "Nuovo modello",
+    "Scegli categoria (Tipo)",
+    "Nome menu + contenuto",
+    "Salva",
+  ];
+  return (
+    <div className="my-2 flex flex-wrap items-center gap-1.5">
+      {steps.map((s, i) => (
+        <span key={i} className="inline-flex items-center gap-1.5">
+          <span className="rounded-md bg-default-100 px-2 py-1 text-xs text-default-700">
+            {i + 1}. {s}
+          </span>
+          {i < steps.length - 1 && (
+            <span className="text-default-400" aria-hidden>→</span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function HelpAndFeedback() {
   const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -448,16 +536,37 @@ export default function HelpAndFeedback() {
       topicId: "modelli-referti",
       items: [
         {
+          id: "modelli-referti-cosa",
+          title: "Cosa sono i modelli?",
+          content:
+            "I modelli sono testi pronti da inserire con un clic, così non riscrivi ogni volta le stesse frasi. Ogni modello appartiene a una categoria, che decide dove comparirà.",
+          node: <ModelliMapSchema />,
+        },
+        {
           id: "modelli-referti-uso",
           title: "Come si usano?",
           content:
-            "Clicca Modello accanto al campo e scegli il testo.\n\n• Visite → pulsante Modello\n• Esami → Modelli Esame (scheda paziente)\n• Certificati → Modelli Certificato\n\nPuoi modificare il testo dopo l'inserimento.",
+            "Clicca il pulsante Modello accanto al campo e scegli il testo.\n\n• Visite → pulsante Modello (in ogni campo)\n• Ricette → Modelli Ricetta (modal Nuova ricetta)\n• Esami → Modelli Esame (scheda paziente)\n• Certificati → Modelli Certificato\n\nDopo l'inserimento puoi sempre modificare il testo.",
+        },
+        {
+          id: "modelli-referti-terapie-ricette",
+          title: "Che differenza c'è tra Terapie e Ricette?",
+          content:
+            "Terapie = testo discorsivo che finisce nella sezione Conclusioni e Terapie della visita. Ricette = elenco di farmaci (uno per riga, Nome: posologia) che compila la ricetta. Sono due categorie separate.",
+          node: <TerapieVsRicetteSchema />,
         },
         {
           id: "modelli-referti-gestione",
           title: "Come se ne crea uno?",
           content:
-            "Impostazioni → Gestione Modelli Referti → Nuovo Modello.\n\nScegli categoria (scheda in alto) e sezione giusta — altrimenti non compare nel menu.\n\nMatita = modifica · Cestino = elimina.",
+            "Impostazioni → Gestione Modelli Referti → Nuovo modello.\n\nScegli la categoria giusta (scheda Tipo): è lei a decidere dove comparirà il modello. Dai un nome breve per il menu e scrivi il contenuto.\n\nMatita = modifica · Cestino = elimina.",
+          node: <CreaModelloSteps />,
+        },
+        {
+          id: "modelli-referti-ricetta-formato",
+          title: "Come scrivo un modello di Ricetta?",
+          content:
+            "Scrivi un farmaco per riga nel formato “Nome farmaco: posologia” (es. Tachipirina 1000 mg: 1 cp 2 volte/die). Quando selezioni il modello nella Nuova ricetta, ogni riga diventa un farmaco già compilato.",
         },
       ],
     },

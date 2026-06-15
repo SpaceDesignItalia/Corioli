@@ -234,7 +234,7 @@ export interface Document {
 
 export interface MedicalTemplate {
   id: string;
-  category: 'ginecologia' | 'ostetricia' | 'terapie' | 'esame_complementare' | 'certificato';
+  category: 'ginecologia' | 'ostetricia' | 'terapie' | 'ricette' | 'esame_complementare' | 'certificato';
   section: 'prestazione' | 'esameObiettivo' | 'conclusioni' | 'generale' | 'nome' | 'note';
   label: string;
   text: string;

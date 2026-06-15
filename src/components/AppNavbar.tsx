@@ -11,9 +11,15 @@ import {
   Button,
   Spinner,
   Badge,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+  DropdownSection,
 } from "@nextui-org/react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { DoctorService } from "../services/OfflineServices";
+import type { Ambulatorio } from "../types/Storage";
 import { RefreshCw } from "lucide-react";
 import { storageService } from "../services/StorageServiceFallback";
 import { sendHeartbeat } from "../services/HeartbeatService";
@@ -47,20 +53,45 @@ export default function AppNavbar() {
     if (location.pathname === href) return;
     if (!requestNavigation(href)) event.preventDefault();
   };
-  const [primaryAmbulatorio, setPrimaryAmbulatorio] = useState<string | null>(
-    null,
-  );
+  const [ambulatori, setAmbulatori] = useState<Ambulatorio[]>([]);
+  const [switchingAmbulatorio, setSwitchingAmbulatorio] = useState(false);
   const [supportUnread, setSupportUnread] = useState(0);
+
+  // Sede attualmente in uso: la primaria, con fallback alla prima (coerente col PDF/referto).
+  const activeAmbulatorio =
+    ambulatori.find((a) => a.isPrimario) ?? ambulatori[0] ?? null;
 
   const loadDoctor = async () => {
     try {
       const doctor = await DoctorService.getDoctor();
-      const primary = doctor?.ambulatori?.find(
-        (a: { isPrimario?: boolean }) => a.isPrimario,
-      );
-      setPrimaryAmbulatorio(primary?.nome ?? null);
+      setAmbulatori(doctor?.ambulatori ?? []);
     } catch {
-      setPrimaryAmbulatorio(null);
+      setAmbulatori([]);
+    }
+  };
+
+  /**
+   * Cambia la sede in uso direttamente dalla navbar, senza navigare:
+   * il form della visita resta invariato (nessun dato perso). Salva solo la
+   * lista ambulatori (updateDoctor fa il merge) e notifica l'app.
+   */
+  const handleSelectAmbulatorio = async (id: string) => {
+    if (id === activeAmbulatorio?.id || switchingAmbulatorio) return;
+    const previousList = ambulatori;
+    const newList = previousList.map((a) => ({
+      ...a,
+      isPrimario: a.id === id,
+    }));
+    setAmbulatori(newList); // aggiornamento ottimistico
+    setSwitchingAmbulatorio(true);
+    try {
+      await DoctorService.updateDoctor({ ambulatori: newList });
+      window.dispatchEvent(new CustomEvent("appdottori-doctor-updated"));
+    } catch (e) {
+      console.error("Errore cambio ambulatorio:", e);
+      setAmbulatori(previousList); // rollback
+    } finally {
+      setSwitchingAmbulatorio(false);
     }
   };
 
@@ -208,19 +239,67 @@ export default function AppNavbar() {
           );
         })}
 
-        {/* Ambulatorio attuale - clic per andare a Impostazioni */}
+        {/* Ambulatorio in uso - menu a tendina per cambiarlo al volo (senza perdere dati) */}
         <NavbarItem className="hidden sm:flex ml-2 pl-2 border-l border-default-200">
-          {primaryAmbulatorio ? (
-            <Tooltip content="Clicca per aprire Impostazioni e cambiare la sede in uso">
-              <button
-                type="button"
-                className="navbar-ambulatorio-set"
-                onClick={() => goTo("/settings")}
+          {activeAmbulatorio ? (
+            <Dropdown placement="bottom-end">
+              <DropdownTrigger>
+                <button
+                  type="button"
+                  className="navbar-ambulatorio-set"
+                  aria-label="Cambia ambulatorio in uso"
+                  title="Cambia la sede in uso senza perdere la visita in corso"
+                  disabled={switchingAmbulatorio}
+                >
+                  {switchingAmbulatorio ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <i className="ti ti-map-pin" aria-hidden />
+                  )}
+                  {activeAmbulatorio.nome}
+                  <i
+                    className="ti ti-chevron-down"
+                    aria-hidden
+                    style={{ fontSize: 12 }}
+                  />
+                </button>
+              </DropdownTrigger>
+              <DropdownMenu
+                aria-label="Sedi disponibili"
+                onAction={(key) => {
+                  const k = String(key);
+                  if (k === "__manage") {
+                    goTo("/settings");
+                    return;
+                  }
+                  void handleSelectAmbulatorio(k);
+                }}
               >
-                <i className="ti ti-map-pin" aria-hidden />
-                {primaryAmbulatorio}
-              </button>
-            </Tooltip>
+                <DropdownSection title="Sede in uso" showDivider>
+                  {ambulatori.map((amb) => (
+                    <DropdownItem
+                      key={amb.id}
+                      startContent={<i className="ti ti-map-pin" aria-hidden />}
+                      endContent={
+                        amb.id === activeAmbulatorio.id ? (
+                          <i className="ti ti-check text-primary" aria-hidden />
+                        ) : null
+                      }
+                      description={`${amb.indirizzo}, ${amb.citta}`}
+                    >
+                      {amb.nome}
+                    </DropdownItem>
+                  ))}
+                </DropdownSection>
+                <DropdownItem
+                  key="__manage"
+                  startContent={<i className="ti ti-settings" aria-hidden />}
+                  className="text-default-500"
+                >
+                  Gestisci sedi…
+                </DropdownItem>
+              </DropdownMenu>
+            </Dropdown>
           ) : (
             <Tooltip content="Configura l'ambulatorio primario nelle Impostazioni">
               <button
@@ -265,17 +344,42 @@ export default function AppNavbar() {
         }}
       >
         <NavbarMenuItem className="pt-2 pb-3 border-b border-default-100">
-          {primaryAmbulatorio ? (
-            <button
-              type="button"
-              className="navbar-ambulatorio-set w-full text-left"
-              onClick={() => goTo("/settings")}
-            >
-              <i className="ti ti-map-pin" aria-hidden />
-              <span>
-                Ambulatorio: <strong>{primaryAmbulatorio}</strong>
+          {activeAmbulatorio ? (
+            <div className="flex w-full flex-col gap-1">
+              <span className="text-default-400 text-xs font-medium uppercase tracking-wide">
+                Sede in uso
               </span>
-            </button>
+              {ambulatori.map((amb) => {
+                const isActive = amb.id === activeAmbulatorio.id;
+                return (
+                  <button
+                    key={amb.id}
+                    type="button"
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                      isActive
+                        ? "bg-default-100 text-foreground font-semibold"
+                        : "text-default-500 hover:bg-default-50"
+                    }`}
+                    disabled={switchingAmbulatorio}
+                    onClick={() => void handleSelectAmbulatorio(amb.id)}
+                  >
+                    <i className="ti ti-map-pin flex-shrink-0" aria-hidden />
+                    <span className="flex-1 truncate">{amb.nome}</span>
+                    {isActive && (
+                      <i className="ti ti-check text-primary" aria-hidden />
+                    )}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                className="mt-1 flex items-center gap-2 px-2 text-sm text-default-500 hover:text-foreground"
+                onClick={() => goTo("/settings")}
+              >
+                <i className="ti ti-settings" aria-hidden />
+                <span>Gestisci sedi…</span>
+              </button>
+            </div>
           ) : (
             <button
               type="button"

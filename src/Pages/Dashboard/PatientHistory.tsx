@@ -285,7 +285,7 @@ export default function PatientHistory() {
   const [certDescrizione, setCertDescrizione] = useState("");
   const [savingCertificato, setSavingCertificato] = useState(false);
   const [ricette, setRicette] = useState<RicettaPaziente[]>([]);
-  const [terapiaTemplates, setTerapiaTemplates] = useState<MedicalTemplate[]>([]);
+  const [ricetteTemplates, setRicetteTemplates] = useState<MedicalTemplate[]>([]);
   const {
     isOpen: isRicettaOpen,
     onOpen: onRicettaOpen,
@@ -384,7 +384,7 @@ export default function PatientHistory() {
           results.filter((t) => t.category === "esame_complementare"),
         );
         setCertTemplates(results.filter((t) => t.category === "certificato"));
-        setTerapiaTemplates(results.filter((t) => t.category === "terapie"));
+        setRicetteTemplates(results.filter((t) => t.category === "ricette"));
       })
       .catch(console.error);
   }, [patientIdParam]);
@@ -3179,13 +3179,6 @@ export default function PatientHistory() {
               <SelectItem key="malattia">Malattia</SelectItem>
               <SelectItem key="altro">Altro</SelectItem>
             </Select>
-            <Input
-              type="date"
-              label="Data certificato"
-              value={certData}
-              onValueChange={setCertData}
-              variant="bordered"
-            />
             <Textarea
               label="Descrizione / Testo del certificato"
               placeholder="Es. La sottoscritta attesta che la paziente è stata visitata in data odierna e necessita di riposo per..."
@@ -3193,6 +3186,14 @@ export default function PatientHistory() {
               onValueChange={setCertDescrizione}
               variant="bordered"
               minRows={4}
+            />
+
+            <Input
+              type="date"
+              label="Data certificato"
+              value={certData}
+              onValueChange={setCertData}
+              variant="bordered"
             />
           </ModalBody>
           <ModalFooter>
@@ -3285,18 +3286,18 @@ export default function PatientHistory() {
             </span>
           </ModalHeader>
           <ModalBody className="gap-5 pb-6">
-            {terapiaTemplates.length > 0 && (
+            {ricetteTemplates.length > 0 && (
               <div className="flex justify-end">
                 <Dropdown>
                   <DropdownTrigger>
                     <Button size="sm" variant="flat" color="primary" startContent={<ClipboardList size={16} />}>
-                      Modelli Terapia
+                      Modelli Ricetta
                     </Button>
                   </DropdownTrigger>
                   <DropdownMenu
-                    aria-label="Modelli Terapia"
+                    aria-label="Modelli Ricetta"
                     onAction={(key) => {
-                      const t = terapiaTemplates.find((x) => x.id === key);
+                      const t = ricetteTemplates.find((x) => x.id === key);
                       if (t) {
                         const parsed = parseTerapiaTemplate(t.text);
                         if (parsed.length > 0) setRicettaFarmaci(parsed);
@@ -3305,7 +3306,7 @@ export default function PatientHistory() {
                     }}
                     className="max-h-[300px] overflow-y-auto"
                   >
-                    {terapiaTemplates.map((t) => (
+                    {ricetteTemplates.map((t) => (
                       <DropdownItem key={t.id} description={t.label}>
                         {t.label}
                       </DropdownItem>
@@ -3314,15 +3315,6 @@ export default function PatientHistory() {
                 </Dropdown>
               </div>
             )}
-            <Input
-              type="date"
-              label="Data ricetta"
-              value={ricettaData}
-              onValueChange={setRicettaData}
-              variant="bordered"
-              className="max-w-xs"
-            />
-
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-default-700">Farmaci prescritti</p>
@@ -3381,6 +3373,15 @@ export default function PatientHistory() {
               onValueChange={setRicettaNote}
               variant="bordered"
               minRows={2}
+            />
+
+            <Input
+              type="date"
+              label="Data ricetta"
+              value={ricettaData}
+              onValueChange={setRicettaData}
+              variant="bordered"
+              className="max-w-xs"
             />
           </ModalBody>
           <ModalFooter>
