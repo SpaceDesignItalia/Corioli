@@ -11,9 +11,13 @@ import {
   SelectItem,
   Divider,
 } from "@nextui-org/react";
-import { FileText, ClipboardList, ChevronDown, Pill } from "lucide-react";
-import type { MedicalTemplate } from "../types/Storage";
+import { FileText, ClipboardList, ChevronDown, Pill, Plus, Trash2 } from "lucide-react";
+import type { MedicalTemplate, RicettaFarmaco } from "../types/Storage";
 import { RefertoTextarea } from "./RefertoTextarea";
+import {
+  parseRicettaFarmaci,
+  serializeRicettaFarmaci,
+} from "../utils/ricettaTemplate";
 
 type TemplateCategory = MedicalTemplate["category"];
 type TemplateSection = MedicalTemplate["section"];
@@ -27,9 +31,43 @@ const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   certificato: "Certificati",
 };
 
+/** Sotto-sezioni dell'anamnesi strutturata (tutte mappano sul campo "1. Anamnesi"). */
+const ANAMNESI_SUBSECTIONS: TemplateSection[] = [
+  "anamnesiFamiliare",
+  "anamnesiFisiologica",
+  "anamnesiPatologica",
+  "anamnesiGinecologica",
+  "anamnesiFarmacologica",
+  "anamnesiAllergica",
+  "anamnesiPartner",
+];
+
+const SECTION_LABELS: Partial<Record<TemplateSection, string>> = {
+  prestazione: "1. Anamnesi (campo unico)",
+  esameObiettivo: "3. Visita / Ecografia Office",
+  conclusioni: "4. Conclusioni e Terapie",
+  anamnesiFamiliare: "1. Anamnesi · Familiare",
+  anamnesiFisiologica: "1. Anamnesi · Fisiologica",
+  anamnesiPatologica: "1. Anamnesi · Patologica",
+  anamnesiGinecologica: "1. Anamnesi · Ginecologica",
+  anamnesiFarmacologica: "1. Anamnesi · Farmacologica",
+  anamnesiAllergica: "1. Anamnesi · Allergica",
+  anamnesiPartner: "1. Anamnesi · Partner",
+};
+
+const ANAMNESI_SUB_LABELS: Partial<Record<TemplateSection, string>> = {
+  anamnesiFamiliare: "Familiare",
+  anamnesiFisiologica: "Fisiologica",
+  anamnesiPatologica: "Patologica",
+  anamnesiGinecologica: "Ginecologica",
+  anamnesiFarmacologica: "Farmacologica",
+  anamnesiAllergica: "Allergica",
+  anamnesiPartner: "Partner",
+};
+
 const SECTIONS_BY_CATEGORY: Record<TemplateCategory, TemplateSection[]> = {
-  ginecologia: ["prestazione", "esameObiettivo", "conclusioni"],
-  ostetricia: ["prestazione", "esameObiettivo", "conclusioni"],
+  ginecologia: ["prestazione", ...ANAMNESI_SUBSECTIONS, "esameObiettivo", "conclusioni"],
+  ostetricia: ["prestazione", ...ANAMNESI_SUBSECTIONS, "esameObiettivo", "conclusioni"],
   terapie: ["generale"],
   ricette: ["generale"],
   esame_complementare: ["nome"],
@@ -49,6 +87,11 @@ const DEFAULT_SECTION: Record<TemplateCategory, TemplateSection> = {
 function getPreviewSection(category: TemplateCategory, section: TemplateSection): TemplateSection {
   if (category === "terapie") return "conclusioni";
   return section;
+}
+
+/** Le sotto-sezioni dell'anamnesi vengono evidenziate sul campo "1. Anamnesi" del mock. */
+function getMockSection(section: TemplateSection): TemplateSection {
+  return ANAMNESI_SUBSECTIONS.includes(section) ? "prestazione" : section;
 }
 
 type VisitFieldMock = {
@@ -187,12 +230,14 @@ function VisitFormMock({
   onSectionChange,
   preview,
   readOnly = false,
+  anamnesiCampoLabel,
 }: {
   visitLabel: string;
   activeSection: TemplateSection;
   onSectionChange: (section: TemplateSection) => void;
   preview: LivePreviewContent;
   readOnly?: boolean;
+  anamnesiCampoLabel?: string | null;
 }) {
   const menuOpen = Boolean(preview.menuLabel.trim());
   const menuDisplay = preview.menuLabel.trim() || "Il tuo modello";
@@ -245,6 +290,11 @@ function VisitFormMock({
                   className={`text-xs font-bold ${isActive ? "text-primary-900" : "text-gray-700"}`}
                 >
                   {field.label}
+                  {field.section === "prestazione" &&
+                  isActive &&
+                  anamnesiCampoLabel ? (
+                    <span className="text-primary"> · {anamnesiCampoLabel}</span>
+                  ) : null}
                 </span>
                 <MockModelloControl
                   open={isActive && menuOpen}
@@ -362,11 +412,7 @@ function CertificatoFormMock({ preview }: { preview: LivePreviewContent }) {
 function RicettaFormMock({ preview }: { preview: LivePreviewContent }) {
   const menuOpen = Boolean(preview.menuLabel.trim());
   const menuDisplay = preview.menuLabel.trim() || "Il tuo modello";
-  const righe = preview.fieldText
-    .split("\n")
-    .map((r) => r.trim())
-    .filter((r) => r.length > 0)
-    .slice(0, 5);
+  const farmaci = parseRicettaFarmaci(preview.fieldText).slice(0, 5);
 
   return (
     <div className="rounded-xl border-2 border-primary/20 bg-default-50/80 shadow-sm">
@@ -384,15 +430,19 @@ function RicettaFormMock({ preview }: { preview: LivePreviewContent }) {
         </div>
         <div className="rounded-lg border border-primary bg-primary-50/80 px-2.5 py-2 ring-2 ring-primary/20">
           <span className="text-xs font-bold text-primary-900">Farmaci prescritti</span>
-          {righe.length > 0 ? (
+          {farmaci.length > 0 ? (
             <div className="mt-1.5 space-y-1">
-              {righe.map((r, i) => (
+              {farmaci.map((f, i) => (
                 <div
                   key={i}
                   className="flex items-center gap-2 rounded-md border border-default-200 bg-white px-2 py-1 text-[11px] text-gray-800"
                 >
                   <Pill size={11} className="shrink-0 text-primary" />
-                  <span className="truncate">{r}</span>
+                  <span className="truncate">
+                    <span className="font-medium">{f.nome}</span>
+                    {f.posologia ? ` · ${f.posologia}` : ""}
+                    {f.durata ? ` · ${f.durata}` : ""}
+                  </span>
                 </div>
               ))}
             </div>
@@ -420,7 +470,8 @@ function TemplatePlacementMap({
   onSectionChange: (section: TemplateSection) => void;
   preview: LivePreviewContent;
 }) {
-  const activeSection = getPreviewSection(category, section);
+  const previewSection = getPreviewSection(category, section);
+  const activeSection = getMockSection(previewSection);
 
   if (category === "ginecologia" || category === "ostetricia" || category === "terapie") {
     return (
@@ -434,6 +485,7 @@ function TemplatePlacementMap({
         onSectionChange={onSectionChange}
         preview={preview}
         readOnly={category === "terapie"}
+        anamnesiCampoLabel={ANAMNESI_SUB_LABELS[previewSection] ?? null}
       />
     );
   }
@@ -447,6 +499,14 @@ function TemplatePlacementMap({
   }
 
   return <CertificatoFormMock preview={preview} />;
+}
+
+const EMPTY_RICETTA_ROW: RicettaFarmaco = { nome: "", posologia: "", durata: "" };
+
+/** Righe farmaco da testo modello; almeno una riga vuota per partire. */
+function ricettaRowsFromText(text?: string): RicettaFarmaco[] {
+  const parsed = parseRicettaFarmaci(text || "");
+  return parsed.length ? parsed : [{ ...EMPTY_RICETTA_ROW }];
 }
 
 export type TemplateEditorModalProps = {
@@ -466,12 +526,36 @@ export function TemplateEditorModal({
 }: TemplateEditorModalProps) {
   const [draft, setDraft] = useState<Partial<MedicalTemplate>>(initialTemplate);
   const [errors, setErrors] = useState<{ label?: string; text?: string }>({});
+  const [ricettaRows, setRicettaRows] = useState<RicettaFarmaco[]>(
+    ricettaRowsFromText(initialTemplate.text),
+  );
 
   useEffect(() => {
     if (!isOpen) return;
     setDraft({ ...initialTemplate });
     setErrors({});
+    setRicettaRows(ricettaRowsFromText(initialTemplate.text));
   }, [isOpen, initialTemplate]);
+
+  const applyRicettaRows = (rows: RicettaFarmaco[]) => {
+    setRicettaRows(rows);
+    setDraft((prev) => ({ ...prev, text: serializeRicettaFarmaci(rows) }));
+    if (errors.text) setErrors((prev) => ({ ...prev, text: undefined }));
+  };
+  const updateRicettaRow = (
+    index: number,
+    field: keyof RicettaFarmaco,
+    value: string,
+  ) =>
+    applyRicettaRows(
+      ricettaRows.map((r, i) => (i === index ? { ...r, [field]: value } : r)),
+    );
+  const addRicettaRow = () =>
+    applyRicettaRows([...ricettaRows, { ...EMPTY_RICETTA_ROW }]);
+  const removeRicettaRow = (index: number) => {
+    const next = ricettaRows.filter((_, i) => i !== index);
+    applyRicettaRows(next.length ? next : [{ ...EMPTY_RICETTA_ROW }]);
+  };
 
   const category = (draft.category ?? "ginecologia") as TemplateCategory;
   const sectionOptions = SECTIONS_BY_CATEGORY[category];
@@ -495,6 +579,9 @@ export function TemplateEditorModal({
       category: nextCategory,
       section: nextSection,
     }));
+    if (nextCategory === "ricette") {
+      setRicettaRows(ricettaRowsFromText(draft.text));
+    }
   };
 
   const validate = () => {
@@ -503,7 +590,10 @@ export function TemplateEditorModal({
       nextErrors.label = "Inserisci un nome breve per il menu";
     }
     if (!draft.text?.trim()) {
-      nextErrors.text = "Inserisci il testo del modello";
+      nextErrors.text =
+        category === "ricette"
+          ? "Inserisci almeno un farmaco"
+          : "Inserisci il testo del modello";
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -568,22 +658,19 @@ export function TemplateEditorModal({
             {canPickSection ? (
               <Select
                 label="Sezione del referto"
-                selectedKeys={[getPreviewSection(category, section)]}
+                selectedKeys={[section]}
                 onSelectionChange={(keys) => {
                   const value = Array.from(keys)[0] as TemplateSection | undefined;
                   if (value) setDraft((prev) => ({ ...prev, section: value }));
                 }}
                 variant="bordered"
+                description="Per l'anamnesi strutturata scegli la categoria; usa «campo unico» per l'anamnesi non suddivisa."
               >
-                <SelectItem key="prestazione" value="prestazione">
-                  1. Anamnesi
-                </SelectItem>
-                <SelectItem key="esameObiettivo" value="esameObiettivo">
-                  3. Visita / Ecografia Office
-                </SelectItem>
-                <SelectItem key="conclusioni" value="conclusioni">
-                  4. Conclusioni e Terapie
-                </SelectItem>
+                {sectionOptions.map((sec) => (
+                  <SelectItem key={sec} value={sec}>
+                    {SECTION_LABELS[sec] ?? sec}
+                  </SelectItem>
+                ))}
               </Select>
             ) : (
               <div className="flex flex-col justify-end rounded-xl border border-default-200 bg-default-50 px-3 py-2.5">
@@ -627,10 +714,8 @@ export function TemplateEditorModal({
                 </p>
                 <p className="text-xs leading-relaxed text-default-600">
                   Comparirà nel menu <strong>Modelli Ricetta</strong> quando emetti una
-                  ricetta. Scrivi <strong>un farmaco per riga</strong> nel formato{" "}
-                  <em>Nome farmaco: posologia</em> (es.{" "}
-                  <em>Tachipirina 1000 mg: 1 cp 2 volte/die</em>): i campi della ricetta
-                  si compileranno da soli.
+                  ricetta. Aggiungi i farmaci con <strong>nome, posologia e
+                  durata</strong>: i campi della ricetta si compileranno da soli.
                 </p>
               </div>
             </div>
@@ -672,21 +757,104 @@ export function TemplateEditorModal({
               description="Apre il menu Modello con questo titolo"
             />
 
-            <RefertoTextarea
-              label={getContentLabel(category)}
-              placeholder={getContentPlaceholder(category)}
-              value={draft.text ?? ""}
-              onValueChange={(val: string) => {
-                setDraft((prev) => ({ ...prev, text: val }));
-                if (errors.text) setErrors((prev) => ({ ...prev, text: undefined }));
-              }}
-              variant="bordered"
-              minRows={category === "certificato" ? 5 : category === "esame_complementare" ? 2 : 4}
-              isInvalid={Boolean(errors.text)}
-              errorMessage={errors.text}
-              description="Compare nel campo evidenziato nell'anteprima"
-              spellCheck
-            />
+            {category === "ricette" ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-default-700">
+                    Farmaci del modello
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color="primary"
+                    startContent={<Plus size={14} />}
+                    onPress={addRicettaRow}
+                  >
+                    Aggiungi farmaco
+                  </Button>
+                </div>
+                {ricettaRows.map((row, index) => (
+                  <div
+                    key={index}
+                    className="grid grid-cols-12 items-end gap-2 rounded-lg border border-default-100 bg-default-50/50 p-2"
+                  >
+                    <Input
+                      className="col-span-12 sm:col-span-4"
+                      size="sm"
+                      variant="bordered"
+                      label="Farmaco"
+                      placeholder="Es. Meclon ovuli"
+                      value={row.nome}
+                      onValueChange={(v) => updateRicettaRow(index, "nome", v)}
+                    />
+                    <Input
+                      className="col-span-12 sm:col-span-4"
+                      size="sm"
+                      variant="bordered"
+                      label="Posologia"
+                      placeholder="Es. 1 ovulo la sera"
+                      value={row.posologia}
+                      onValueChange={(v) =>
+                        updateRicettaRow(index, "posologia", v)
+                      }
+                    />
+                    <Input
+                      className="col-span-9 sm:col-span-3"
+                      size="sm"
+                      variant="bordered"
+                      label="Durata"
+                      placeholder="Es. 7 giorni"
+                      value={row.durata ?? ""}
+                      onValueChange={(v) =>
+                        updateRicettaRow(index, "durata", v)
+                      }
+                    />
+                    <div className="col-span-3 flex justify-end sm:col-span-1">
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="light"
+                        color="danger"
+                        aria-label="Rimuovi farmaco"
+                        onPress={() => removeRicettaRow(index)}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {errors.text && (
+                  <p className="text-tiny text-danger">{errors.text}</p>
+                )}
+                <p className="text-xs text-default-500">
+                  Compariranno già compilati nella ricetta (nome, posologia,
+                  durata).
+                </p>
+              </div>
+            ) : (
+              <RefertoTextarea
+                label={getContentLabel(category)}
+                placeholder={getContentPlaceholder(category)}
+                value={draft.text ?? ""}
+                onValueChange={(val: string) => {
+                  setDraft((prev) => ({ ...prev, text: val }));
+                  if (errors.text)
+                    setErrors((prev) => ({ ...prev, text: undefined }));
+                }}
+                variant="bordered"
+                minRows={
+                  category === "certificato"
+                    ? 5
+                    : category === "esame_complementare"
+                      ? 2
+                      : 4
+                }
+                isInvalid={Boolean(errors.text)}
+                errorMessage={errors.text}
+                description="Compare nel campo evidenziato nell'anteprima"
+                spellCheck
+              />
+            )}
 
             {category === "esame_complementare" && (
               <RefertoTextarea

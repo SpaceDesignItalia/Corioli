@@ -29,6 +29,14 @@ import {
   SIGNATURE_STAMP_PDF_LAYOUT_W,
   SIGNATURE_STAMP_PDF_LAYOUT_H,
 } from "../utils/signatureStamp";
+import {
+  ANAMNESI_STRUTTURATA_FIELDS,
+  ALL_ANAMNESI_CAMPO_KEYS,
+  hasAnamnesiStrutturataContent,
+  getAnamnesiCampoMeta,
+  parseAnamnesiConfig,
+  type AnamnesiCampoKey,
+} from "../utils/anamnesiStrutturata";
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 const ML = 15;
@@ -650,6 +658,56 @@ export class PdfService {
     return y + 4;
   }
 
+  /**
+   * Anamnesi strutturata: titolo "Anamnesi" + una riga per ciascuna categoria
+   * valorizzata ("Familiare: ...", "Patologica: ..."), con etichetta in grassetto
+   * e valore a capo con rientro. Salta le categorie vuote.
+   */
+  private static drawStructuredAnamnesi(
+    doc: jsPDF, y: number, as: NonNullable<Visit["anamnesiStrutturata"]>,
+    order?: AnamnesiCampoKey[]
+  ): number {
+    // Ordine configurato per il tipo di visita; le sezioni con dato ma non
+    // incluse nell'ordine vengono comunque stampate in coda (no perdita dati).
+    const seen = new Set<AnamnesiCampoKey>();
+    const keys: AnamnesiCampoKey[] = [];
+    for (const k of order ?? []) if (!seen.has(k)) { keys.push(k); seen.add(k); }
+    for (const k of ALL_ANAMNESI_CAMPO_KEYS) if (!seen.has(k)) keys.push(k);
+
+    const rows = keys
+      .map((key) => ({
+        label: getAnamnesiCampoMeta(key)?.label ?? key,
+        value: (as[key] ?? "").trim(),
+      }))
+      .filter((r) => r.value !== "");
+    if (rows.length === 0) return y;
+
+    y = this.pb(doc, y, 14);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); this.tc(doc, K0);
+    doc.text("Anamnesi", ML, y);
+    this.rule(doc, y + 1.5, ML, MR, 0.25); y += 5.5;
+
+    for (const r of rows) {
+      const lbl = san(r.label) + ": ";
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+      const lblW = doc.getTextWidth(lbl);
+      const valLines: string[] = doc.splitTextToSize(san(r.value), PW - 2 - lblW);
+
+      valLines.forEach((line, i) => {
+        y = this.pb(doc, y, LH + 1);
+        if (i === 0) {
+          doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); this.tc(doc, K30);
+          doc.text(lbl, ML + 1, y);
+        }
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); this.tc(doc, K30);
+        doc.text(line, ML + 1 + lblW, y);
+        y += LH;
+      });
+      y += 1.2; // gap tra categorie
+    }
+    return y + 2;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // BIOMETRIC GROWTH CHARTS (DBP, CC, CA, FL)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -851,7 +909,6 @@ export class PdfService {
   // ─────────────────────────────────────────────────────────────────────────────
   private static async drawSignatureBlock(
     doc: jsPDF, doctor: Doctor | null, y: number,
-    opts?: { date?: string },
   ): Promise<number> {
     const sigW = 48; // mm
     const sigH = sigW * (SIGNATURE_STAMP_PDF_LAYOUT_H / SIGNATURE_STAMP_PDF_LAYOUT_W);
@@ -861,22 +918,9 @@ export class PdfService {
     y += 12;
     const baseY = y;
 
-    // Luogo e data (sinistra)
-    if (opts?.date) {
-      const a = doctor?.ambulatori?.length
-        ? doctor.ambulatori.find((x) => x.isPrimario) || doctor.ambulatori[0]
-        : null;
-      const luogo = a?.citta ? `${san(a.citta)}, li' ${fd(opts.date)}` : `Li' ${fd(opts.date)}`;
-      doc.setFont("helvetica", "normal"); doc.setFontSize(9); this.tc(doc, K80);
-      doc.text(luogo, ML, baseY + 4);
-    }
-
     // Firma del medico (destra)
     const lineLeft = MR - 62;
     let cy = baseY;
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8); this.tc(doc, K80);
-    doc.text("Il Medico", MR, cy, { align: "right" });
-    cy += 4;
 
     if (hasImg) {
       try {
@@ -989,7 +1033,16 @@ export class PdfService {
     }
 
     const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
-    y = this.drawTextSection(doc, y, "Anamnesi", gyn.prestazione);
+    if (hasAnamnesiStrutturataContent(nv.anamnesiStrutturata)) {
+      const anamnesiOrder = parseAnamnesiConfig(prefs)[
+        visit.tipo === "ginecologica_pediatrica"
+          ? "ginecologica_pediatrica"
+          : "ginecologica"
+      ].campi;
+      y = this.drawStructuredAnamnesi(doc, y, nv.anamnesiStrutturata!, anamnesiOrder);
+    } else {
+      y = this.drawTextSection(doc, y, "Anamnesi", gyn.prestazione);
+    }
     y = this.drawTextSection(doc, y, "Descrizione Problema / Dati Clinici", gyn.problemaClinico);
     y = this.drawTextSection(doc, y, "Visita / Ecografia Office", gyn.esameBimanuale, SIEOG);
     if (options?.includeEcografiaImages) y = await this.drawImages(doc, gyn.ecografiaImmagini, y);
@@ -1069,6 +1122,9 @@ export class PdfService {
       { label: "Incr. pond.", value: delta },
       { label: "BMI (Pre/Att)", value: `${bmiPre} / ${bmiNow}` },
       { label: "PA", value: v(obs.pressioneArteriosa) },
+      { label: "FC", value: obs.frequenzaCardiaca?.trim() ? `${obs.frequenzaCardiaca.trim()} bpm` : "-" },
+      { label: "Temp.", value: obs.temperatura?.trim() ? `${obs.temperatura.trim()} °C` : "-" },
+      { label: "SpO2", value: obs.saturazioneO2?.trim() ? `${obs.saturazioneO2.trim()}%` : "-" },
       { label: "Stile di vita", value: `${fumo} fumo, ${folico} acido folico` },
     ].filter((item) => !isInquadramentoValueEmpty(item.value));
 
@@ -1196,7 +1252,12 @@ export class PdfService {
 
     // ── SEZIONI TESTO LIBERO ─────────────────────────────────────────────────
     const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
-    y = this.drawTextSection(doc, y, "Anamnesi", obs.prestazione);
+    if (hasAnamnesiStrutturataContent(nv.anamnesiStrutturata)) {
+      const anamnesiOrder = parseAnamnesiConfig(prefs).ostetrica.campi;
+      y = this.drawStructuredAnamnesi(doc, y, nv.anamnesiStrutturata!, anamnesiOrder);
+    } else {
+      y = this.drawTextSection(doc, y, "Anamnesi", obs.prestazione);
+    }
     y = this.drawTextSection(doc, y, "Dati clinici", obs.problemaClinico);
     y = this.drawTextSection(doc, y, "Ecografia Office / Esame obiettivo", obs.esameObiettivo, SIEOG);
     y = this.drawTextSection(doc, y, "Conclusioni e Terapia", obs.noteOstetriche);
@@ -1261,7 +1322,7 @@ export class PdfService {
           font: "helvetica", style: "normal", fontSize: 9.5, color: K30,
         });
       }
-      await this.drawSignatureBlock(doc, doctor, y, { date: richiesta.dataRichiesta });
+      await this.drawSignatureBlock(doc, doctor, y);
       this.drawFooter(doc, doctor, fo);
       return doc.output("blob") as Blob;
     } finally {
@@ -1291,7 +1352,7 @@ export class PdfService {
       y = this.block(doc, certificato.descrizione || "", ML + 1, y, PW - 2, LH + 0.6, {
         font: "helvetica", style: "normal", fontSize: 10, color: K30,
       });
-      await this.drawSignatureBlock(doc, doctor, y, { date: certificato.dataCertificato });
+      await this.drawSignatureBlock(doc, doctor, y);
       this.drawFooter(doc, doctor, fo);
       return doc.output("blob") as Blob;
     } finally {
@@ -1342,7 +1403,7 @@ export class PdfService {
         });
       }
 
-      await this.drawSignatureBlock(doc, doctor, y, { date: ricetta.dataRicetta });
+      await this.drawSignatureBlock(doc, doctor, y);
       this.drawFooter(doc, doctor, fo);
       return doc.output("blob") as Blob;
     } finally {

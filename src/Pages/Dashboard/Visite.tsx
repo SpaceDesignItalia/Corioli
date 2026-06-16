@@ -44,6 +44,10 @@ import { useToast } from "../../contexts/ToastContext";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
+import {
+  formatAnamnesiStrutturataText,
+  hasAnamnesiStrutturataContent,
+} from "../../utils/anamnesiStrutturata";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -341,6 +345,7 @@ export default function Visite() {
   }
 
   const getPreviewAnamnesi = (visit: Visit) => {
+    if (hasAnamnesiStrutturataContent(visit.anamnesiStrutturata)) return formatAnamnesiStrutturataText(visit.anamnesiStrutturata);
     if (visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica") return visit.ginecologia?.prestazione || visit.anamnesi;
     if (visit.tipo === "ostetrica") return visit.ostetricia?.prestazione || visit.anamnesi;
     return visit.anamnesi;

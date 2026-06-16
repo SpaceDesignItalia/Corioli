@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { SignatureStampCropModal } from "../../components/SignatureStampCropModal";
 import {
   Card,
   CardBody,
@@ -49,6 +48,8 @@ import {
   HelpCircle,
   ArrowUpCircle,
   Pill,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
 import { ExportService } from "../../services/ExportService";
@@ -69,6 +70,19 @@ import {
 } from "../../services/OfflineServices";
 import { MedicalTemplate } from "../../types/Storage";
 import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
+import {
+  AnamnesiConfig,
+  AnamnesiVisitType,
+  AnamnesiCampoKey,
+  AnamnesiMode,
+  AnamnesiTypeConfig,
+  ANAMNESI_VISIT_TYPES,
+  ANAMNESI_VISIT_TYPE_LABELS,
+  ALL_ANAMNESI_CAMPO_KEYS,
+  getAnamnesiCampoMeta,
+  createDefaultAnamnesiConfig,
+  parseAnamnesiConfig,
+} from "../../utils/anamnesiStrutturata";
 
 type SettingsNoticeScope = "profilo" | "ambulatori" | "modelli" | "duplicati";
 
@@ -131,14 +145,6 @@ const SettingsScreen = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [pdfTheme, setPdfTheme] = useState("light");
   const [signatureStampImage, setSignatureStampImage] = useState("");
-  const [pendingSignatureCrop, setPendingSignatureCrop] = useState<string | null>(
-    null,
-  );
-  const {
-    isOpen: isSignatureCropOpen,
-    onOpen: onSignatureCropOpen,
-    onClose: onSignatureCropClose,
-  } = useDisclosure();
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState<SettingsNotice | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -273,6 +279,7 @@ const SettingsScreen = () => {
     modalitaCompatta: false,
     animazioniRidotte: false,
     visitaGinecologicaPediatricaEnabled: false,
+    anamnesiConfig: createDefaultAnamnesiConfig() as AnamnesiConfig,
     formulaPesoFetale: 'hadlock4', // hadlock4, shepard, hadlock3
     showDoctorPhoneInPdf: true,
     showDoctorEmailInPdf: true,
@@ -315,32 +322,6 @@ const SettingsScreen = () => {
     setNotificationsEnabled(!notificationsEnabled);
   };
 
-  const handleSignatureStampChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = (reader.result as string) || "";
-      if (!dataUrl) return;
-      setPendingSignatureCrop(dataUrl);
-      onSignatureCropOpen();
-    };
-    reader.readAsDataURL(file);
-    event.target.value = "";
-  };
-
-  const handleSignatureCropConfirm = (dataUrl: string) => {
-    setSignatureStampImage(dataUrl);
-    setPendingSignatureCrop(null);
-    onSignatureCropClose();
-  };
-
-  const handleSignatureCropCancel = () => {
-    setPendingSignatureCrop(null);
-    onSignatureCropClose();
-  };
 
   // Carica dati iniziali
   useEffect(() => {
@@ -501,7 +482,12 @@ const SettingsScreen = () => {
     try {
       const prefs = await PreferenceService.getPreferences();
       if (prefs) {
-        setPreferences((prev) => ({ ...prev, ...prefs }));
+        setPreferences((prev) => ({
+          ...prev,
+          ...prefs,
+          // Normalizza/migra sempre la struttura anamnesi (vecchio booleano incluso)
+          anamnesiConfig: parseAnamnesiConfig(prefs),
+        }));
         setNotificationsEnabled((prefs.notificationsEnabled as boolean) ?? true);
         setPdfTheme((prefs.pdfTheme as string) ?? "light");
         if (prefs.lastBackupDate) {
@@ -530,8 +516,50 @@ const SettingsScreen = () => {
     setDoctorInfo((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handlePreferenceChange = (field: string, value: boolean | string) => {
+  const handlePreferenceChange = (
+    field: string,
+    value: boolean | string | AnamnesiConfig,
+  ) => {
     setPreferences(prev => ({ ...prev, [field]: value }));
+  };
+
+  // ── Helpers configurazione struttura anamnesi (per tipo di visita) ──
+  const [isAnamnesiConfigModalOpen, setIsAnamnesiConfigModalOpen] =
+    useState(false);
+
+  const updateAnamnesiTipo = (
+    tipo: AnamnesiVisitType,
+    patch: Partial<AnamnesiTypeConfig>,
+  ) => {
+    const cur = preferences.anamnesiConfig;
+    handlePreferenceChange("anamnesiConfig", {
+      ...cur,
+      [tipo]: { ...cur[tipo], ...patch },
+    });
+  };
+
+  const setAnamnesiMode = (tipo: AnamnesiVisitType, mode: AnamnesiMode) =>
+    updateAnamnesiTipo(tipo, { mode });
+
+  const toggleAnamnesiCampo = (tipo: AnamnesiVisitType, key: AnamnesiCampoKey) => {
+    const campi = preferences.anamnesiConfig[tipo].campi;
+    const next = campi.includes(key)
+      ? campi.filter((k) => k !== key)
+      : [...campi, key];
+    updateAnamnesiTipo(tipo, { campi: next });
+  };
+
+  const moveAnamnesiCampo = (
+    tipo: AnamnesiVisitType,
+    key: AnamnesiCampoKey,
+    dir: -1 | 1,
+  ) => {
+    const campi = [...preferences.anamnesiConfig[tipo].campi];
+    const i = campi.indexOf(key);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= campi.length) return;
+    [campi[i], campi[j]] = [campi[j], campi[i]];
+    updateAnamnesiTipo(tipo, { campi });
   };
 
   const normalizeName = (value: string) =>
@@ -1436,54 +1464,6 @@ const SettingsScreen = () => {
             </CardHeader>
             <CardBody>
               <SettingsSectionNotice scope="profilo" notice={notice} />
-              <div className="flex items-start gap-4 flex-shrink-0">
-                <div className="w-[7.5rem] aspect-[3/1] rounded-lg border border-dashed border-default-300 bg-white flex items-center justify-center overflow-hidden shrink-0">
-                  {signatureStampImage ? (
-                    <img
-                      src={signatureStampImage}
-                      alt="Timbro e firma"
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-[10px] text-default-400 text-center px-1">
-                      Timbro / firma
-                    </span>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <Button
-                    variant="flat"
-                    color="primary"
-                    size="sm"
-                    as="label"
-                    className="cursor-pointer"
-                  >
-                    Carica timbro e firma
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={handleSignatureStampChange}
-                    />
-                  </Button>
-                  {signatureStampImage ? (
-                    <Button
-                      variant="light"
-                      color="danger"
-                      size="sm"
-                      className="ml-2"
-                      onPress={() => setSignatureStampImage("")}
-                    >
-                      Rimuovi
-                    </Button>
-                  ) : null}
-                  <p className="text-xs text-default-500 mt-1">
-                    Carica una foto del timbro e della firma: potrai ritagliarla nel
-                    riquadro orizzontale usato nei PDF di ricette e certificati.
-                  </p>
-                </div>
-              </div>
-
               <div className="flex flex-1 flex-col justify-between gap-5 py-1 min-h-0">
                 <Input
                   label="Nome"
@@ -1946,6 +1926,58 @@ const SettingsScreen = () => {
                       )
                     }
                   />
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">
+                      Struttura anamnesi
+                    </p>
+                    <p className="text-xs text-default-500 mt-1">
+                      Per ogni tipo di visita: campo unico oppure sezioni
+                      multiple (attivabili e riordinabili).
+                    </p>
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      {ANAMNESI_VISIT_TYPES.map((tipo) => {
+                        const cfg = preferences.anamnesiConfig[tipo];
+                        return (
+                          <div
+                            key={tipo}
+                            className="flex items-center gap-2 text-xs"
+                          >
+                            <span className="text-gray-600 w-44 shrink-0">
+                              {ANAMNESI_VISIT_TYPE_LABELS[tipo]}
+                            </span>
+                            <Chip
+                              size="sm"
+                              variant="flat"
+                              color={
+                                cfg.mode === "strutturata"
+                                  ? "primary"
+                                  : "default"
+                              }
+                            >
+                              {cfg.mode === "strutturata"
+                                ? `Multi-sezione · ${cfg.campi.length} sezioni`
+                                : "Campo unico"}
+                            </Chip>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color="primary"
+                    className="shrink-0"
+                    startContent={<SettingsIcon size={16} />}
+                    onPress={() => setIsAnamnesiConfigModalOpen(true)}
+                  >
+                    Configura
+                  </Button>
                 </div>
               </div>
 
@@ -2499,6 +2531,158 @@ const SettingsScreen = () => {
         isSaving={isSavingTemplate}
       />
 
+      <Modal
+        isOpen={isAnamnesiConfigModalOpen}
+        onClose={() => setIsAnamnesiConfigModalOpen(false)}
+        size="4xl"
+        scrollBehavior="inside"
+      >
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-1">
+            <span>Struttura anamnesi</span>
+            <span className="text-xs font-normal text-default-500">
+              Configura, per ogni tipo di visita, se usare un unico campo di
+              anamnesi o suddividerla in sezioni — attivabili e riordinabili.
+            </span>
+          </ModalHeader>
+          <ModalBody className="pb-2">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {ANAMNESI_VISIT_TYPES.map((tipo) => {
+                const cfg = preferences.anamnesiConfig[tipo];
+                const enabled = cfg.campi;
+                const disabled = ALL_ANAMNESI_CAMPO_KEYS.filter(
+                  (k) => !enabled.includes(k),
+                );
+                return (
+                  <div
+                    key={tipo}
+                    className="rounded-xl border border-default-200 bg-default-50/40 p-3 flex flex-col gap-3"
+                  >
+                    <p className="text-sm font-semibold text-gray-700">
+                      {ANAMNESI_VISIT_TYPE_LABELS[tipo]}
+                    </p>
+                    <Select
+                      aria-label={`Modalità anamnesi ${ANAMNESI_VISIT_TYPE_LABELS[tipo]}`}
+                      size="sm"
+                      variant="bordered"
+                      selectedKeys={[cfg.mode]}
+                      onSelectionChange={(keys) =>
+                        setAnamnesiMode(
+                          tipo,
+                          (Array.from(keys)[0] as AnamnesiMode) ||
+                            "strutturata",
+                        )
+                      }
+                    >
+                      <SelectItem key="strutturata">Multi-sezione</SelectItem>
+                      <SelectItem key="singola">Campo unico</SelectItem>
+                    </Select>
+
+                    {cfg.mode === "strutturata" ? (
+                      <div className="space-y-1.5">
+                        {enabled.map((key, idx) => {
+                          const meta = getAnamnesiCampoMeta(key);
+                          if (!meta) return null;
+                          return (
+                            <div
+                              key={key}
+                              className="flex items-center gap-2 rounded-md border border-default-100 bg-white px-2 py-1.5"
+                            >
+                              <div className="flex flex-col">
+                                <button
+                                  type="button"
+                                  aria-label={`Sposta su ${meta.label}`}
+                                  disabled={idx === 0}
+                                  onClick={() => moveAnamnesiCampo(tipo, key, -1)}
+                                  className="text-default-400 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                  <ChevronUp size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label={`Sposta giù ${meta.label}`}
+                                  disabled={idx === enabled.length - 1}
+                                  onClick={() => moveAnamnesiCampo(tipo, key, 1)}
+                                  className="text-default-400 hover:text-default-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                  <ChevronDown size={14} />
+                                </button>
+                              </div>
+                              <span className="text-sm text-gray-700 flex-1">
+                                {meta.label}
+                                {meta.optional ? " (facoltativa)" : ""}
+                              </span>
+                              <Switch
+                                size="sm"
+                                isSelected
+                                aria-label={`Disattiva ${meta.label}`}
+                                onValueChange={() =>
+                                  toggleAnamnesiCampo(tipo, key)
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+
+                        {enabled.length === 0 && (
+                          <p className="text-xs text-warning-600">
+                            Nessuna sezione attiva: attivane almeno una o passa a
+                            "Campo unico".
+                          </p>
+                        )}
+
+                        {disabled.length > 0 && (
+                          <div className="pt-1">
+                            <p className="text-[11px] uppercase tracking-wider text-default-400 mb-1">
+                              Sezioni disattivate
+                            </p>
+                            {disabled.map((key) => {
+                              const meta = getAnamnesiCampoMeta(key);
+                              if (!meta) return null;
+                              return (
+                                <div
+                                  key={key}
+                                  className="flex items-center gap-2 px-2 py-1"
+                                >
+                                  <span className="text-sm text-default-400 flex-1">
+                                    {meta.label}
+                                    {meta.optional ? " (facoltativa)" : ""}
+                                  </span>
+                                  <Switch
+                                    size="sm"
+                                    isSelected={false}
+                                    aria-label={`Attiva ${meta.label}`}
+                                    onValueChange={() =>
+                                      toggleAnamnesiCampo(tipo, key)
+                                    }
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-default-500">
+                        L&apos;anamnesi sarà un unico campo di testo libero.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              color="primary"
+              onPress={() => setIsAnamnesiConfigModalOpen(false)}
+            >
+              Fatto
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       <ConfirmDangerModal
         isOpen={isDeleteTemplateOpen}
         onClose={() => {
@@ -2666,12 +2850,6 @@ const SettingsScreen = () => {
         </p>
       </ConfirmDangerModal>
 
-      <SignatureStampCropModal
-        isOpen={isSignatureCropOpen}
-        imageSrc={pendingSignatureCrop}
-        onClose={handleSignatureCropCancel}
-        onConfirm={handleSignatureCropConfirm}
-      />
     </div>
   );
 };

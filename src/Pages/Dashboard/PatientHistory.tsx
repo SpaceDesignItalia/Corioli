@@ -76,6 +76,11 @@ import {
   getCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
 import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
+import {
+  formatAnamnesiStrutturataText,
+  hasAnamnesiStrutturataContent,
+} from "../../utils/anamnesiStrutturata";
+import { parseRicettaFarmaci } from "../../utils/ricettaTemplate";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
@@ -139,26 +144,6 @@ function sortRichiesteEsamiByDateAndCreation(
 }
 
 const EMPTY_FARMACO: RicettaFarmaco = { nome: "", posologia: "", durata: "" };
-
-function parseTerapiaTemplate(text: string): RicettaFarmaco[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !/^(per os|vaginale|orale):?$/i.test(line))
-    .map((line) => {
-      const cleaned = line.replace(/^[-•*]\s*/, "");
-      const colonIdx = cleaned.indexOf(":");
-      if (colonIdx > 0) {
-        return {
-          nome: cleaned.slice(0, colonIdx).trim(),
-          posologia: cleaned.slice(colonIdx + 1).trim(),
-          durata: "",
-        };
-      }
-      return { nome: cleaned, posologia: "", durata: "" };
-    })
-    .filter((f) => f.nome.length > 0);
-}
 
 function PatientDocEmptyState({
   icon: Icon,
@@ -1451,6 +1436,9 @@ export default function PatientHistory() {
   };
 
   const getPreviewAnamnesi = (visit: Visit) => {
+    if (hasAnamnesiStrutturataContent(visit.anamnesiStrutturata)) {
+      return formatAnamnesiStrutturataText(visit.anamnesiStrutturata);
+    }
     if (
       visit.tipo === "ginecologica" ||
       visit.tipo === "ginecologica_pediatrica"
@@ -3216,13 +3204,13 @@ export default function PatientHistory() {
               Annulla
             </Button>
             <Button
-              color="warning"
+              color="primary"
               onPress={handleSaveCertificato}
               isDisabled={!certDescrizione.trim()}
               isLoading={savingCertificato}
               startContent={editingCertificato ? <SaveIcon size={18} /> : <PlusIcon size={18} />}
             >
-              {editingCertificato ? "Salva modifiche" : "Salva certificato"}
+              {editingCertificato ? "Salva Modifiche" : "Crea Certificato"}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -3299,7 +3287,7 @@ export default function PatientHistory() {
                     onAction={(key) => {
                       const t = ricetteTemplates.find((x) => x.id === key);
                       if (t) {
-                        const parsed = parseTerapiaTemplate(t.text);
+                        const parsed = parseRicettaFarmaci(t.text);
                         if (parsed.length > 0) setRicettaFarmaci(parsed);
                         if (t.note) setRicettaNote(t.note);
                       }
@@ -3401,24 +3389,16 @@ export default function PatientHistory() {
             <Button variant="light" onPress={handleCloseRicettaModal}>
               Annulla
             </Button>
-            {editingRicetta ? (
-              <Button
-                color="primary"
-                onPress={() => handleSaveRicetta(false)}
-                isLoading={savingRicetta}
-                startContent={<SaveIcon size={18} />}
-              >
-                Salva modifiche
-              </Button>
-            ) : null}
             <Button
               color="primary"
-              variant={editingRicetta ? "flat" : "solid"}
-              onPress={() => handleSaveRicetta(true)}
+              onPress={() => handleSaveRicetta(false)}
+              isDisabled={!ricettaFarmaci.some((f) => f.nome.trim())}
               isLoading={savingRicetta}
-              startContent={<Printer size={18} />}
+              startContent={
+                editingRicetta ? <SaveIcon size={18} /> : <PlusIcon size={18} />
+              }
             >
-              {editingRicetta ? "Genera PDF" : "Conferma e genera PDF"}
+              {editingRicetta ? "Salva Modifiche" : "Crea Ricetta"}
             </Button>
           </ModalFooter>
         </ModalContent>

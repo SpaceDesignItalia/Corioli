@@ -46,6 +46,17 @@ import {
 } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, MedicalTemplate } from "../../types/Storage";
+import {
+  AnamnesiCampoKey,
+  createDefaultAnamnesiConfig,
+  parseAnamnesiConfig,
+  getCampiAttivi,
+  pickCampiAttivi,
+  createEmptyAnamnesiStrutturata,
+  cleanAnamnesiStrutturata,
+  hasAnamnesiStrutturataContent,
+  formatAnamnesiStrutturataText,
+} from "../../utils/anamnesiStrutturata";
 import { calculateAge } from "../../utils/dateUtils";
 import {
   MAX_OBSTETRIC_COUNT,
@@ -279,6 +290,9 @@ const createDefaultOstetriciaData = () => ({
   pesoPreGravidanza: 0,
   pesoAttuale: 0,
   pressioneArteriosa: "",
+  frequenzaCardiaca: "",
+  temperatura: "",
+  saturazioneO2: "",
   fumaInGravidanza: "",
   pacchettiSigaretteAlGiorno: 0,
   assunzioneAcidoFolico: "",
@@ -372,10 +386,26 @@ export default function AddVisit() {
   useRegisterUnsavedChanges("add-visit", hasUnsavedChanges);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [isPediatricVisitEnabled, setIsPediatricVisitEnabled] = useState(false);
+  const [anamnesiConfig, setAnamnesiConfig] = useState(
+    createDefaultAnamnesiConfig,
+  );
   const [fetalFormula, setFetalFormula] = useState("hadlock4");
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] =
     useState(false);
   const [includeImagesCount, setIncludeImagesCount] = useState(0);
+  // Conferma copia anamnesi "campo unico" → anamnesi a campi multipli
+  const [isFlattenAnamnesiModalOpen, setIsFlattenAnamnesiModalOpen] =
+    useState(false);
+  const [flattenAnamnesiOptions, setFlattenAnamnesiOptions] = useState<
+    { key: AnamnesiCampoKey; label: string }[]
+  >([]);
+  const [flattenAnamnesiSelected, setFlattenAnamnesiSelected] = useState<
+    AnamnesiCampoKey | ""
+  >("");
+  const [flattenAnamnesiSource, setFlattenAnamnesiSource] = useState("");
+  const flattenAnamnesiResolverRef = useRef<
+    ((value: AnamnesiCampoKey | null) => void) | null
+  >(null);
   const [
     isIncludeFetalGrowthChartModalOpen,
     setIsIncludeFetalGrowthChartModalOpen,
@@ -406,6 +436,35 @@ export default function AddVisit() {
   const [ostetriciaData, setOstetriciaData] = useState(
     createDefaultOstetriciaData,
   );
+
+  // Anamnesi strutturata condivisa tra i tipi di visita
+  const [anamnesiStrutturata, setAnamnesiStrutturata] = useState(
+    createEmptyAnamnesiStrutturata,
+  );
+
+  // Se sto modificando una visita "vecchia" salvata in modalità singola (testo in
+  // prestazione/anamnesi e nessun dato strutturato), mostro comunque il campo singolo
+  // così il testo esistente resta visibile e modificabile, anche con la preferenza attiva.
+  const editingLegacySingleAnamnesi =
+    isEditMode &&
+    !hasAnamnesiStrutturataContent(existingVisit?.anamnesiStrutturata) &&
+    Boolean(
+      (
+        existingVisit?.ginecologia?.prestazione ||
+        existingVisit?.ostetricia?.prestazione ||
+        existingVisit?.anamnesi ||
+        ""
+      ).trim(),
+    );
+  const anamnesiModeForTipo =
+    visitData.tipo === "ginecologica" ||
+    visitData.tipo === "ginecologica_pediatrica" ||
+    visitData.tipo === "ostetrica"
+      ? anamnesiConfig[visitData.tipo].mode
+      : "singola";
+  const useStructuredAnamnesi =
+    anamnesiModeForTipo === "strutturata" && !editingLegacySingleAnamnesi;
+  const campiAnamnesiAttivi = getCampiAttivi(anamnesiConfig, visitData.tipo);
   /** Testo libero PI/IR mentre il campo ha focus (virgola decimale senza perdere "1," durante la digitazione). */
   const [flussimetriaOmbelicaleDraft, setFlussimetriaOmbelicaleDraft] =
     useState<{ pi: string | null; ri: string | null }>({
@@ -426,6 +485,7 @@ export default function AddVisit() {
       setVisitData(createDefaultVisitData());
       setGinecologiaData(createDefaultGinecologiaData());
       setOstetriciaData(createDefaultOstetriciaData());
+      setAnamnesiStrutturata(createEmptyAnamnesiStrutturata());
       setFlussimetriaOmbelicaleDraft({ pi: null, ri: null });
 
       try {
@@ -450,6 +510,10 @@ export default function AddVisit() {
               esamiObiettivo: visit.esamiObiettivo,
               conclusioniDiagnostiche: visit.conclusioniDiagnostiche,
               terapie: visit.terapie,
+            });
+            setAnamnesiStrutturata({
+              ...createEmptyAnamnesiStrutturata(),
+              ...(visit.anamnesiStrutturata ?? {}),
             });
 
             if (visit.ginecologia) {
@@ -613,15 +677,18 @@ export default function AddVisit() {
         const prefs = await PreferenceService.getPreferences();
         if (!prefs) {
           setIsPediatricVisitEnabled(false);
+          setAnamnesiConfig(createDefaultAnamnesiConfig());
           setFetalFormula("hadlock4");
           return;
         }
         setIsPediatricVisitEnabled(
           Boolean(prefs?.visitaGinecologicaPediatricaEnabled),
         );
+        setAnamnesiConfig(parseAnamnesiConfig(prefs));
         setFetalFormula((prefs?.formulaPesoFetale as string) || "hadlock4");
       } catch {
         setIsPediatricVisitEnabled(false);
+        setAnamnesiConfig(createDefaultAnamnesiConfig());
         setFetalFormula("hadlock4");
       }
     };
@@ -823,6 +890,15 @@ export default function AddVisit() {
           ? computeFlussimetriaCalcoliSnapshot(ostetriciaForSave)
           : null;
 
+      // Modalità strutturata: salva i sotto-campi (puliti) e lascia intatta
+      // `prestazione` (per non perdere dati se si torna alla modalità singola).
+      // Modalità singola: azzera `anamnesiStrutturata` così il PDF usa `prestazione`.
+      const anamnesiStrutturataForSave = useStructuredAnamnesi
+        ? cleanAnamnesiStrutturata(
+            pickCampiAttivi(anamnesiStrutturata, anamnesiConfig, visitData.tipo),
+          )
+        : undefined;
+
       const visitToSave = {
         patientId: patient.id,
         dataVisita: visitData.dataVisita,
@@ -832,6 +908,7 @@ export default function AddVisit() {
         conclusioniDiagnostiche: visitData.conclusioniDiagnostiche,
         terapie: visitData.terapie,
         tipo: visitData.tipo as any,
+        anamnesiStrutturata: anamnesiStrutturataForSave,
         ginecologia:
           visitData.tipo === "ginecologica" ||
           visitData.tipo === "ginecologica_pediatrica"
@@ -894,7 +971,7 @@ export default function AddVisit() {
     );
   };
 
-  const handleCopyPreviousVisit = () => {
+  const handleCopyPreviousVisit = async () => {
     const currentType = visitData.tipo as
       | "ginecologica"
       | "ginecologica_pediatrica"
@@ -927,6 +1004,7 @@ export default function AddVisit() {
       } else {
         setGinecologiaData(createDefaultGinecologiaData());
       }
+      setAnamnesiStrutturata(createEmptyAnamnesiStrutturata());
 
       setCopiedPreviousType(null);
       setHasUnsavedChanges(true);
@@ -999,9 +1077,12 @@ export default function AddVisit() {
             acMm: 0,
             flMm: 0,
           },
-          // Non copiare peso attuale e pressione: vanno inseriti per la visita corrente
+          // Non copiare i parametri rilevati nella singola visita: vanno reinseriti
           pesoAttuale: 0,
           pressioneArteriosa: "",
+          frequenzaCardiaca: "",
+          temperatura: "",
+          saturazioneO2: "",
         }));
       } else {
         setOstetriciaData((prev) => ({
@@ -1013,6 +1094,62 @@ export default function AddVisit() {
           noteOstetriche: previousVisit.conclusioniDiagnostiche ?? "",
         }));
       }
+    }
+
+    // ── Anamnesi: copia secondo la modalità del tipo di visita corrente ──
+    const currentMode = anamnesiConfig[currentType].mode;
+    const prevStructured = previousVisit.anamnesiStrutturata;
+    const prevHasStructured = hasAnamnesiStrutturataContent(prevStructured);
+    const prevSingleAnamnesi = (
+      previousVisit.ginecologia?.prestazione ||
+      previousVisit.ostetricia?.prestazione ||
+      previousVisit.anamnesi ||
+      ""
+    ).trim();
+
+    if (currentMode === "strutturata") {
+      if (prevHasStructured) {
+        // Precedente già a campi multipli: ogni campo va nel campo giusto
+        // (solo i sotto-campi attualmente attivi).
+        const next = createEmptyAnamnesiStrutturata();
+        for (const f of campiAnamnesiAttivi) {
+          const val = (prevStructured?.[f.key] ?? "").trim();
+          if (val) next[f.key] = val;
+        }
+        setAnamnesiStrutturata(next);
+      } else if (prevSingleAnamnesi && campiAnamnesiAttivi.length > 0) {
+        // Precedente in campo unico → conversione non automatica: il medico
+        // sceglie se distribuire manualmente o importare tutto in una sezione.
+        const next = createEmptyAnamnesiStrutturata();
+        const chosenKey = await askConfirmFlattenSingleToMulti(
+          campiAnamnesiAttivi.map((c) => ({ key: c.key, label: c.label })),
+          prevSingleAnamnesi,
+        );
+        if (chosenKey) next[chosenKey] = prevSingleAnamnesi;
+        setAnamnesiStrutturata(next);
+      } else {
+        setAnamnesiStrutturata(createEmptyAnamnesiStrutturata());
+      }
+      // In modalità strutturata il campo unico non è usato: evita testo "dormiente"
+      // copiato dalla visita precedente che riaffiorerebbe nel fallback del PDF.
+      if (currentType === "ostetrica") {
+        setOstetriciaData((prev) => ({ ...prev, prestazione: "" }));
+      } else {
+        setGinecologiaData((prev) => ({ ...prev, prestazione: "" }));
+      }
+    } else {
+      // Modalità campo unico
+      setAnamnesiStrutturata(createEmptyAnamnesiStrutturata());
+      if (prevHasStructured) {
+        // Precedente a campi multipli → tutto nel campo unico (prestazione)
+        const flat = formatAnamnesiStrutturataText(prevStructured);
+        if (currentType === "ostetrica") {
+          setOstetriciaData((prev) => ({ ...prev, prestazione: flat }));
+        } else {
+          setGinecologiaData((prev) => ({ ...prev, prestazione: flat }));
+        }
+      }
+      // Se anche la precedente era in campo unico, prestazione è già copiata sopra.
     }
 
     setHasUnsavedChanges(true);
@@ -1131,6 +1268,26 @@ export default function AddVisit() {
     includeImagesResolverRef.current = null;
   };
 
+  const askConfirmFlattenSingleToMulti = (
+    campi: { key: AnamnesiCampoKey; label: string }[],
+    sourceText: string,
+  ): Promise<AnamnesiCampoKey | null> => {
+    setFlattenAnamnesiOptions(campi);
+    setFlattenAnamnesiSelected(campi[0]?.key ?? "");
+    setFlattenAnamnesiSource(sourceText);
+    setIsFlattenAnamnesiModalOpen(true);
+    return new Promise((resolve) => {
+      flattenAnamnesiResolverRef.current = resolve;
+    });
+  };
+
+  /** `null` = distribuisci manualmente (nessun campo precompilato). */
+  const resolveFlattenAnamnesi = (value: AnamnesiCampoKey | null) => {
+    setIsFlattenAnamnesiModalOpen(false);
+    flattenAnamnesiResolverRef.current?.(value);
+    flattenAnamnesiResolverRef.current = null;
+  };
+
   const askIncludeFetalGrowthChart = (): Promise<boolean> => {
     setIsIncludeFetalGrowthChartModalOpen(true);
     return new Promise((resolve) => {
@@ -1172,6 +1329,11 @@ export default function AddVisit() {
       conclusioniDiagnostiche: visitData.conclusioniDiagnostiche,
       terapie: visitData.terapie,
       tipo: visitData.tipo as any,
+      anamnesiStrutturata: useStructuredAnamnesi
+        ? cleanAnamnesiStrutturata(
+            pickCampiAttivi(anamnesiStrutturata, anamnesiConfig, visitData.tipo),
+          )
+        : undefined,
       ginecologia:
         visitData.tipo === "ginecologica" ||
         visitData.tipo === "ginecologica_pediatrica"
@@ -1296,6 +1458,22 @@ export default function AddVisit() {
       setCopiedPreviousType(null);
     }
     setVisitData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleAnamnesiStrutturataChange = (
+    field: AnamnesiCampoKey,
+    value: string,
+  ) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setAnamnesiStrutturata((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const applyAnamnesiTemplate = (field: AnamnesiCampoKey, text: string) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setAnamnesiStrutturata((prev) => ({
+      ...prev,
+      [field]: prev[field] ? `${prev[field]}\n${text}` : text,
+    }));
   };
 
   const handleGinecologiaChange = (field: string, value: any) => {
@@ -1569,6 +1747,79 @@ export default function AddVisit() {
   const handleNavigateCronologia = () => {
     guardAction(() => navigate(`/patient-history/${patient?.id}`));
   };
+
+  /**
+   * Sezione "1. Anamnesi" del referto. Renderizza la modalità strutturata
+   * (sotto-campi familiare/fisiologica/patologica/farmacologica/allergica/partner,
+   * condivisi tra i tipi di visita) oppure quella singola a testo libero legata
+   * a `prestazione`, secondo la preferenza. In strutturata il selettore di modelli
+   * resta legato alla modalità singola, così i template esistenti non si rompono.
+   */
+  const renderAnamnesiSection = (
+    templateCategory: "ginecologia" | "ostetricia",
+    prestazione: string,
+    onPrestazioneChange: (value: string) => void,
+    prestazioneTemplates: MedicalTemplate[],
+    applyPrestazioneTemplate: (text: string) => void,
+  ) => (
+    <div className="space-y-2 relative group">
+      <div className="flex justify-between items-end mb-1">
+        <label className="text-sm font-bold text-gray-700">1. Anamnesi</label>
+        {!useStructuredAnamnesi && (
+          <TemplateSelector
+            templates={prestazioneTemplates}
+            onSelect={applyPrestazioneTemplate}
+          />
+        )}
+      </div>
+      {useStructuredAnamnesi ? (
+        <div className="space-y-3">
+          {campiAnamnesiAttivi.map(
+            ({ key, label, placeholder, minRows, optional, templateSection }) => {
+              const fieldTemplates = allTemplates.filter(
+                (t) =>
+                  t.category === templateCategory &&
+                  t.section === templateSection,
+              );
+              return (
+                <div key={key} className="space-y-1">
+                  <div className="flex justify-between items-end">
+                    <label className="text-xs font-semibold text-gray-500">
+                      {label}
+                      {optional ? " (facoltativa)" : ""}
+                    </label>
+                    {fieldTemplates.length > 0 && (
+                      <TemplateSelector
+                        templates={fieldTemplates}
+                        onSelect={(t) => applyAnamnesiTemplate(key, t)}
+                      />
+                    )}
+                  </div>
+                  <RefertoTextarea
+                    value={anamnesiStrutturata[key] ?? ""}
+                    onValueChange={(value) =>
+                      handleAnamnesiStrutturataChange(key, value)
+                    }
+                    variant="bordered"
+                    minRows={minRows}
+                    placeholder={placeholder}
+                  />
+                </div>
+              );
+            },
+          )}
+        </div>
+      ) : (
+        <RefertoTextarea
+          value={prestazione}
+          onValueChange={onPrestazioneChange}
+          variant="bordered"
+          minRows={3}
+          placeholder="Nega patologie di rilievo, nega terapia in atto..."
+        />
+      )}
+    </div>
+  );
 
   if (!patient) {
     return (
@@ -2007,36 +2258,18 @@ export default function AddVisit() {
                   </CardHeader>
                   <CardBody className="p-6 space-y-8">
                     {/* Sezione 1: Anamnesi */}
-                    <div className="space-y-2 relative group">
-                      <div className="flex justify-between items-end mb-1">
-                        <label className="text-sm font-bold text-gray-700">
-                          1. Anamnesi
-                        </label>
-                        <TemplateSelector
-                          templates={allTemplates.filter(
-                            (t) =>
-                              t.category === "ginecologia" &&
-                              t.section === "prestazione",
-                          )}
-                          onSelect={(t) =>
-                            handleTemplateSelect(
-                              "ginecologia",
-                              "prestazione",
-                              t,
-                            )
-                          }
-                        />
-                      </div>
-                      <RefertoTextarea
-                        value={ginecologiaData.prestazione}
-                        onValueChange={(value) =>
-                          handleGinecologiaChange("prestazione", value)
-                        }
-                        variant="bordered"
-                        minRows={3}
-                        placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                      />
-                    </div>
+                    {renderAnamnesiSection(
+                      "ginecologia",
+                      ginecologiaData.prestazione,
+                      (value) => handleGinecologiaChange("prestazione", value),
+                      allTemplates.filter(
+                        (t) =>
+                          t.category === "ginecologia" &&
+                          t.section === "prestazione",
+                      ),
+                      (t) =>
+                        handleTemplateSelect("ginecologia", "prestazione", t),
+                    )}
 
                     {/* Sezione 2: Descrizione */}
                     <div className="space-y-2 group">
@@ -2259,36 +2492,19 @@ export default function AddVisit() {
                     </CardHeader>
                     <CardBody className="p-6 space-y-8">
                       {/* Sezione 1: Anamnesi */}
-                      <div className="space-y-2 relative group">
-                        <div className="flex justify-between items-end mb-1">
-                          <label className="text-sm font-bold text-gray-700">
-                            1. Anamnesi
-                          </label>
-                          <TemplateSelector
-                            templates={allTemplates.filter(
-                              (t) =>
-                                t.category === "ginecologia" &&
-                                t.section === "prestazione",
-                            )}
-                            onSelect={(t) =>
-                              handleTemplateSelect(
-                                "ginecologia",
-                                "prestazione",
-                                t,
-                              )
-                            }
-                          />
-                        </div>
-                        <RefertoTextarea
-                          value={ginecologiaData.prestazione}
-                          onValueChange={(value) =>
-                            handleGinecologiaChange("prestazione", value)
-                          }
-                          variant="bordered"
-                          minRows={3}
-                          placeholder="Nega patologie di rilievo, nega terapia in atto..."
-                        />
-                      </div>
+                      {renderAnamnesiSection(
+                        "ginecologia",
+                        ginecologiaData.prestazione,
+                        (value) =>
+                          handleGinecologiaChange("prestazione", value),
+                        allTemplates.filter(
+                          (t) =>
+                            t.category === "ginecologia" &&
+                            t.section === "prestazione",
+                        ),
+                        (t) =>
+                          handleTemplateSelect("ginecologia", "prestazione", t),
+                      )}
 
                       {/* Sezione 2: Descrizione */}
                       <div className="space-y-2 group">
@@ -2628,6 +2844,46 @@ export default function AddVisit() {
                       }
                       classNames={{ label: "pb-1" }}
                     />
+                    <div className="grid grid-cols-3 gap-3">
+                      <Input
+                        label="FC (bpm)"
+                        placeholder="72"
+                        type="number"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        value={ostetriciaData.frequenzaCardiaca ?? ""}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange("frequenzaCardiaca", v)
+                        }
+                        classNames={{ label: "pb-1" }}
+                      />
+                      <Input
+                        label="Tº (°C)"
+                        placeholder="36.5"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        value={ostetriciaData.temperatura ?? ""}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange("temperatura", v)
+                        }
+                        classNames={{ label: "pb-1" }}
+                      />
+                      <Input
+                        label="SpO₂ (%)"
+                        placeholder="98"
+                        type="number"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        value={ostetriciaData.saturazioneO2 ?? ""}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange("saturazioneO2", v)
+                        }
+                        classNames={{ label: "pb-1" }}
+                      />
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <Select
                         label="Fuma in gravidanza"
@@ -3257,32 +3513,17 @@ export default function AddVisit() {
                   </CardHeader>
                   <CardBody className="p-6 space-y-8">
                     {/* Sezione 1: Anamnesi */}
-                    <div className="space-y-2 relative group">
-                      <div className="flex justify-between items-end mb-1">
-                        <label className="text-sm font-bold text-gray-700">
-                          1. Anamnesi
-                        </label>
-                        <TemplateSelector
-                          templates={allTemplates.filter(
-                            (t) =>
-                              t.category === "ostetricia" &&
-                              t.section === "prestazione",
-                          )}
-                          onSelect={(t) =>
-                            handleTemplateSelect("ostetrica", "prestazione", t)
-                          }
-                        />
-                      </div>
-                      <RefertoTextarea
-                        value={ostetriciaData.prestazione}
-                        onValueChange={(value) =>
-                          handleOstetriciaChange("prestazione", value)
-                        }
-                        variant="bordered"
-                        minRows={3}
-                        placeholder="Anamnesi ostetrica, motivo della visita, dati clinici..."
-                      />
-                    </div>
+                    {renderAnamnesiSection(
+                      "ostetricia",
+                      ostetriciaData.prestazione,
+                      (value) => handleOstetriciaChange("prestazione", value),
+                      allTemplates.filter(
+                        (t) =>
+                          t.category === "ostetricia" &&
+                          t.section === "prestazione",
+                      ),
+                      (t) => handleTemplateSelect("ostetrica", "prestazione", t),
+                    )}
 
                     {/* Sezione 2: Descrizione */}
                     <div className="space-y-2 group">
@@ -3469,6 +3710,69 @@ export default function AddVisit() {
               onPress={() => resolveIncludeEcografiaImages(true)}
             >
               Si, includi immagini
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isFlattenAnamnesiModalOpen}
+        onClose={() => resolveFlattenAnamnesi(null)}
+        size="md"
+      >
+        <ModalContent>
+          <ModalHeader>Conversione anamnesi non automatica</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-gray-600">
+              La visita precedente ha un&apos;anamnesi scritta in un{" "}
+              <span className="font-semibold">unico campo</span>, mentre questa
+              visita usa l&apos;anamnesi a{" "}
+              <span className="font-semibold">sezioni multiple</span>. Non è
+              possibile suddividerla automaticamente nelle singole sezioni.
+            </p>
+            <p className="text-sm text-gray-600">
+              Puoi <span className="font-semibold">distribuirla manualmente</span>{" "}
+              (copiando dal testo qui sotto) oppure importarla tutta in una
+              sezione e poi spostarne le parti.
+            </p>
+            {flattenAnamnesiSource && (
+              <div className="max-h-32 overflow-auto rounded-lg border border-default-200 bg-default-50 p-2 text-xs text-gray-700 whitespace-pre-wrap select-text">
+                {flattenAnamnesiSource}
+              </div>
+            )}
+            <Select
+              label="Importa tutto nella sezione"
+              variant="bordered"
+              labelPlacement="outside"
+              selectedKeys={
+                flattenAnamnesiSelected ? [flattenAnamnesiSelected] : []
+              }
+              onSelectionChange={(keys) =>
+                setFlattenAnamnesiSelected(
+                  (Array.from(keys)[0] as AnamnesiCampoKey) ?? "",
+                )
+              }
+            >
+              {flattenAnamnesiOptions.map((o) => (
+                <SelectItem key={o.key}>{o.label}</SelectItem>
+              ))}
+            </Select>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="light"
+              onPress={() => resolveFlattenAnamnesi(null)}
+            >
+              Distribuisci manualmente
+            </Button>
+            <Button
+              color="primary"
+              isDisabled={!flattenAnamnesiSelected}
+              onPress={() =>
+                resolveFlattenAnamnesi(flattenAnamnesiSelected || null)
+              }
+            >
+              Importa nella sezione
             </Button>
           </ModalFooter>
         </ModalContent>

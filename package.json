@@ -1,7 +1,7 @@
 {
   "name": "appdottori",
   "private": true,
-  "version": "1.2.7",
+  "version": "1.2.8",
   "type": "module",
   "description": "Gestione pazienti e visite - Corioli",
   "author": "Corioli",
@@ -102,7 +102,7 @@
       "publisher": "CN=60C71725-B223-4BD2-95C5-CC3C7EE03443",
       "publisherDisplayName": "Corioli",
       "displayName": "Corioli",
-      "backgroundColor": "#000000"
+      "backgroundColor": "transparent"
     },
     "mac": {
       "target": [

@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "public" / "corioli-icon.png"
 APPX_DIR = ROOT / "build" / "appx"
 ICON_ICO = ROOT / "build" / "icon.ico"
-BG = (0, 0, 0, 255)
+ICON_PNG = ROOT / "build" / "icon.png"
+BG = (0, 0, 0, 0)
 
 
 def fit_square(img: Image.Image, size: int, bg: tuple = BG) -> Image.Image:
@@ -41,8 +42,8 @@ def fit_wide(img: Image.Image, width: int, height: int, bg: tuple = BG) -> Image
     return canvas
 
 
-def save_rgb(img: Image.Image, path: Path) -> None:
-    img.convert("RGB").save(path, "PNG")
+def save_png(img: Image.Image, path: Path) -> None:
+    img.save(path, "PNG")
     print(f"  {path.name}  ({img.width}x{img.height})")
 
 
@@ -68,14 +69,15 @@ def main() -> None:
         append_images=ico_frames[:-1],
     )
     print(f"\nIcona .ico: {ICON_ICO}")
+    save_png(fit_square(img, 256), ICON_PNG)
 
     print("\nAsset AppX:")
-    save_rgb(fit_square(img, 50), APPX_DIR / "StoreLogo.png")
-    save_rgb(fit_square(img, 44), APPX_DIR / "Square44x44Logo.png")
-    save_rgb(fit_square(img, 150), APPX_DIR / "Square150x150Logo.png")
-    save_rgb(fit_wide(img, 310, 150), APPX_DIR / "Wide310x150Logo.png")
-    save_rgb(fit_square(img, 310), APPX_DIR / "LargeTile.png")
-    save_rgb(fit_square(img, 71), APPX_DIR / "SmallTile.png")
+    save_png(fit_square(img, 50), APPX_DIR / "StoreLogo.png")
+    save_png(fit_square(img, 44), APPX_DIR / "Square44x44Logo.png")
+    save_png(fit_square(img, 150), APPX_DIR / "Square150x150Logo.png")
+    save_png(fit_wide(img, 310, 150), APPX_DIR / "Wide310x150Logo.png")
+    save_png(fit_square(img, 310), APPX_DIR / "LargeTile.png")
+    save_png(fit_square(img, 71), APPX_DIR / "SmallTile.png")
 
     print(f"\nTotale file in {APPX_DIR}: {len(list(APPX_DIR.iterdir()))}")
     print("Fatto.")

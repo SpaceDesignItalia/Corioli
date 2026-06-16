@@ -48,6 +48,23 @@ export interface CertificatoPaziente {
   updatedAt: string;
 }
 
+/**
+ * Anamnesi suddivisa per categorie (referto strutturato in stile specialistico).
+ * Condivisa tra tutti i tipi di visita. Tutti i campi sono facoltativi.
+ * Se valorizzata, sostituisce l'anamnesi singola (`prestazione`) nel referto PDF.
+ */
+export interface AnamnesiStrutturata {
+  familiare?: string;
+  fisiologica?: string;
+  patologica?: string;
+  /** Anamnesi ginecologica (menarca, ciclo, screening, ecc.) */
+  ginecologica?: string;
+  farmacologica?: string;
+  allergica?: string;
+  /** Anamnesi del partner (utile in ostetricia/preconcezionale) */
+  partner?: string;
+}
+
 /** Singolo farmaco in una ricetta */
 export interface RicettaFarmaco {
   nome: string;
@@ -78,6 +95,12 @@ export interface Visit {
   conclusioniDiagnostiche: string;
   terapie: string;
   tipo?: 'generale' | 'ginecologica' | 'ginecologica_pediatrica' | 'ostetrica';
+  /**
+   * Anamnesi strutturata condivisa (familiare, fisiologica, patologica, farmacologica, allergica, partner).
+   * Presente solo se il medico usa la modalità "anamnesi strutturata". Se valorizzata,
+   * ha priorità sull'anamnesi singola (`prestazione`) nella stampa del referto.
+   */
+  anamnesiStrutturata?: AnamnesiStrutturata;
   // Campi specifici ginecologia
   ginecologia?: {
     gravidanze: number;
@@ -130,6 +153,12 @@ export interface Visit {
     pesoPreGravidanza: number;
     pesoAttuale: number;
     pressioneArteriosa: string;
+    /** Frequenza cardiaca materna (bpm) */
+    frequenzaCardiaca?: string;
+    /** Temperatura corporea (°C) */
+    temperatura?: string;
+    /** Saturazione O2 (%) */
+    saturazioneO2?: string;
     /** Fuma in gravidanza: "si" | "no" */
     fumaInGravidanza?: string;
     /** Pacchetti di sigarette al giorno (se fumatrice) */
@@ -235,7 +264,21 @@ export interface Document {
 export interface MedicalTemplate {
   id: string;
   category: 'ginecologia' | 'ostetricia' | 'terapie' | 'ricette' | 'esame_complementare' | 'certificato';
-  section: 'prestazione' | 'esameObiettivo' | 'conclusioni' | 'generale' | 'nome' | 'note';
+  section:
+    | 'prestazione'
+    | 'esameObiettivo'
+    | 'conclusioni'
+    | 'generale'
+    | 'nome'
+    | 'note'
+    // Sotto-sezioni dell'anamnesi strutturata
+    | 'anamnesiFamiliare'
+    | 'anamnesiFisiologica'
+    | 'anamnesiPatologica'
+    | 'anamnesiGinecologica'
+    | 'anamnesiFarmacologica'
+    | 'anamnesiAllergica'
+    | 'anamnesiPartner';
   label: string;
   text: string;
   note?: string;
