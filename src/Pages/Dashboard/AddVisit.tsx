@@ -51,6 +51,7 @@ import {
   createDefaultAnamnesiConfig,
   parseAnamnesiConfig,
   getCampiAttivi,
+  getAnamnesiEtichette,
   pickCampiAttivi,
   createEmptyAnamnesiStrutturata,
   cleanAnamnesiStrutturata,
@@ -60,11 +61,15 @@ import {
 import { calculateAge } from "../../utils/dateUtils";
 import {
   MAX_OBSTETRIC_COUNT,
-  MIN_WEIGHT_KG,
-  MAX_WEIGHT_KG,
+  MIN_HEIGHT_CM,
+  MAX_HEIGHT_CM,
   OBSTETRIC_COUNT_FIELDS,
   clampObstetricCount,
-  clampWeightKg,
+  isValidHeightInputDraft,
+  isValidWeightInputDraft,
+  parseOptionalHeight,
+  parseWeightFieldBlur,
+  parseWeightFieldLive,
   ginecologiaAnamnesiErrors,
   ostetriciaAnamnesiErrors,
   todayIsoDate,
@@ -106,12 +111,23 @@ import {
   X,
   TrendingUp,
   TrendingDown,
+  Ruler,
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useDoctorProfileIncompleteModal } from "../../components/DoctorProfileIncompleteModal";
 import { getMissingDoctorProfileFields, isDoctorProfileComplete } from "../../utils/doctorProfile";
+
+function getAltezzaCmForBmi(patient: Patient | null): number | null {
+  if (patient?.altezza == null || patient.altezza <= 0) return null;
+  return parseOptionalHeight(String(patient.altezza)) ?? null;
+}
+
+function computeBmi(weightKg: number, heightCm: number): string {
+  const h = heightCm / 100;
+  return (weightKg / (h * h)).toFixed(1);
+}
 
 /** Barra grafica percentile (5°–95°): linea con rombo alla posizione del percentile */
 function PercentileBar({
@@ -291,8 +307,6 @@ const createDefaultOstetriciaData = () => ({
   pesoAttuale: 0,
   pressioneArteriosa: "",
   frequenzaCardiaca: "",
-  temperatura: "",
-  saturazioneO2: "",
   fumaInGravidanza: "",
   pacchettiSigaretteAlGiorno: 0,
   assunzioneAcidoFolico: "",
@@ -341,6 +355,21 @@ function mergeFlussimetriaDraftIntoOstetricia(
     else delete nextF.ri;
   }
   return { ...ostetricia, flussimetriaOmbelicale: nextF };
+}
+
+function mergePesoDraftIntoOstetricia(
+  ostetricia: OstetriciaFormState,
+  draft: { pre: string | null; attuale: string | null },
+): OstetriciaFormState {
+  if (draft.pre === null && draft.attuale === null) return ostetricia;
+  const next = { ...ostetricia };
+  if (draft.pre !== null) {
+    next.pesoPreGravidanza = parseWeightFieldBlur(draft.pre);
+  }
+  if (draft.attuale !== null) {
+    next.pesoAttuale = parseWeightFieldBlur(draft.attuale);
+  }
+  return next;
 }
 
 function computeFlussimetriaCalcoliSnapshot(ostetricia: OstetriciaFormState) {
@@ -471,6 +500,14 @@ export default function AddVisit() {
       pi: null,
       ri: null,
     });
+  /** Testo libero peso mentre il campo ha focus (evita clamp a 30 kg durante la digitazione). */
+  const [pesoInputDraft, setPesoInputDraft] = useState<{
+    pre: string | null;
+    attuale: string | null;
+  }>({ pre: null, attuale: null });
+  /** Altezza da salvare in scheda paziente (banner BMI). */
+  const [altezzaPendingInput, setAltezzaPendingInput] = useState("");
+  const [savingAltezza, setSavingAltezza] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -487,6 +524,9 @@ export default function AddVisit() {
       setOstetriciaData(createDefaultOstetriciaData());
       setAnamnesiStrutturata(createEmptyAnamnesiStrutturata());
       setFlussimetriaOmbelicaleDraft({ pi: null, ri: null });
+      setPesoInputDraft({ pre: null, attuale: null });
+      setAltezzaPendingInput("");
+      setSavingAltezza(false);
 
       try {
         const templates = await TemplateService.getAllTemplates();
@@ -867,22 +907,41 @@ export default function AddVisit() {
           showToast(message, "error");
           return false;
         }
+        const ostetriciaWithDrafts = mergePesoDraftIntoOstetricia(
+          mergeFlussimetriaDraftIntoOstetricia(
+            ostetriciaData,
+            flussimetriaOmbelicaleDraft,
+          ),
+          pesoInputDraft,
+        );
         const weightErr = validateObstetricWeights(
-          ostetriciaData.pesoPreGravidanza,
-          ostetriciaData.pesoAttuale,
+          ostetriciaWithDrafts.pesoPreGravidanza,
+          ostetriciaWithDrafts.pesoAttuale,
         );
         if (weightErr) {
           setError(weightErr);
           showToast(weightErr, "error");
           return false;
         }
+        if (
+          altezzaPendingInput.trim() &&
+          (!patient.altezza || patient.altezza <= 0)
+        ) {
+          const valid = parseOptionalHeight(altezzaPendingInput.trim());
+          if (valid != null) {
+            await persistPatientAltezzaIfNeeded(valid);
+          }
+        }
       }
 
       const ostetriciaForSave =
         visitData.tipo === "ostetrica"
-          ? mergeFlussimetriaDraftIntoOstetricia(
-              ostetriciaData,
-              flussimetriaOmbelicaleDraft,
+          ? mergePesoDraftIntoOstetricia(
+              mergeFlussimetriaDraftIntoOstetricia(
+                ostetriciaData,
+                flussimetriaOmbelicaleDraft,
+              ),
+              pesoInputDraft,
             )
           : ostetriciaData;
       const flussimetriaCalcoliForSave =
@@ -945,6 +1004,7 @@ export default function AddVisit() {
       if (visitData.tipo === "ostetrica") {
         setOstetriciaData(ostetriciaForSave);
         setFlussimetriaOmbelicaleDraft({ pi: null, ri: null });
+        setPesoInputDraft({ pre: null, attuale: null });
       }
       if (!options?.skipRedirect) {
         setTimeout(() => navigate(`/patient-history/${patient.id}`), 1000);
@@ -1081,8 +1141,6 @@ export default function AddVisit() {
           pesoAttuale: 0,
           pressioneArteriosa: "",
           frequenzaCardiaca: "",
-          temperatura: "",
-          saturazioneO2: "",
         }));
       } else {
         setOstetriciaData((prev) => ({
@@ -1142,7 +1200,11 @@ export default function AddVisit() {
       setAnamnesiStrutturata(createEmptyAnamnesiStrutturata());
       if (prevHasStructured) {
         // Precedente a campi multipli → tutto nel campo unico (prestazione)
-        const flat = formatAnamnesiStrutturataText(prevStructured);
+        const flat = formatAnamnesiStrutturataText(
+          prevStructured,
+          undefined,
+          getAnamnesiEtichette(anamnesiConfig, currentType),
+        );
         if (currentType === "ostetrica") {
           setOstetriciaData((prev) => ({ ...prev, prestazione: flat }));
         } else {
@@ -1494,15 +1556,6 @@ export default function AddVisit() {
       return;
     }
 
-    if (field === "pesoPreGravidanza" || field === "pesoAttuale") {
-      const n = parseFloat(String(value)) || 0;
-      setOstetriciaData((prev) => ({
-        ...prev,
-        [field]: n <= 0 ? 0 : clampWeightKg(n),
-      }));
-      return;
-    }
-
     if (field === "settimaneGestazione") {
       const newGa = parseGestationalWeeks((value as string) ?? "");
       setOstetriciaData((prev) => {
@@ -1536,6 +1589,77 @@ export default function AddVisit() {
     }
 
     setOstetriciaData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const liveOstetriciaWeight = (
+    field: "pesoPreGravidanza" | "pesoAttuale",
+    raw: string,
+  ) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    const live = parseWeightFieldLive(raw);
+    if (live === "incomplete") {
+      if (raw === "" || raw === ".") {
+        setOstetriciaData((prev) => ({ ...prev, [field]: 0 }));
+      }
+      return;
+    }
+    setOstetriciaData((prev) => ({ ...prev, [field]: live }));
+  };
+
+  const commitOstetriciaWeight = (
+    field: "pesoPreGravidanza" | "pesoAttuale",
+    raw: string,
+  ) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setOstetriciaData((prev) => ({
+      ...prev,
+      [field]: parseWeightFieldBlur(raw),
+    }));
+  };
+
+  const persistPatientAltezzaIfNeeded = async (
+    heightCm: number | undefined,
+  ): Promise<boolean> => {
+    if (!patient || heightCm == null || heightCm <= 0) return false;
+    if (patient.altezza != null && patient.altezza > 0) return false;
+    const valid = parseOptionalHeight(String(heightCm));
+    if (valid == null) return false;
+    try {
+      await PatientService.updatePatient(patient.id, {
+        altezza: valid,
+        updatedAt: new Date().toISOString(),
+      });
+      setPatient((prev) => (prev ? { ...prev, altezza: valid } : prev));
+      setAltezzaPendingInput("");
+      return true;
+    } catch (e) {
+      console.error("Errore salvataggio altezza paziente:", e);
+      showToast("Errore durante il salvataggio dell'altezza", "error");
+      return false;
+    }
+  };
+
+  const handleSaveAltezza = async () => {
+    const raw = altezzaPendingInput.trim();
+    if (!raw) {
+      showToast("Inserisci l'altezza in cm", "error");
+      return;
+    }
+    const valid = parseOptionalHeight(raw);
+    if (valid == null) {
+      showToast(
+        `Altezza non valida (${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM} cm)`,
+        "error",
+      );
+      return;
+    }
+    setSavingAltezza(true);
+    try {
+      const saved = await persistPatientAltezzaIfNeeded(valid);
+      if (saved) showToast("Altezza salvata nella scheda paziente");
+    } finally {
+      setSavingAltezza(false);
+    }
   };
 
   /** Da CRL (mm) a età gestazionale: formula Robinson GA_days = 42 + 0.6*CRL_mm (valida per CRL ~5-84 mm). */
@@ -1762,7 +1886,7 @@ export default function AddVisit() {
     prestazioneTemplates: MedicalTemplate[],
     applyPrestazioneTemplate: (text: string) => void,
   ) => (
-    <div className="space-y-2 relative group">
+    <div className="space-y-2 relative">
       <div className="flex justify-between items-end mb-1">
         <label className="text-sm font-bold text-gray-700">1. Anamnesi</label>
         {!useStructuredAnamnesi && (
@@ -2721,27 +2845,83 @@ export default function AddVisit() {
 
                     <Divider className="my-2" />
 
+                    {patient != null && getAltezzaCmForBmi(patient) == null && (
+                      <div className="mb-3 rounded-xl border border-dashed border-primary-200 bg-gradient-to-r from-primary-50/70 via-white to-primary-50/40 px-3 py-2.5">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary">
+                            <Ruler size={14} />
+                          </div>
+                          <p className="text-xs font-semibold text-primary-800">
+                            Inserisci l&apos;altezza (cm) per calcolare il BMI
+                          </p>
+                        </div>
+                        <div className="flex w-full flex-col gap-2">
+                          <Input
+                            aria-label="Altezza in cm"
+                            type="text"
+                            inputMode="numeric"
+                            size="sm"
+                            variant="bordered"
+                            placeholder="Es. 165"
+                            className="w-full"
+                            classNames={{ base: "w-full" }}
+                            value={altezzaPendingInput}
+                            onValueChange={(v) => {
+                              if (!isValidHeightInputDraft(v)) return;
+                              setAltezzaPendingInput(v);
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            color="primary"
+                            className="corioli-cta w-full"
+                            isLoading={savingAltezza}
+                            onPress={() => void handleSaveAltezza()}
+                          >
+                            Salva
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-col sm:flex-row items-end gap-3 w-full">
                       <Input
                         label="Peso Pre gravidanza (kg)"
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
                         value={
-                          ostetriciaData.pesoPreGravidanza === 0
+                          pesoInputDraft.pre ??
+                          (ostetriciaData.pesoPreGravidanza === 0
                             ? ""
-                            : ostetriciaData.pesoPreGravidanza.toString()
+                            : ostetriciaData.pesoPreGravidanza.toString())
                         }
-                        onValueChange={(v) =>
-                          handleOstetriciaChange(
-                            "pesoPreGravidanza",
-                            v === "" ? 0 : parseFloat(v) || 0,
-                          )
-                        }
-                        placeholder="0"
-                        min={MIN_WEIGHT_KG}
-                        max={MAX_WEIGHT_KG}
+                        onFocus={() => {
+                          setPesoInputDraft((d) => ({
+                            ...d,
+                            pre:
+                              ostetriciaData.pesoPreGravidanza > 0
+                                ? ostetriciaData.pesoPreGravidanza.toString()
+                                : "",
+                          }));
+                        }}
+                        onBlur={() => {
+                          if (pesoInputDraft.pre !== null) {
+                            commitOstetriciaWeight(
+                              "pesoPreGravidanza",
+                              pesoInputDraft.pre,
+                            );
+                          }
+                          setPesoInputDraft((d) => ({ ...d, pre: null }));
+                        }}
+                        onValueChange={(v) => {
+                          if (!isValidWeightInputDraft(v)) return;
+                          setPesoInputDraft((d) => ({ ...d, pre: v }));
+                          liveOstetriciaWeight("pesoPreGravidanza", v);
+                        }}
+                        placeholder="Es. 65"
                         className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
@@ -2758,27 +2938,19 @@ export default function AddVisit() {
                               const colorClass = isNegative
                                 ? "corioli-text-brand bg-brand-50/80 border-brand-200"
                                 : "text-primary-600 bg-primary-50/80 border-primary-200";
-                              const hasAltezza =
-                                patient?.altezza != null && patient.altezza > 0;
-                              const h = hasAltezza ? patient!.altezza / 100 : 0;
+                              const altezzaCm = getAltezzaCmForBmi(patient);
                               const bmiPartenza =
-                                hasAltezza &&
+                                altezzaCm != null &&
                                 ostetriciaData.pesoPreGravidanza > 0
-                                  ? (
-                                      ostetriciaData.pesoPreGravidanza /
-                                      (h * h)
-                                    ).toFixed(1)
-                                  : null;
-                              const bmiAttuale =
-                                hasAltezza && ostetriciaData.pesoAttuale > 0
-                                  ? (
-                                      ostetriciaData.pesoAttuale /
-                                      (h * h)
-                                    ).toFixed(1)
+                                  ? computeBmi(
+                                      ostetriciaData.pesoPreGravidanza,
+                                      altezzaCm,
+                                    )
                                   : null;
                               return (
                                 <div
                                   className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 ${colorClass}`}
+                                  title="Variazione di peso in gravidanza"
                                 >
                                   <div className="flex items-center gap-1 text-xs font-semibold">
                                     {diff >= 0 ? (
@@ -2786,20 +2958,14 @@ export default function AddVisit() {
                                     ) : (
                                       <TrendingDown size={12} />
                                     )}
-                                    <span>{Math.abs(diff).toFixed(1)} kg</span>
+                                    <span>
+                                      {diff >= 0 ? "+" : "−"}
+                                      {Math.abs(diff).toFixed(1)} kg
+                                    </span>
                                   </div>
-                                  {(bmiPartenza != null ||
-                                    bmiAttuale != null) && (
+                                  {bmiPartenza != null && (
                                     <div className="text-[10px] font-medium opacity-85 leading-tight">
-                                      {bmiPartenza != null && (
-                                        <span>part. {bmiPartenza}</span>
-                                      )}
-                                      {bmiPartenza != null &&
-                                        bmiAttuale != null &&
-                                        " · "}
-                                      {bmiAttuale != null && (
-                                        <span>BMI {bmiAttuale}</span>
-                                      )}
+                                      <span>BMI iniziale {bmiPartenza}</span>
                                     </div>
                                   )}
                                 </div>
@@ -2810,41 +2976,58 @@ export default function AddVisit() {
 
                       <Input
                         label="Peso Attuale (kg)"
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         size="sm"
                         variant="bordered"
                         labelPlacement="outside"
                         value={
-                          ostetriciaData.pesoAttuale === 0
+                          pesoInputDraft.attuale ??
+                          (ostetriciaData.pesoAttuale === 0
                             ? ""
-                            : ostetriciaData.pesoAttuale.toString()
+                            : ostetriciaData.pesoAttuale.toString())
                         }
-                        onValueChange={(v) =>
-                          handleOstetriciaChange(
-                            "pesoAttuale",
-                            v === "" ? 0 : parseFloat(v) || 0,
-                          )
-                        }
-                        placeholder="0"
-                        min={MIN_WEIGHT_KG}
-                        max={MAX_WEIGHT_KG}
+                        onFocus={() => {
+                          setPesoInputDraft((d) => ({
+                            ...d,
+                            attuale:
+                              ostetriciaData.pesoAttuale > 0
+                                ? ostetriciaData.pesoAttuale.toString()
+                                : "",
+                          }));
+                        }}
+                        onBlur={() => {
+                          if (pesoInputDraft.attuale !== null) {
+                            commitOstetriciaWeight(
+                              "pesoAttuale",
+                              pesoInputDraft.attuale,
+                            );
+                          }
+                          setPesoInputDraft((d) => ({ ...d, attuale: null }));
+                        }}
+                        onValueChange={(v) => {
+                          if (!isValidWeightInputDraft(v)) return;
+                          setPesoInputDraft((d) => ({ ...d, attuale: v }));
+                          liveOstetriciaWeight("pesoAttuale", v);
+                        }}
+                        placeholder="Es. 72"
                         className="flex-1"
                         classNames={{ label: "pb-1" }}
                       />
                     </div>
-                    <Input
-                      label="Pressione Arteriosa"
-                      placeholder="120/80"
-                      size="sm"
-                      variant="bordered"
-                      labelPlacement="outside"
-                      value={ostetriciaData.pressioneArteriosa}
-                      onValueChange={(v) =>
-                        handleOstetriciaChange("pressioneArteriosa", v)
-                      }
-                      classNames={{ label: "pb-1" }}
-                    />
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        label="Pressione Arteriosa"
+                        placeholder="120/80"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        value={ostetriciaData.pressioneArteriosa}
+                        onValueChange={(v) =>
+                          handleOstetriciaChange("pressioneArteriosa", v)
+                        }
+                        classNames={{ label: "pb-1" }}
+                      />
                       <Input
                         label="FC (bpm)"
                         placeholder="72"
@@ -2855,31 +3038,6 @@ export default function AddVisit() {
                         value={ostetriciaData.frequenzaCardiaca ?? ""}
                         onValueChange={(v) =>
                           handleOstetriciaChange("frequenzaCardiaca", v)
-                        }
-                        classNames={{ label: "pb-1" }}
-                      />
-                      <Input
-                        label="Tº (°C)"
-                        placeholder="36.5"
-                        size="sm"
-                        variant="bordered"
-                        labelPlacement="outside"
-                        value={ostetriciaData.temperatura ?? ""}
-                        onValueChange={(v) =>
-                          handleOstetriciaChange("temperatura", v)
-                        }
-                        classNames={{ label: "pb-1" }}
-                      />
-                      <Input
-                        label="SpO₂ (%)"
-                        placeholder="98"
-                        type="number"
-                        size="sm"
-                        variant="bordered"
-                        labelPlacement="outside"
-                        value={ostetriciaData.saturazioneO2 ?? ""}
-                        onValueChange={(v) =>
-                          handleOstetriciaChange("saturazioneO2", v)
                         }
                         classNames={{ label: "pb-1" }}
                       />

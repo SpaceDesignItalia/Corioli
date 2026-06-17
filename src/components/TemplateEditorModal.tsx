@@ -11,13 +11,9 @@ import {
   SelectItem,
   Divider,
 } from "@nextui-org/react";
-import { FileText, ClipboardList, ChevronDown, Pill, Plus, Trash2 } from "lucide-react";
-import type { MedicalTemplate, RicettaFarmaco } from "../types/Storage";
+import { FileText, ClipboardList, ChevronDown, Pill } from "lucide-react";
+import type { MedicalTemplate } from "../types/Storage";
 import { RefertoTextarea } from "./RefertoTextarea";
-import {
-  parseRicettaFarmaci,
-  serializeRicettaFarmaci,
-} from "../utils/ricettaTemplate";
 
 type TemplateCategory = MedicalTemplate["category"];
 type TemplateSection = MedicalTemplate["section"];
@@ -116,7 +112,7 @@ type LivePreviewContent = {
 function getContentLabel(category: TemplateCategory): string {
   if (category === "esame_complementare") return "Nome dell'esame";
   if (category === "certificato") return "Testo del certificato";
-  if (category === "ricette") return "Elenco farmaci (uno per riga)";
+  if (category === "ricette") return "Testo della ricetta";
   return "Testo da inserire nel referto";
 }
 
@@ -128,7 +124,7 @@ function getContentPlaceholder(category: TemplateCategory): string {
     return "Testo del certificato. Puoi usare ___ per i campi da compilare manualmente.";
   }
   if (category === "ricette") {
-    return "Un farmaco per riga (es. \"Tachipirina 1000 mg: 1 cp 2 volte/die\"). I farmaci compariranno nella ricetta già compilati.";
+    return "Scrivi l'intera ricetta in testo libero: farmaci, posologie, durata e indicazioni. Comparirà già compilata quando emetti una ricetta.";
   }
   if (category === "terapie") {
     return "Scrivi le indicazioni in forma discorsiva. Comparirà nella sezione Conclusioni e Terapie della visita.";
@@ -412,7 +408,6 @@ function CertificatoFormMock({ preview }: { preview: LivePreviewContent }) {
 function RicettaFormMock({ preview }: { preview: LivePreviewContent }) {
   const menuOpen = Boolean(preview.menuLabel.trim());
   const menuDisplay = preview.menuLabel.trim() || "Il tuo modello";
-  const farmaci = parseRicettaFarmaci(preview.fieldText).slice(0, 5);
 
   return (
     <div className="rounded-xl border-2 border-primary/20 bg-default-50/80 shadow-sm">
@@ -429,30 +424,13 @@ function RicettaFormMock({ preview }: { preview: LivePreviewContent }) {
           <MockModelloControl label="Modelli Ricetta" open={menuOpen} menuLabel={menuDisplay} />
         </div>
         <div className="rounded-lg border border-primary bg-primary-50/80 px-2.5 py-2 ring-2 ring-primary/20">
-          <span className="text-xs font-bold text-primary-900">Farmaci prescritti</span>
-          {farmaci.length > 0 ? (
-            <div className="mt-1.5 space-y-1">
-              {farmaci.map((f, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 rounded-md border border-default-200 bg-white px-2 py-1 text-[11px] text-gray-800"
-                >
-                  <Pill size={11} className="shrink-0 text-primary" />
-                  <span className="truncate">
-                    <span className="font-medium">{f.nome}</span>
-                    {f.posologia ? ` · ${f.posologia}` : ""}
-                    {f.durata ? ` · ${f.durata}` : ""}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <MockLiveField
-              value=""
-              placeholder="I farmaci del modello compariranno qui, già compilati..."
-              active
-            />
-          )}
+          <span className="text-xs font-bold text-primary-900">Prescrizione</span>
+          <MockLiveField
+            value={preview.fieldText}
+            placeholder="Il testo del modello comparirà qui, già compilato..."
+            active
+            multiline
+          />
         </div>
       </div>
     </div>
@@ -501,14 +479,6 @@ function TemplatePlacementMap({
   return <CertificatoFormMock preview={preview} />;
 }
 
-const EMPTY_RICETTA_ROW: RicettaFarmaco = { nome: "", posologia: "", durata: "" };
-
-/** Righe farmaco da testo modello; almeno una riga vuota per partire. */
-function ricettaRowsFromText(text?: string): RicettaFarmaco[] {
-  const parsed = parseRicettaFarmaci(text || "");
-  return parsed.length ? parsed : [{ ...EMPTY_RICETTA_ROW }];
-}
-
 export type TemplateEditorModalProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -526,36 +496,12 @@ export function TemplateEditorModal({
 }: TemplateEditorModalProps) {
   const [draft, setDraft] = useState<Partial<MedicalTemplate>>(initialTemplate);
   const [errors, setErrors] = useState<{ label?: string; text?: string }>({});
-  const [ricettaRows, setRicettaRows] = useState<RicettaFarmaco[]>(
-    ricettaRowsFromText(initialTemplate.text),
-  );
 
   useEffect(() => {
     if (!isOpen) return;
     setDraft({ ...initialTemplate });
     setErrors({});
-    setRicettaRows(ricettaRowsFromText(initialTemplate.text));
   }, [isOpen, initialTemplate]);
-
-  const applyRicettaRows = (rows: RicettaFarmaco[]) => {
-    setRicettaRows(rows);
-    setDraft((prev) => ({ ...prev, text: serializeRicettaFarmaci(rows) }));
-    if (errors.text) setErrors((prev) => ({ ...prev, text: undefined }));
-  };
-  const updateRicettaRow = (
-    index: number,
-    field: keyof RicettaFarmaco,
-    value: string,
-  ) =>
-    applyRicettaRows(
-      ricettaRows.map((r, i) => (i === index ? { ...r, [field]: value } : r)),
-    );
-  const addRicettaRow = () =>
-    applyRicettaRows([...ricettaRows, { ...EMPTY_RICETTA_ROW }]);
-  const removeRicettaRow = (index: number) => {
-    const next = ricettaRows.filter((_, i) => i !== index);
-    applyRicettaRows(next.length ? next : [{ ...EMPTY_RICETTA_ROW }]);
-  };
 
   const category = (draft.category ?? "ginecologia") as TemplateCategory;
   const sectionOptions = SECTIONS_BY_CATEGORY[category];
@@ -579,9 +525,6 @@ export function TemplateEditorModal({
       category: nextCategory,
       section: nextSection,
     }));
-    if (nextCategory === "ricette") {
-      setRicettaRows(ricettaRowsFromText(draft.text));
-    }
   };
 
   const validate = () => {
@@ -592,7 +535,7 @@ export function TemplateEditorModal({
     if (!draft.text?.trim()) {
       nextErrors.text =
         category === "ricette"
-          ? "Inserisci almeno un farmaco"
+          ? "Inserisci il testo della ricetta"
           : "Inserisci il testo del modello";
     }
     setErrors(nextErrors);
@@ -710,12 +653,12 @@ export function TemplateEditorModal({
               <Pill className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-gray-900">
-                  Modello di Ricetta (elenco farmaci)
+                  Modello di Ricetta (testo libero)
                 </p>
                 <p className="text-xs leading-relaxed text-default-600">
                   Comparirà nel menu <strong>Modelli Ricetta</strong> quando emetti una
-                  ricetta. Aggiungi i farmaci con <strong>nome, posologia e
-                  durata</strong>: i campi della ricetta si compileranno da soli.
+                  ricetta. Scrivi <strong>tutto in un unico testo</strong> (farmaci,
+                  posologie, durata e indicazioni): comparirà già compilato.
                 </p>
               </div>
             </div>
@@ -757,104 +700,30 @@ export function TemplateEditorModal({
               description="Apre il menu Modello con questo titolo"
             />
 
-            {category === "ricette" ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-default-700">
-                    Farmaci del modello
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="flat"
-                    color="primary"
-                    startContent={<Plus size={14} />}
-                    onPress={addRicettaRow}
-                  >
-                    Aggiungi farmaco
-                  </Button>
-                </div>
-                {ricettaRows.map((row, index) => (
-                  <div
-                    key={index}
-                    className="grid grid-cols-12 items-end gap-2 rounded-lg border border-default-100 bg-default-50/50 p-2"
-                  >
-                    <Input
-                      className="col-span-12 sm:col-span-4"
-                      size="sm"
-                      variant="bordered"
-                      label="Farmaco"
-                      placeholder="Es. Meclon ovuli"
-                      value={row.nome}
-                      onValueChange={(v) => updateRicettaRow(index, "nome", v)}
-                    />
-                    <Input
-                      className="col-span-12 sm:col-span-4"
-                      size="sm"
-                      variant="bordered"
-                      label="Posologia"
-                      placeholder="Es. 1 ovulo la sera"
-                      value={row.posologia}
-                      onValueChange={(v) =>
-                        updateRicettaRow(index, "posologia", v)
-                      }
-                    />
-                    <Input
-                      className="col-span-9 sm:col-span-3"
-                      size="sm"
-                      variant="bordered"
-                      label="Durata"
-                      placeholder="Es. 7 giorni"
-                      value={row.durata ?? ""}
-                      onValueChange={(v) =>
-                        updateRicettaRow(index, "durata", v)
-                      }
-                    />
-                    <div className="col-span-3 flex justify-end sm:col-span-1">
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        color="danger"
-                        aria-label="Rimuovi farmaco"
-                        onPress={() => removeRicettaRow(index)}
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                {errors.text && (
-                  <p className="text-tiny text-danger">{errors.text}</p>
-                )}
-                <p className="text-xs text-default-500">
-                  Compariranno già compilati nella ricetta (nome, posologia,
-                  durata).
-                </p>
-              </div>
-            ) : (
-              <RefertoTextarea
-                label={getContentLabel(category)}
-                placeholder={getContentPlaceholder(category)}
-                value={draft.text ?? ""}
-                onValueChange={(val: string) => {
-                  setDraft((prev) => ({ ...prev, text: val }));
-                  if (errors.text)
-                    setErrors((prev) => ({ ...prev, text: undefined }));
-                }}
-                variant="bordered"
-                minRows={
-                  category === "certificato"
-                    ? 5
+            <RefertoTextarea
+              label={getContentLabel(category)}
+              placeholder={getContentPlaceholder(category)}
+              value={draft.text ?? ""}
+              onValueChange={(val: string) => {
+                setDraft((prev) => ({ ...prev, text: val }));
+                if (errors.text)
+                  setErrors((prev) => ({ ...prev, text: undefined }));
+              }}
+              variant="bordered"
+              minRows={
+                category === "certificato"
+                  ? 5
+                  : category === "ricette"
+                    ? 8
                     : category === "esame_complementare"
                       ? 2
                       : 4
-                }
-                isInvalid={Boolean(errors.text)}
-                errorMessage={errors.text}
-                description="Compare nel campo evidenziato nell'anteprima"
-                spellCheck
-              />
-            )}
+              }
+              isInvalid={Boolean(errors.text)}
+              errorMessage={errors.text}
+              description="Compare nel campo evidenziato nell'anteprima"
+              spellCheck
+            />
 
             {category === "esame_complementare" && (
               <RefertoTextarea

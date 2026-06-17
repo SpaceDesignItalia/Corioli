@@ -24,6 +24,11 @@ export interface AnamnesiTypeConfig {
   mode: AnamnesiMode;
   /** Sezioni attive, nell'ordine scelto (rilevante solo in modalità `strutturata`). */
   campi: AnamnesiCampoKey[];
+  /**
+   * Etichette personalizzate per sezione (sovrascrivono il nome predefinito).
+   * Chiave assente o stringa vuota ⇒ si usa l'etichetta di default.
+   */
+  etichette?: Partial<Record<AnamnesiCampoKey, string>>;
 }
 
 /** Configurazione completa per medico: una voce per ciascun tipo di visita. */
@@ -147,6 +152,36 @@ export function getAnamnesiCampoMeta(
   return ANAMNESI_STRUTTURATA_FIELDS.find((f) => f.key === key);
 }
 
+/** Lunghezza massima di un'etichetta personalizzata. */
+export const MAX_ANAMNESI_ETICHETTA_LEN = 40;
+
+/** Normalizza un'etichetta personalizzata: niente a capo, lunghezza limitata. */
+export function sanitizeAnamnesiEtichetta(value: string): string {
+  return (value ?? "")
+    .replace(/[\r\n\t]+/g, " ")
+    .slice(0, MAX_ANAMNESI_ETICHETTA_LEN);
+}
+
+/**
+ * Etichetta effettiva di una sezione: usa quella personalizzata (trim) se
+ * presente, altrimenti il nome predefinito; fallback finale alla chiave.
+ */
+export function resolveAnamnesiLabel(
+  key: AnamnesiCampoKey,
+  etichette?: Partial<Record<AnamnesiCampoKey, string>> | null,
+): string {
+  const custom = etichette?.[key]?.trim();
+  return custom || getAnamnesiCampoMeta(key)?.label || key;
+}
+
+/** Etichette personalizzate configurate per un tipo di visita (vuoto se nessuna). */
+export function getAnamnesiEtichette(
+  config: AnamnesiConfig,
+  visitType: string | undefined,
+): Partial<Record<AnamnesiCampoKey, string>> {
+  return typeConfig(config, visitType).etichette ?? {};
+}
+
 /** Configurazione di default (tutte le sezioni predefinite, nella modalità data). */
 export function createDefaultAnamnesiConfig(
   mode: AnamnesiMode = "strutturata",
@@ -166,6 +201,20 @@ function isValidCampo(x: unknown): x is AnamnesiCampoKey {
     typeof x === "string" &&
     ALL_ANAMNESI_CAMPO_KEYS.includes(x as AnamnesiCampoKey)
   );
+}
+
+/** Estrae/sanifica le etichette personalizzate; scarta chiavi/valori non validi. */
+function parseEtichette(
+  raw: unknown,
+): Partial<Record<AnamnesiCampoKey, string>> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Partial<Record<AnamnesiCampoKey, string>> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isValidCampo(k) || typeof v !== "string") continue;
+    const label = sanitizeAnamnesiEtichetta(v).trim();
+    if (label) out[k] = label;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /**
@@ -195,7 +244,12 @@ export function parseAnamnesiConfig(
     const campi = Array.isArray(r?.campi)
       ? (r!.campi!.filter(isValidCampo) as AnamnesiCampoKey[])
       : base[t].campi;
-    out[t] = { mode, campi: campi.length ? campi : base[t].campi };
+    const etichette = parseEtichette(r?.etichette);
+    out[t] = {
+      mode,
+      campi: campi.length ? campi : base[t].campi,
+      ...(etichette ? { etichette } : {}),
+    };
   }
   return out;
 }
@@ -216,14 +270,19 @@ export function getAnamnesiMode(
   return typeConfig(config, visitType).mode;
 }
 
-/** Metadati delle sezioni attive (ordinate) per un tipo di visita. */
+/**
+ * Metadati delle sezioni attive (ordinate) per un tipo di visita, con le
+ * etichette personalizzate già applicate al campo `label`.
+ */
 export function getCampiAttivi(
   config: AnamnesiConfig,
   visitType: string | undefined,
 ): AnamnesiCampoMeta[] {
-  return typeConfig(config, visitType)
-    .campi.map(getAnamnesiCampoMeta)
-    .filter((m): m is AnamnesiCampoMeta => Boolean(m));
+  const tc = typeConfig(config, visitType);
+  return tc.campi
+    .map(getAnamnesiCampoMeta)
+    .filter((m): m is AnamnesiCampoMeta => Boolean(m))
+    .map((m) => ({ ...m, label: resolveAnamnesiLabel(m.key, tc.etichette) }));
 }
 
 /**
@@ -290,6 +349,7 @@ export function cleanAnamnesiStrutturata(
 export function formatAnamnesiStrutturataText(
   as?: AnamnesiStrutturata | null,
   order?: AnamnesiCampoKey[],
+  etichette?: Partial<Record<AnamnesiCampoKey, string>> | null,
 ): string {
   if (!as) return "";
   const seen = new Set<AnamnesiCampoKey>();
@@ -305,9 +365,8 @@ export function formatAnamnesiStrutturataText(
   }
   return ordered
     .map((key) => {
-      const meta = getAnamnesiCampoMeta(key);
       const val = (as[key] ?? "").trim();
-      return val && meta ? `${meta.label}: ${val}` : null;
+      return val ? `${resolveAnamnesiLabel(key, etichette)}: ${val}` : null;
     })
     .filter(Boolean)
     .join("\n");

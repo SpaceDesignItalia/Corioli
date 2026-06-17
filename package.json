@@ -1,7 +1,7 @@
 {
   "name": "appdottori",
   "private": true,
-  "version": "1.2.8",
+  "version": "1.3.0",
   "type": "module",
   "description": "Gestione pazienti e visite - Corioli",
   "author": "Corioli",

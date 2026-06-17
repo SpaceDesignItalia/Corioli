@@ -47,6 +47,10 @@ import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "..
 import {
   formatAnamnesiStrutturataText,
   hasAnamnesiStrutturataContent,
+  parseAnamnesiConfig,
+  getAnamnesiEtichette,
+  createDefaultAnamnesiConfig,
+  type AnamnesiConfig,
 } from "../../utils/anamnesiStrutturata";
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -145,6 +149,9 @@ export default function Visite() {
   }, [searchParams]);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [fetalFormula, setFetalFormula] = useState("hadlock4");
+  const [anamnesiConfig, setAnamnesiConfig] = useState<AnamnesiConfig>(
+    createDefaultAnamnesiConfig(),
+  );
   const rowsPerPage = 10;
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState<string | null>(null);
@@ -174,6 +181,7 @@ export default function Visite() {
         if (prefs?.formulaPesoFetale) setFetalFormula(prefs.formulaPesoFetale as string);
         if (typeof prefs?.showDoctorPhoneInPdf === "boolean") setShowDoctorPhoneInPdf(prefs.showDoctorPhoneInPdf as boolean);
         if (typeof prefs?.showDoctorEmailInPdf === "boolean") setShowDoctorEmailInPdf(prefs.showDoctorEmailInPdf as boolean);
+        setAnamnesiConfig(parseAnamnesiConfig(prefs));
       })
       .catch(() => {});
   }, [isOpen]);
@@ -345,7 +353,7 @@ export default function Visite() {
   }
 
   const getPreviewAnamnesi = (visit: Visit) => {
-    if (hasAnamnesiStrutturataContent(visit.anamnesiStrutturata)) return formatAnamnesiStrutturataText(visit.anamnesiStrutturata);
+    if (hasAnamnesiStrutturataContent(visit.anamnesiStrutturata)) return formatAnamnesiStrutturataText(visit.anamnesiStrutturata, undefined, getAnamnesiEtichette(anamnesiConfig, visit.tipo));
     if (visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica") return visit.ginecologia?.prestazione || visit.anamnesi;
     if (visit.tipo === "ostetrica") return visit.ostetricia?.prestazione || visit.anamnesi;
     return visit.anamnesi;

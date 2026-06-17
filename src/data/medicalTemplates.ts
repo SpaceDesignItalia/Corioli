@@ -112,29 +112,61 @@ export const MedicalTemplates = {
   ricette: [
     {
       label: "Vaginosi Batterica",
-      text: "- Meclon ovuli: 1 sera per 7 giorni\n- Metronidazolo 250 mg: 2 cpr mattina e 2 cpr sera per 2 giorni\n- Clindax (clindamicina): 1 ovulo la sera per 3 giorni"
+      text: [
+        "Meclon ovuli: 1 ovulo la sera per 7 giorni",
+        "Metronidazolo 250 mg: 2 cpr mattina e 2 cpr sera per 2 giorni",
+        "Clindamicina (Clindax): 1 ovulo la sera per 3 giorni",
+      ].join("\n"),
     },
     {
       label: "Candidosi (VVC)",
-      text: "Per OS:\n- Fluconazolo 150 mg ogni 3 giorni per 3 settimane, poi 1 volta al mese per 6 mesi\n- Crispact stick orosolubile 1 al giorno x 30 giorni\n\nVaginale:\n- Gynocanesten o Miconazolo crema/ovuli la sera per 7 giorni\n- Lorenil 200mg vaginale sera x 3 giorni"
+      text: [
+        "Fluconazolo 150 mg: 1 cpr ogni 3 giorni per 3 settimane, poi 1/mese per 6 mesi",
+        "Crispact stick orosolubile: 1 al giorno per 30 giorni",
+        "Gynocanesten / Miconazolo crema o ovuli: 1 applicazione la sera per 7 giorni",
+        "Lorenil 200 mg vaginale: 1 applicazione la sera per 3 giorni",
+        "",
+        "Via orale per mantenimento; alternativa vaginale se indicata.",
+      ].join("\n"),
     },
     {
       label: "Cistite / Infezioni Vie Urinarie",
-      text: "- Monuril 2 bustine (una ogni 24h) la sera a vescica vuota.\n- D-Mannosio (Kistinox/Cistiflux) 1 bustina al giorno per prevenzione.\nBere almeno 2L di acqua al giorno."
+      text: [
+        "Monuril: 2 bustine (una ogni 24 h) la sera a vescica vuota per 2 giorni",
+        "D-Mannosio (Kistinox/Cistiflux): 1 bustina al giorno per prevenzione",
+        "",
+        "Bere almeno 2 L di acqua al giorno.",
+      ].join("\n"),
     },
     {
       label: "Menopausa (TOS/Integratori)",
-      text: "Orale:\n- Femal 1 caps/g\n- PerElle 1cpr al gg\n\nTOS (se indicata):\n- Femoston 2/10 (estradiolo/didrogesterone) 1 cpr al giorno\n- Tibocina 2,5 mg (tibolone) 1 cpr al giorno"
+      text: [
+        "Femal: 1 capsula al giorno",
+        "PerElle: 1 cpr al giorno",
+        "Femoston 2/10 (estradiolo/didrogesterone): 1 cpr al giorno",
+        "Tibocina 2,5 mg (tibolone): 1 cpr al giorno",
+        "",
+        "TOS solo se clinicamente indicata.",
+      ].join("\n"),
     },
     {
       label: "Atrofia Vaginale",
-      text: "- Intrarosa ovuli 6,5 mg per 30 gg\n- Colpogyn crema/ovuli: 1 applicazione a giorni alterni per 30 giorni\n- Lubrigyn detergente oleoso"
+      text: [
+        "Intrarosa ovuli 6,5 mg: 1 ovulo per 30 giorni",
+        "Colpogyn crema/ovuli: 1 applicazione a giorni alterni per 30 giorni",
+        "Lubrigyn detergente oleoso: uso quotidiano",
+      ].join("\n"),
     },
     {
       label: "Chlamydia",
-      text: "- Doxiciclina 100mg per os 2 volte al giorno per 7 giorni\n- Azitromicina: 1gr per os in dose unica (prima scelta in gravidanza)\nTerapia anche al partner, astensione rapporti fino a 7 giorni dopo la terapia."
-    }
-  ],
+      text: [
+        "Doxiciclina 100 mg: 2 cpr al giorno per os per 7 giorni",
+        "Azitromicina: 1 g per os in dose unica",
+        "",
+        "Terapia anche al partner. Astensione dai rapporti fino a 7 giorni dopo la terapia. In gravidanza: azitromicina come prima scelta.",
+      ].join("\n"),
+    },
+  ] as { label: string; text: string; note?: string }[],
   esami_complementari: [
     { label: "Pannello pre-contraccezione", text: "Pannello ematochimico pre-contraccezione orale", note: "Emocromo, glicemia, assetto lipidico, AST/ALT, creatinina, coagulazione (PT/PTT) se indicata." },
     { label: "Pap test", text: "Pap test su strato sottile", note: "Controllo citologico cervico-vaginale." },

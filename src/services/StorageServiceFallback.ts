@@ -493,8 +493,8 @@ class LocalStorageFallbackService implements StorageService {
       // Terapie (discorsive — sezione Conclusioni e Terapie della visita)
       MedicalTemplates.terapie.forEach(t => defaultTemplates.push({ id: generateId(), category: 'terapie', section: 'generale', label: t.label, text: t.text, isDefault: true }));
 
-      // Ricette (a elenco — modal Nuova ricetta)
-      MedicalTemplates.ricette.forEach(t => defaultTemplates.push({ id: generateId(), category: 'ricette', section: 'generale', label: t.label, text: t.text, isDefault: true }));
+      // Ricette (testo libero — modal Nuova ricetta)
+      MedicalTemplates.ricette.forEach(t => defaultTemplates.push({ id: generateId(), category: 'ricette', section: 'generale', label: t.label, text: t.text, note: t.note, isDefault: true }));
 
       // Esami complementari
       MedicalTemplates.esami_complementari.forEach(t => defaultTemplates.push({ id: generateId(), category: 'esame_complementare', section: 'nome', label: t.label, text: t.text, note: t.note, isDefault: true }));
@@ -531,6 +531,7 @@ class LocalStorageFallbackService implements StorageService {
         section: 'generale' as const,
         label: t.label,
         text: t.text,
+        note: t.note,
         isDefault: true,
       }));
       templates.push(...ricetteDefaults);
@@ -553,7 +554,7 @@ class LocalStorageFallbackService implements StorageService {
       return updated;
     }
 
-    // Fix: aggiorna template esami esistenti se mancano le note (per backward compatibility fix)
+    // Fix: aggiorna template predefiniti (note esami, formato ricette testo libero)
     let needsUpdate = false;
     const fixedTemplates = templates.map(t => {
       if (t.category === 'esame_complementare' && t.isDefault && (!t.note || t.note === "")) {
@@ -561,6 +562,16 @@ class LocalStorageFallbackService implements StorageService {
         if (original?.note) {
           needsUpdate = true;
           return { ...t, note: original.note };
+        }
+      }
+      if (t.category === 'ricette' && t.isDefault) {
+        const original = MedicalTemplates.ricette.find(m => m.label === t.label);
+        if (
+          original &&
+          (original.text !== t.text || (original.note ?? "") !== (t.note ?? ""))
+        ) {
+          needsUpdate = true;
+          return { ...t, text: original.text, note: original.note };
         }
       }
       return t;

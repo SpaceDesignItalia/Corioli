@@ -13,15 +13,15 @@ import {
   Users,
   FileText,
   ChevronRight,
-  Activity,
   Calendar,
   LayoutDashboard,
   TrendingUp,
-  HeartPulse,
+  Cake,
   Baby,
   Stethoscope,
   Clock,
   ArrowRight,
+  ClipboardList,
 } from "lucide-react";
 import {
   DoctorService,
@@ -435,7 +435,7 @@ export default function Home() {
                 )}
               </div>
               <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
-                <Activity size={22} />
+                <ClipboardList size={22} />
               </div>
             </div>
           </CardBody>
@@ -463,7 +463,7 @@ export default function Home() {
                 <p className="text-xs text-gray-400 mt-1">dei pazienti</p>
               </div>
               <div className="p-2.5 bg-default-100 rounded-xl text-default-600">
-                <HeartPulse size={22} />
+                <Cake size={22} />
               </div>
             </div>
           </CardBody>
@@ -599,7 +599,7 @@ export default function Home() {
         <Card className="corioli-card">
           <CardHeader className="corioli-card-header flex justify-between items-center">
             <div className="dashboard-column-header-title">
-              <FileText className="text-blue-600 shrink-0" size={16} />
+              <FileText className="text-brand-700 shrink-0" size={16} />
               <h3 className="text-base font-semibold text-gray-900">
                 Visite Recenti
               </h3>

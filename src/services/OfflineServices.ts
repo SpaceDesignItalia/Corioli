@@ -169,13 +169,14 @@ export class RicettaService {
     patientId: string;
     tipo: RicettaPaziente['tipo'];
     dataRicetta: string;
-    farmaci: RicettaPaziente['farmaci'];
+    testo?: string;
+    farmaci?: RicettaPaziente['farmaci'];
     note?: string;
   }): Promise<RicettaPaziente> {
     return await storageService.addRicetta(data);
   }
 
-  static async update(id: string, data: Partial<Pick<RicettaPaziente, 'tipo' | 'dataRicetta' | 'farmaci' | 'note'>>): Promise<RicettaPaziente> {
+  static async update(id: string, data: Partial<Pick<RicettaPaziente, 'tipo' | 'dataRicetta' | 'testo' | 'farmaci' | 'note'>>): Promise<RicettaPaziente> {
     return await storageService.updateRicetta(id, data);
   }
 

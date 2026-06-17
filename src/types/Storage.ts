@@ -79,7 +79,11 @@ export interface RicettaPaziente {
   /** SSN dematerializzata (promemoria), bianca fuori SSN, promemoria terapia */
   tipo: 'ssn' | 'bianca' | 'promemoria';
   dataRicetta: string; // ISO date
-  farmaci: RicettaFarmaco[];
+  /** Testo libero della prescrizione (farmaci, posologie e indicazioni insieme). */
+  testo?: string;
+  /** @deprecated Vecchio formato a elenco; conservato per retrocompatibilità in lettura. */
+  farmaci?: RicettaFarmaco[];
+  /** @deprecated Confluito in `testo`; conservato per retrocompatibilità in lettura. */
   note?: string;
   createdAt: string;
   updatedAt: string;
@@ -155,10 +159,6 @@ export interface Visit {
     pressioneArteriosa: string;
     /** Frequenza cardiaca materna (bpm) */
     frequenzaCardiaca?: string;
-    /** Temperatura corporea (°C) */
-    temperatura?: string;
-    /** Saturazione O2 (%) */
-    saturazioneO2?: string;
     /** Fuma in gravidanza: "si" | "no" */
     fumaInGravidanza?: string;
     /** Pacchetti di sigarette al giorno (se fumatrice) */

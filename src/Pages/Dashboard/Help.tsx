@@ -91,7 +91,7 @@ function ModelliMapSchema() {
     { cat: "Ginecologia", dest: "Campi della visita ginecologica", hot: false },
     { cat: "Ostetricia", dest: "Campi della visita ostetrica", hot: false },
     { cat: "Terapie", dest: "Visita → “Conclusioni e Terapie” (testo discorsivo)", hot: true },
-    { cat: "Ricette", dest: "Nuova ricetta → elenco farmaci", hot: true },
+    { cat: "Ricette", dest: "Nuova ricetta → testo libero", hot: true },
     { cat: "Esami", dest: "Nuova richiesta esame", hot: false },
     { cat: "Certificati", dest: "Nuovo certificato", hot: false },
   ];
@@ -135,13 +135,14 @@ function TerapieVsRicetteSchema() {
       </div>
       <div className="rounded-xl border border-primary-200 bg-primary-50/40 p-3">
         <p className="text-sm font-semibold text-gray-900">Ricette</p>
-        <p className="mt-0.5 text-[11px] text-default-500">Nuova ricetta · elenco farmaci</p>
+        <p className="mt-0.5 text-[11px] text-default-500">Nuova ricetta · testo libero</p>
         <div className="mt-2 space-y-0.5 rounded-md border border-default-200 bg-white p-2 text-[11px] leading-relaxed text-default-700">
           <div>Tachipirina 1000 mg: 1 cp 2 volte/die</div>
-          <div>Augmentin 1 g: 1 cp ogni 12 h</div>
+          <div>Augmentin 1 g: 1 cp ogni 12 h per 6 giorni</div>
+          <div>Assumere a stomaco pieno.</div>
         </div>
         <p className="mt-2 text-[11px] text-default-500">
-          <strong>Un farmaco per riga</strong> (Nome: posologia).
+          <strong>Un unico testo libero</strong>: farmaci e indicazioni insieme.
         </p>
       </div>
     </div>
@@ -556,7 +557,7 @@ export default function HelpAndFeedback() {
           id: "modelli-referti-terapie-ricette",
           title: "Che differenza c'è tra Terapie e Ricette?",
           content:
-            "Terapie = testo discorsivo che finisce nella sezione Conclusioni e Terapie della visita. Ricette = elenco di farmaci (uno per riga, Nome: posologia) che compila la ricetta. Sono due categorie separate.",
+            "Terapie = testo discorsivo che finisce nella sezione Conclusioni e Terapie della visita. Ricette = testo libero che compila la ricetta (farmaci, posologie e indicazioni insieme). Sono due categorie separate.",
           node: <TerapieVsRicetteSchema />,
         },
         {
@@ -570,7 +571,7 @@ export default function HelpAndFeedback() {
           id: "modelli-referti-ricetta-formato",
           title: "Come scrivo un modello di Ricetta?",
           content:
-            "Scrivi un farmaco per riga nel formato “Nome farmaco: posologia” (es. Tachipirina 1000 mg: 1 cp 2 volte/die). Quando selezioni il modello nella Nuova ricetta, ogni riga diventa un farmaco già compilato.",
+            "Scrivi l'intera ricetta in testo libero: farmaci, posologie, durata e indicazioni, come preferisci (es. Tachipirina 1000 mg: 1 cp 2 volte/die per 5 giorni; assumere a stomaco pieno). Quando selezioni il modello nella Nuova ricetta, il testo compare già compilato e puoi modificarlo.",
         },
       ],
     },

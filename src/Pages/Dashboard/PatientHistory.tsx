@@ -66,7 +66,6 @@ import {
   RichiestaEsameComplementare,
   CertificatoPaziente,
   RicettaPaziente,
-  RicettaFarmaco,
   MedicalTemplate,
 } from "../../types/Storage";
 import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
@@ -79,8 +78,12 @@ import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "..
 import {
   formatAnamnesiStrutturataText,
   hasAnamnesiStrutturataContent,
+  parseAnamnesiConfig,
+  getAnamnesiEtichette,
+  createDefaultAnamnesiConfig,
+  type AnamnesiConfig,
 } from "../../utils/anamnesiStrutturata";
-import { parseRicettaFarmaci } from "../../utils/ricettaTemplate";
+import { getRicettaTesto } from "../../utils/ricettaTemplate";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
@@ -91,6 +94,9 @@ import {
   MAX_HEIGHT_CM,
   MIN_BIRTH_YEAR,
   MIN_HEIGHT_CM,
+  isValidHeightInputDraft,
+  parseHeightFieldBlur,
+  parseHeightFieldLive,
   parseOptionalHeight,
   todayIsoDate,
   validateBirthDate,
@@ -143,8 +149,6 @@ function sortRichiesteEsamiByDateAndCreation(
   });
 }
 
-const EMPTY_FARMACO: RicettaFarmaco = { nome: "", posologia: "", durata: "" };
-
 function PatientDocEmptyState({
   icon: Icon,
   title,
@@ -185,6 +189,7 @@ export default function PatientHistory() {
     onClose: onEditClose,
   } = useDisclosure();
   const [editData, setEditData] = useState<Partial<Patient>>({});
+  const [altezzaInputDraft, setAltezzaInputDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
@@ -230,6 +235,9 @@ export default function PatientHistory() {
     useState(false);
   const [pendingPrintIncludeImages, setPendingPrintIncludeImages] = useState<boolean>(false);
   const [fetalFormulaPref, setFetalFormulaPref] = useState("hadlock4");
+  const [anamnesiConfig, setAnamnesiConfig] = useState<AnamnesiConfig>(
+    createDefaultAnamnesiConfig(),
+  );
   const [pendingPrintVisit, setPendingPrintVisit] = useState<Visit | null>(null);
   const [pendingPdfAction, setPendingPdfAction] = useState<"print" | "download" | null>(null);
   /** URL del PDF generato per l’anteprima (stesso contenuto della stampa). Revocare in cleanup. */
@@ -287,8 +295,7 @@ export default function PatientHistory() {
   const [ricettaPreviewFullscreen, setRicettaPreviewFullscreen] = useState(false);
   const [editingRicetta, setEditingRicetta] = useState<RicettaPaziente | null>(null);
   const [ricettaData, setRicettaData] = useState(() => new Date().toISOString().slice(0, 10));
-  const [ricettaFarmaci, setRicettaFarmaci] = useState<RicettaFarmaco[]>([{ ...EMPTY_FARMACO }]);
-  const [ricettaNote, setRicettaNote] = useState("");
+  const [ricettaTesto, setRicettaTesto] = useState("");
   const [savingRicetta, setSavingRicetta] = useState(false);
   const [rightColumnTab, setRightColumnTab] = useState<"ricette" | "esami" | "certificati">("ricette");
   const navigate = useNavigate();
@@ -389,6 +396,7 @@ export default function PatientHistory() {
       if (typeof prefs?.showDoctorEmailInPdf === "boolean") {
         setShowDoctorEmailInPdf(prefs.showDoctorEmailInPdf as boolean);
       }
+      setAnamnesiConfig(parseAnamnesiConfig(prefs));
     }).catch(() => {});
   }, []);
 
@@ -1020,16 +1028,18 @@ export default function PatientHistory() {
   const getRicettaTipoLabel = (_tipo?: RicettaPaziente["tipo"]) => "Bianca";
 
   const getRicettaSummary = (r: RicettaPaziente) => {
-    const names = (r.farmaci || []).map((f) => f.nome?.trim()).filter(Boolean);
-    if (names.length === 0) return "Nessun farmaco";
-    if (names.length === 1) return names[0];
-    return `${names[0]} +${names.length - 1}`;
+    const righe = getRicettaTesto(r)
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (righe.length === 0) return "Ricetta vuota";
+    if (righe.length === 1) return righe[0];
+    return `${righe[0]} +${righe.length - 1}`;
   };
 
   const resetRicettaForm = () => {
     setRicettaData(new Date().toISOString().slice(0, 10));
-    setRicettaFarmaci([{ ...EMPTY_FARMACO }]);
-    setRicettaNote("");
+    setRicettaTesto("");
   };
 
   const handleOpenNuovaRicetta = () => {
@@ -1042,10 +1052,7 @@ export default function PatientHistory() {
   const handleOpenEditRicetta = (r: RicettaPaziente) => {
     setEditingRicetta(r);
     setRicettaData(r.dataRicetta.slice(0, 10));
-    setRicettaFarmaci(
-      r.farmaci?.length ? r.farmaci.map((f) => ({ ...f })) : [{ ...EMPTY_FARMACO }],
-    );
-    setRicettaNote(r.note ?? "");
+    setRicettaTesto(getRicettaTesto(r));
     onRicettaOpen();
   };
 
@@ -1056,15 +1063,9 @@ export default function PatientHistory() {
 
   const handleSaveRicetta = async (openPreviewAfterSave = false) => {
     if (!patient) return;
-    const farmaciValidi = ricettaFarmaci
-      .map((f) => ({
-        nome: f.nome.trim(),
-        posologia: f.posologia.trim(),
-        durata: f.durata?.trim() || undefined,
-      }))
-      .filter((f) => f.nome.length > 0);
-    if (farmaciValidi.length === 0) {
-      showToast("Inserisci almeno un farmaco.", "warning");
+    const testo = ricettaTesto.trim();
+    if (!testo) {
+      showToast("Inserisci il testo della prescrizione.", "warning");
       return;
     }
     setSavingRicetta(true);
@@ -1074,8 +1075,10 @@ export default function PatientHistory() {
         saved = await RicettaService.update(editingRicetta.id, {
           tipo: "bianca",
           dataRicetta: ricettaData,
-          farmaci: farmaciValidi,
-          note: ricettaNote.trim() || undefined,
+          testo,
+          // Pulisce il vecchio formato a elenco dopo la conversione a testo libero.
+          farmaci: [],
+          note: undefined,
         });
         showToast("Ricetta aggiornata.");
       } else {
@@ -1083,8 +1086,7 @@ export default function PatientHistory() {
           patientId: patient.id,
           tipo: "bianca",
           dataRicetta: ricettaData,
-          farmaci: farmaciValidi,
-          note: ricettaNote.trim() || undefined,
+          testo,
         });
         showToast("Ricetta salvata.");
       }
@@ -1257,22 +1259,6 @@ export default function PatientHistory() {
     }
   };
 
-  const updateRicettaFarmaco = (index: number, field: keyof RicettaFarmaco, value: string) => {
-    setRicettaFarmaci((prev) =>
-      prev.map((f, i) => (i === index ? { ...f, [field]: value } : f)),
-    );
-  };
-
-  const addRicettaFarmacoRow = () => {
-    setRicettaFarmaci((prev) => [...prev, { ...EMPTY_FARMACO }]);
-  };
-
-  const removeRicettaFarmacoRow = (index: number) => {
-    setRicettaFarmaci((prev) =>
-      prev.length <= 1 ? [{ ...EMPTY_FARMACO }] : prev.filter((_, i) => i !== index),
-    );
-  };
-
   // ── Patient Edit ──
   const handleOpenEdit = () => {
     if (!patient) return;
@@ -1291,6 +1277,7 @@ export default function PatientHistory() {
       altezza: patient.altezza,
       notaBene: patient.notaBene || "",
     });
+    setAltezzaInputDraft(null);
     setSuccessMsg(null);
     onEditOpen();
   };
@@ -1309,14 +1296,17 @@ export default function PatientHistory() {
         return;
       }
     }
-    let altezza = editData.altezza;
-    if (altezza != null && altezza > 0) {
-      const clamped = parseOptionalHeight(String(altezza));
-      if (clamped == null) {
+    let altezza: number | undefined;
+    const altezzaRaw =
+      altezzaInputDraft ??
+      (editData.altezza != null ? String(editData.altezza) : "");
+    if (altezzaRaw.trim()) {
+      const parsed = parseOptionalHeight(altezzaRaw);
+      if (parsed == null) {
         setError(`Altezza non valida (${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM} cm)`);
         return;
       }
-      altezza = clamped;
+      altezza = parsed;
     }
 
     setSaving(true);
@@ -1332,6 +1322,7 @@ export default function PatientHistory() {
       const updated = await PatientService.getPatientById(patient.id);
       if (updated) setPatient(updated);
       setSuccessMsg("Paziente aggiornato con successo!");
+      setAltezzaInputDraft(null);
       setTimeout(() => {
         onEditClose();
         setSuccessMsg(null);
@@ -1437,7 +1428,11 @@ export default function PatientHistory() {
 
   const getPreviewAnamnesi = (visit: Visit) => {
     if (hasAnamnesiStrutturataContent(visit.anamnesiStrutturata)) {
-      return formatAnamnesiStrutturataText(visit.anamnesiStrutturata);
+      return formatAnamnesiStrutturataText(
+        visit.anamnesiStrutturata,
+        undefined,
+        getAnamnesiEtichette(anamnesiConfig, visit.tipo),
+      );
     }
     if (
       visit.tipo === "ginecologica" ||
@@ -2010,16 +2005,15 @@ export default function PatientHistory() {
           {visits.length === 0 ? (
             <Card className="bg-default-50 border-dashed border-default-300 shadow-none">
               <CardBody className="text-center py-10">
-                <div className="text-4xl mb-3">📋</div>
-                <h3 className="text-base font-semibold text-gray-900">
-                  Nessuna visita
-                </h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Inizia il percorso clinico.
-                </p>
+                <PatientDocEmptyState
+                  icon={ClipboardList}
+                  title="Nessuna visita"
+                  hint="Inizia il percorso clinico."
+                />
                 <Button
                   color="primary"
                   size="sm"
+                  className="mt-4"
                   onPress={() => {
                     if (!ensureDoctorProfileComplete(doctor)) return;
                     navigate(`/add-visit?patientId=${patient.id}`);
@@ -2816,23 +2810,40 @@ export default function PatientHistory() {
               </Select>
               <Input
                 label="Altezza (cm)"
-                type="number"
-                min={MIN_HEIGHT_CM}
-                max={MAX_HEIGHT_CM}
+                type="text"
+                inputMode="numeric"
                 value={
-                  editData.altezza != null ? String(editData.altezza) : ""
+                  altezzaInputDraft ??
+                  (editData.altezza != null ? String(editData.altezza) : "")
                 }
-                onValueChange={(v) =>
-                  setEditData((prev) => ({
-                    ...prev,
-                    altezza:
-                      v === ""
-                        ? undefined
-                        : parseOptionalHeight(v),
-                  }))
-                }
+                onFocus={() => {
+                  setAltezzaInputDraft(
+                    editData.altezza != null ? String(editData.altezza) : "",
+                  );
+                }}
+                onBlur={() => {
+                  if (altezzaInputDraft !== null) {
+                    setEditData((prev) => ({
+                      ...prev,
+                      altezza: parseHeightFieldBlur(altezzaInputDraft),
+                    }));
+                  }
+                  setAltezzaInputDraft(null);
+                }}
+                onValueChange={(v) => {
+                  if (!isValidHeightInputDraft(v)) return;
+                  setAltezzaInputDraft(v);
+                  const live = parseHeightFieldLive(v);
+                  if (live === "incomplete") {
+                    if (v === "") {
+                      setEditData((prev) => ({ ...prev, altezza: undefined }));
+                    }
+                    return;
+                  }
+                  setEditData((prev) => ({ ...prev, altezza: live }));
+                }}
                 variant="bordered"
-                placeholder="0"
+                placeholder="Es. 165"
               />
             </div>
             <div className="mt-2">
@@ -3265,7 +3276,7 @@ export default function PatientHistory() {
       </Modal>
 
       {/* Modal Nuovo/Modifica Ricetta */}
-      <Modal isOpen={isRicettaOpen} onClose={handleCloseRicettaModal} size="3xl" scrollBehavior="inside">
+      <Modal isOpen={isRicettaOpen} onClose={handleCloseRicettaModal} size="2xl" scrollBehavior="inside">
         <ModalContent>
           <ModalHeader className="flex items-center gap-2 pb-2">
             <Pill size={22} className="text-primary-700" />
@@ -3274,103 +3285,58 @@ export default function PatientHistory() {
             </span>
           </ModalHeader>
           <ModalBody className="gap-5 pb-6">
-            {ricetteTemplates.length > 0 && (
-              <div className="flex justify-end">
-                <Dropdown>
-                  <DropdownTrigger>
-                    <Button size="sm" variant="flat" color="primary" startContent={<ClipboardList size={16} />}>
-                      Modelli Ricetta
-                    </Button>
-                  </DropdownTrigger>
-                  <DropdownMenu
-                    aria-label="Modelli Ricetta"
-                    onAction={(key) => {
-                      const t = ricetteTemplates.find((x) => x.id === key);
-                      if (t) {
-                        const parsed = parseRicettaFarmaci(t.text);
-                        if (parsed.length > 0) setRicettaFarmaci(parsed);
-                        if (t.note) setRicettaNote(t.note);
-                      }
-                    }}
-                    className="max-h-[300px] overflow-y-auto"
-                  >
-                    {ricetteTemplates.map((t) => (
-                      <DropdownItem key={t.id} description={t.label}>
-                        {t.label}
-                      </DropdownItem>
-                    ))}
-                  </DropdownMenu>
-                </Dropdown>
-              </div>
-            )}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-default-700">Farmaci prescritti</p>
-                <Button size="sm" variant="flat" color="primary" onPress={addRicettaFarmacoRow} startContent={<PlusIcon size={14} />}>
-                  Aggiungi farmaco
-                </Button>
-              </div>
-              {ricettaFarmaci.map((farmaco, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-default-100 rounded-lg p-3 bg-default-50/50">
-                  <Input
-                    className="md:col-span-4"
-                    label="Farmaco"
-                    placeholder="Es. Meclon ovuli"
-                    value={farmaco.nome}
-                    onValueChange={(v) => updateRicettaFarmaco(index, "nome", v)}
-                    variant="bordered"
-                    size="sm"
-                  />
-                  <Input
-                    className="md:col-span-4"
-                    label="Posologia"
-                    placeholder="Es. 1 ovulo la sera"
-                    value={farmaco.posologia}
-                    onValueChange={(v) => updateRicettaFarmaco(index, "posologia", v)}
-                    variant="bordered"
-                    size="sm"
-                  />
-                  <Input
-                    className="md:col-span-3"
-                    label="Durata"
-                    placeholder="Es. 7 giorni"
-                    value={farmaco.durata ?? ""}
-                    onValueChange={(v) => updateRicettaFarmaco(index, "durata", v)}
-                    variant="bordered"
-                    size="sm"
-                  />
-                  <Button
-                    className="md:col-span-1"
-                    size="sm"
-                    color="danger"
-                    variant="light"
-                    isIconOnly
-                    onPress={() => removeRicettaFarmacoRow(index)}
-                    aria-label="Rimuovi farmaco"
-                  >
-                    <Trash2Icon size={16} />
-                  </Button>
+            <div className="flex flex-col gap-4">
+              {ricetteTemplates.length > 0 && (
+                <div className="flex justify-end">
+                  <Dropdown>
+                    <DropdownTrigger>
+                      <Button size="sm" variant="flat" color="primary" startContent={<ClipboardList size={16} />}>
+                        Modelli Ricetta
+                      </Button>
+                    </DropdownTrigger>
+                    <DropdownMenu
+                      aria-label="Modelli Ricetta"
+                      onAction={(key) => {
+                        const t = ricetteTemplates.find((x) => x.id === key);
+                        if (!t) return;
+                        const blocco = [t.text, t.note]
+                          .map((s) => (s ?? "").trim())
+                          .filter(Boolean)
+                          .join("\n\n");
+                        if (!blocco) return;
+                        setRicettaTesto((prev) =>
+                          prev.trim() ? `${prev.trimEnd()}\n\n${blocco}` : blocco,
+                        );
+                      }}
+                      className="max-h-[300px] overflow-y-auto"
+                    >
+                      {ricetteTemplates.map((t) => (
+                        <DropdownItem key={t.id} description={t.label}>
+                          {t.label}
+                        </DropdownItem>
+                      ))}
+                    </DropdownMenu>
+                  </Dropdown>
                 </div>
-              ))}
+              )}
+
+              <Textarea
+                label="Prescrizione"
+                placeholder={"Scrivi qui l'intera prescrizione: farmaci, posologie, durata e indicazioni.\n\nEs.\nMonuril: 2 bustine (una ogni 24 h) la sera a vescica vuota per 2 giorni\nD-Mannosio: 1 bustina al giorno\n\nBere almeno 2 L di acqua al giorno."}
+                value={ricettaTesto}
+                onValueChange={setRicettaTesto}
+                variant="bordered"
+                minRows={10}
+              />
+
+              <Input
+                type="date"
+                label="Data ricetta"
+                value={ricettaData}
+                onValueChange={setRicettaData}
+                variant="bordered"
+              />
             </div>
-
-            <Textarea
-              label="Note aggiuntive"
-              placeholder="Es. assumere a stomaco pieno, evitare alcol..."
-              value={ricettaNote}
-              onValueChange={setRicettaNote}
-              variant="bordered"
-              minRows={2}
-            />
-
-            <Input
-              type="date"
-              label="Data ricetta"
-              value={ricettaData}
-              onValueChange={setRicettaData}
-              variant="bordered"
-              className="max-w-xs"
-            />
           </ModalBody>
           <ModalFooter>
             {editingRicetta ? (
@@ -3392,7 +3358,7 @@ export default function PatientHistory() {
             <Button
               color="primary"
               onPress={() => handleSaveRicetta(false)}
-              isDisabled={!ricettaFarmaci.some((f) => f.nome.trim())}
+              isDisabled={!ricettaTesto.trim()}
               isLoading={savingRicetta}
               startContent={
                 editingRicetta ? <SaveIcon size={18} /> : <PlusIcon size={18} />

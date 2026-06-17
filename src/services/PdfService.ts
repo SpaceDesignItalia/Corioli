@@ -33,10 +33,11 @@ import {
   ANAMNESI_STRUTTURATA_FIELDS,
   ALL_ANAMNESI_CAMPO_KEYS,
   hasAnamnesiStrutturataContent,
-  getAnamnesiCampoMeta,
+  resolveAnamnesiLabel,
   parseAnamnesiConfig,
   type AnamnesiCampoKey,
 } from "../utils/anamnesiStrutturata";
+import { getRicettaTesto } from "../utils/ricettaTemplate";
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 const ML = 15;
@@ -214,18 +215,26 @@ export class PdfService {
     y += ROW_H;
 
     // rows
+    const LINE_H = FONT * 0.42;
     rows.forEach(row => {
-      y = this.pb(doc, y, ROW_H + 2);
-      this.dc(doc, K200); doc.setLineWidth(0.15); doc.rect(ML, y, totalW, ROW_H, "S");
-      cx = ML;
       doc.setFont("helvetica", "normal"); doc.setFontSize(FONT); this.tc(doc, K30);
+      const cellLinesPerCol = cols.map((col, ci) =>
+        doc.splitTextToSize(san(v(row[ci])), col.w - PAD * 2),
+      );
+      const maxLines = Math.max(1, ...cellLinesPerCol.map((lines) => lines.length));
+      const dynamicRowH = Math.max(ROW_H, PAD * 2 + maxLines * LINE_H);
+
+      y = this.pb(doc, y, dynamicRowH + 2);
+      this.dc(doc, K200); doc.setLineWidth(0.15); doc.rect(ML, y, totalW, dynamicRowH, "S");
+      cx = ML;
       cols.forEach((col, ci) => {
-        if (cx > ML) { this.dc(doc, K200); doc.setLineWidth(0.15); doc.line(cx, y, cx, y + ROW_H); }
-        const cellLines = doc.splitTextToSize(san(v(row[ci])), col.w - PAD * 2);
-        doc.text(cellLines[0] ?? '', cx + PAD, y + ROW_H / 2 + FONT * 0.18, { baseline: "middle" });
+        if (cx > ML) { this.dc(doc, K200); doc.setLineWidth(0.15); doc.line(cx, y, cx, y + dynamicRowH); }
+        cellLinesPerCol[ci].forEach((line: string, li: number) => {
+          doc.text(line, cx + PAD, y + PAD + (li + 1) * LINE_H);
+        });
         cx += col.w;
       });
-      y += ROW_H;
+      y += dynamicRowH;
     });
 
     return y + 3;
@@ -578,7 +587,7 @@ export class PdfService {
   // ─────────────────────────────────────────────────────────────────────────────
   private static drawPatientBlock(
     doc: jsPDF, patient: Patient, visitDate: string,
-    y: number, dateLabel = "Data visita", opts?: { showDate?: boolean }
+    y: number, dateLabel = "Data visita", opts?: { showDate?: boolean; showSesso?: boolean; showBirthDate?: boolean }
   ): number {
     const a = calcAge(patient.dataNascita);
     const dob = patient.dataNascita
@@ -586,12 +595,12 @@ export class PdfService {
 
     const left: { label: string; value: string }[] = [
       { label: "Paziente", value: `${patient.nome} ${patient.cognome}` },
-      { label: "Data di nascita", value: dob },
+      ...(opts?.showBirthDate === false ? [] : [{ label: "Data di nascita", value: dob }]),
       ...(patient.codiceFiscale?.trim() ? [{ label: "Cod. Fiscale", value: patient.codiceFiscale }] : []),
     ];
     const right: { label: string; value: string }[] = [
       ...(opts?.showDate === false ? [] : [{ label: dateLabel, value: fd(visitDate) }]),
-      ...(patient.sesso ? [{ label: "Sesso", value: patient.sesso }] : []),
+      ...(opts?.showSesso !== false && patient.sesso ? [{ label: "Sesso", value: patient.sesso }] : []),
     ];
 
     const halfW = PW / 2 - 4;
@@ -665,7 +674,8 @@ export class PdfService {
    */
   private static drawStructuredAnamnesi(
     doc: jsPDF, y: number, as: NonNullable<Visit["anamnesiStrutturata"]>,
-    order?: AnamnesiCampoKey[]
+    order?: AnamnesiCampoKey[],
+    etichette?: Partial<Record<AnamnesiCampoKey, string>>
   ): number {
     // Ordine configurato per il tipo di visita; le sezioni con dato ma non
     // incluse nell'ordine vengono comunque stampate in coda (no perdita dati).
@@ -676,7 +686,7 @@ export class PdfService {
 
     const rows = keys
       .map((key) => ({
-        label: getAnamnesiCampoMeta(key)?.label ?? key,
+        label: resolveAnamnesiLabel(key, etichette),
         value: (as[key] ?? "").trim(),
       }))
       .filter((r) => r.value !== "");
@@ -1034,12 +1044,14 @@ export class PdfService {
 
     const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
     if (hasAnamnesiStrutturataContent(nv.anamnesiStrutturata)) {
-      const anamnesiOrder = parseAnamnesiConfig(prefs)[
+      const anamnesiCfg = parseAnamnesiConfig(prefs)[
         visit.tipo === "ginecologica_pediatrica"
           ? "ginecologica_pediatrica"
           : "ginecologica"
-      ].campi;
-      y = this.drawStructuredAnamnesi(doc, y, nv.anamnesiStrutturata!, anamnesiOrder);
+      ];
+      y = this.drawStructuredAnamnesi(
+        doc, y, nv.anamnesiStrutturata!, anamnesiCfg.campi, anamnesiCfg.etichette,
+      );
     } else {
       y = this.drawTextSection(doc, y, "Anamnesi", gyn.prestazione);
     }
@@ -1123,8 +1135,6 @@ export class PdfService {
       { label: "BMI (Pre/Att)", value: `${bmiPre} / ${bmiNow}` },
       { label: "PA", value: v(obs.pressioneArteriosa) },
       { label: "FC", value: obs.frequenzaCardiaca?.trim() ? `${obs.frequenzaCardiaca.trim()} bpm` : "-" },
-      { label: "Temp.", value: obs.temperatura?.trim() ? `${obs.temperatura.trim()} °C` : "-" },
-      { label: "SpO2", value: obs.saturazioneO2?.trim() ? `${obs.saturazioneO2.trim()}%` : "-" },
       { label: "Stile di vita", value: `${fumo} fumo, ${folico} acido folico` },
     ].filter((item) => !isInquadramentoValueEmpty(item.value));
 
@@ -1147,10 +1157,10 @@ export class PdfService {
 
         this.fc(doc, K240);
         doc.rect(cx, y, colW - 2, 6, "F");
-        this.tc(doc, K30);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K30);
         doc.text(subHeaders[c], cx + 2, y + 4);
 
-        let cy = y + 8;
+        let cy = y + 11;
         doc.setFontSize(8);
 
         for (const item of allBlocks[c]) {
@@ -1253,8 +1263,10 @@ export class PdfService {
     // ── SEZIONI TESTO LIBERO ─────────────────────────────────────────────────
     const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
     if (hasAnamnesiStrutturataContent(nv.anamnesiStrutturata)) {
-      const anamnesiOrder = parseAnamnesiConfig(prefs).ostetrica.campi;
-      y = this.drawStructuredAnamnesi(doc, y, nv.anamnesiStrutturata!, anamnesiOrder);
+      const anamnesiCfg = parseAnamnesiConfig(prefs).ostetrica;
+      y = this.drawStructuredAnamnesi(
+        doc, y, nv.anamnesiStrutturata!, anamnesiCfg.campi, anamnesiCfg.etichette,
+      );
     } else {
       y = this.drawTextSection(doc, y, "Anamnesi", obs.prestazione);
     }
@@ -1309,7 +1321,7 @@ export class PdfService {
     const doc = new jsPDF();
     try {
       let y = this.drawHeader(doc, "RICHIESTA DI ESAME", "Prescrizione di esame complementare", doctor);
-      y = this.drawPatientBlock(doc, patient, richiesta.dataRichiesta, y, "Data richiesta", { showDate: false });
+      y = this.drawPatientBlock(doc, patient, richiesta.dataRichiesta, y, "Data richiesta", { showDate: false, showSesso: false, showBirthDate: false });
       y += 2;
       y = this.heading(doc, y, "Si richiede");
       y = this.block(doc, richiesta.nome, ML + 1, y, PW - 2, undefined, {
@@ -1346,7 +1358,7 @@ export class PdfService {
         assenza_lavoro: "Assenza da lavoro", idoneita: "Idoneita'", malattia: "Malattia", altro: "Altro",
       };
       let y = this.drawHeader(doc, "CERTIFICATO MEDICO", tipoL[certificato.tipo] || certificato.tipo, doctor);
-      y = this.drawPatientBlock(doc, patient, certificato.dataCertificato, y, "Data certificato", { showDate: false });
+      y = this.drawPatientBlock(doc, patient, certificato.dataCertificato, y, "Data certificato", { showDate: false, showSesso: false, showBirthDate: false });
       y += 2;
       y = this.heading(doc, y, "Si certifica che");
       y = this.block(doc, certificato.descrizione || "", ML + 1, y, PW - 2, LH + 0.6, {
@@ -1373,34 +1385,19 @@ export class PdfService {
     const doc = new jsPDF();
     try {
       let y = this.drawHeader(doc, "RICETTA MEDICA", "Ricetta bianca", doctor);
-      y = this.drawPatientBlock(doc, patient, ricetta.dataRicetta, y, "Data ricetta", { showDate: false });
+      y = this.drawPatientBlock(doc, patient, ricetta.dataRicetta, y, "Data ricetta", { showDate: false, showSesso: false, showBirthDate: false });
       y += 2;
       y = this.heading(doc, y, "Prescrizione");
 
-      const items = (ricetta.farmaci || []).filter((f) => f.nome?.trim() || f.posologia?.trim());
-      if (items.length > 0) {
-        y = this.table(
-          doc, y,
-          [
-            { header: "Farmaco", w: 70 },
-            { header: "Posologia", w: 70 },
-            { header: "Durata", w: 40 },
-          ],
-          items.map((f) => [v(f.nome), v(f.posologia), v(f.durata)]),
-          { rowH: 8, fontSize: 9 },
-        );
+      const testoRicetta = getRicettaTesto(ricetta);
+      if (testoRicetta.trim()) {
+        y = this.block(doc, testoRicetta, ML + 1, y, PW - 2, LH + 0.6, {
+          font: "helvetica", style: "normal", fontSize: 10.5, color: K30,
+        });
       } else {
         doc.setFont("helvetica", "italic"); doc.setFontSize(9); this.tc(doc, K140);
-        doc.text("Nessun farmaco indicato.", ML + 1, y + 4);
+        doc.text("Nessuna prescrizione indicata.", ML + 1, y + 4);
         y += 10;
-      }
-
-      if (ricetta.note?.trim()) {
-        y += 3;
-        y = this.heading(doc, y, "Indicazioni");
-        y = this.block(doc, ricetta.note, ML + 1, y, PW - 2, undefined, {
-          font: "helvetica", style: "normal", fontSize: 9.5, color: K30,
-        });
       }
 
       await this.drawSignatureBlock(doc, doctor, y);

@@ -5,7 +5,7 @@ const REFERTO_TEXTAREA_CLASSES = {
   base: "!h-auto",
   input: "!text-base !leading-relaxed font-normal !overflow-hidden resize-none min-h-0",
   inputWrapper:
-    "!h-auto min-h-0 items-start group-hover:border-primary transition-colors bg-white",
+    "!h-auto min-h-0 items-start group-data-[focus=true]:border-primary transition-colors bg-white",
   mainWrapper: "h-auto",
 } as const;
 
@@ -22,6 +22,7 @@ export function RefertoTextarea({
   value,
   minRows = 2,
   classNames,
+  className,
   onValueChange,
   ...props
 }: TextareaProps) {
@@ -53,7 +54,7 @@ export function RefertoTextarea({
   };
 
   return (
-    <div ref={rootRef} className="w-full">
+    <div ref={rootRef} className={["group w-full min-w-0", className].filter(Boolean).join(" ")}>
       <Textarea
         {...props}
         value={value}

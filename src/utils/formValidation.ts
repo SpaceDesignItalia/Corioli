@@ -24,15 +24,63 @@ export function clampHeightCm(value: number): number {
   return clampInt(value, MIN_HEIGHT_CM, MAX_HEIGHT_CM);
 }
 
+/** Consente solo cifre mentre si digita l'altezza in cm. */
+export function isValidHeightInputDraft(s: string): boolean {
+  return s === "" || /^\d*$/.test(s);
+}
+
+/** Parsing live: non limita il range (evita salti a 50 cm al primo tasto). */
+export function parseHeightFieldLive(s: string): number | "incomplete" {
+  const t = s.trim();
+  if (t === "") return "incomplete";
+  const n = parseInt(t, 10);
+  if (!Number.isFinite(n)) return "incomplete";
+  return n;
+}
+
+/** Valore al blur: vuoto → undefined, altrimenti numero senza clamp. */
+export function parseHeightFieldBlur(s: string): number | undefined {
+  const t = s.trim();
+  if (t === "") return undefined;
+  const n = parseInt(t, 10);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return n;
+}
+
 export function clampWeightKg(value: number): number {
   return Math.min(MAX_WEIGHT_KG, Math.max(MIN_WEIGHT_KG, Math.round(value * 10) / 10));
 }
 
+/** Consente cifre e un separatore decimale mentre si digita. */
+export function isValidWeightInputDraft(s: string): boolean {
+  return s === "" || /^\d*[.,]?\d*$/.test(s);
+}
+
+/** Parsing live: non arrotonda né limita il range (evita salti a 30 kg al primo tasto). */
+export function parseWeightFieldLive(s: string): number | "incomplete" {
+  const t = s.trim().replace(",", ".");
+  if (t === "" || t === ".") return "incomplete";
+  if (t.endsWith(".")) return "incomplete";
+  const n = parseFloat(t);
+  if (!Number.isFinite(n)) return "incomplete";
+  return n;
+}
+
+/** Valore finale al blur: vuoto → 0, altrimenti clamp nel range consentito. */
+export function parseWeightFieldBlur(s: string): number {
+  const t = s.trim().replace(",", ".");
+  if (t === "" || t === ".") return 0;
+  const n = parseFloat(t);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return clampWeightKg(n);
+}
+
 export function parseOptionalHeight(raw: string): number | undefined {
   if (raw.trim() === "") return undefined;
-  const n = parseFloat(raw);
+  const n = parseInt(raw.trim(), 10);
   if (!Number.isFinite(n)) return undefined;
-  return clampHeightCm(n);
+  if (n < MIN_HEIGHT_CM || n > MAX_HEIGHT_CM) return undefined;
+  return n;
 }
 
 export function validateBirthDate(iso: string): string | null {

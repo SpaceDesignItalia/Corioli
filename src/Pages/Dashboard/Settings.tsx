@@ -82,6 +82,8 @@ import {
   getAnamnesiCampoMeta,
   createDefaultAnamnesiConfig,
   parseAnamnesiConfig,
+  sanitizeAnamnesiEtichetta,
+  MAX_ANAMNESI_ETICHETTA_LEN,
 } from "../../utils/anamnesiStrutturata";
 
 type SettingsNoticeScope = "profilo" | "ambulatori" | "modelli" | "duplicati";
@@ -560,6 +562,19 @@ const SettingsScreen = () => {
     if (i < 0 || j < 0 || j >= campi.length) return;
     [campi[i], campi[j]] = [campi[j], campi[i]];
     updateAnamnesiTipo(tipo, { campi });
+  };
+
+  /** Imposta (o azzera, se vuota) l'etichetta personalizzata di una sezione. */
+  const setAnamnesiEtichetta = (
+    tipo: AnamnesiVisitType,
+    key: AnamnesiCampoKey,
+    value: string,
+  ) => {
+    const next = sanitizeAnamnesiEtichetta(value);
+    const etichette = { ...(preferences.anamnesiConfig[tipo].etichette ?? {}) };
+    if (next.trim()) etichette[key] = next;
+    else delete etichette[key];
+    updateAnamnesiTipo(tipo, { etichette });
   };
 
   const normalizeName = (value: string) =>
@@ -2542,7 +2557,9 @@ const SettingsScreen = () => {
             <span>Struttura anamnesi</span>
             <span className="text-xs font-normal text-default-500">
               Configura, per ogni tipo di visita, se usare un unico campo di
-              anamnesi o suddividerla in sezioni — attivabili e riordinabili.
+              anamnesi o suddividerla in sezioni — attivabili, riordinabili e
+              rinominabili. Lascia vuoto il nome per ripristinare quello
+              predefinito.
             </span>
           </ModalHeader>
           <ModalBody className="pb-2">
@@ -2608,10 +2625,22 @@ const SettingsScreen = () => {
                                   <ChevronDown size={14} />
                                 </button>
                               </div>
-                              <span className="text-sm text-gray-700 flex-1">
-                                {meta.label}
-                                {meta.optional ? " (facoltativa)" : ""}
-                              </span>
+                              <Input
+                                size="sm"
+                                variant="flat"
+                                aria-label={`Nome sezione ${meta.label}`}
+                                value={cfg.etichette?.[key] ?? ""}
+                                placeholder={meta.label}
+                                maxLength={MAX_ANAMNESI_ETICHETTA_LEN}
+                                onValueChange={(v) =>
+                                  setAnamnesiEtichetta(tipo, key, v)
+                                }
+                                className="flex-1"
+                                classNames={{
+                                  inputWrapper: "h-8 min-h-8",
+                                  input: "text-sm",
+                                }}
+                              />
                               <Switch
                                 size="sm"
                                 isSelected
@@ -2645,8 +2674,7 @@ const SettingsScreen = () => {
                                   className="flex items-center gap-2 px-2 py-1"
                                 >
                                   <span className="text-sm text-default-400 flex-1">
-                                    {meta.label}
-                                    {meta.optional ? " (facoltativa)" : ""}
+                                    {cfg.etichette?.[key]?.trim() || meta.label}
                                   </span>
                                   <Switch
                                     size="sm"
