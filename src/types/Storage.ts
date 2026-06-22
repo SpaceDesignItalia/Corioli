@@ -63,6 +63,11 @@ export interface AnamnesiStrutturata {
   allergica?: string;
   /** Anamnesi del partner (utile in ostetricia/preconcezionale) */
   partner?: string;
+  /**
+   * Sezioni personalizzate aggiunte dal medico (chiave generata, es. "custom_xxx").
+   * Il contenuto è indicizzato per chiave; le etichette stanno in `anamnesiConfig`.
+   */
+  [key: string]: string | undefined;
 }
 
 /** Singolo farmaco in una ricetta */
@@ -116,6 +121,8 @@ export interface Visit {
     abortiSpontanei?: number;
     /** Interruzioni volontarie gravidanza (IVG) */
     ivg?: number;
+    /** Peso corporeo (kg) — usato per il calcolo del BMI */
+    pesoCorporeo?: number;
     /** Menarca (eta o note) */
     menarca?: string;
     /** Stadio di Tanner (femmina) */
@@ -278,7 +285,10 @@ export interface MedicalTemplate {
     | 'anamnesiGinecologica'
     | 'anamnesiFarmacologica'
     | 'anamnesiAllergica'
-    | 'anamnesiPartner';
+    | 'anamnesiPartner'
+    // Sezioni personalizzate dell'anamnesi: chiave generata (es. "custom_xxx").
+    // `string & {}` mantiene i suggerimenti sui valori noti pur accettando chiavi custom.
+    | (string & {});
   label: string;
   text: string;
   note?: string;

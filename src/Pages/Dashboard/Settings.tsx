@@ -73,17 +73,17 @@ import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
 import {
   AnamnesiConfig,
   AnamnesiVisitType,
-  AnamnesiCampoKey,
   AnamnesiMode,
   AnamnesiTypeConfig,
   ANAMNESI_VISIT_TYPES,
   ANAMNESI_VISIT_TYPE_LABELS,
-  ALL_ANAMNESI_CAMPO_KEYS,
   getAnamnesiCampoMeta,
   createDefaultAnamnesiConfig,
   parseAnamnesiConfig,
   sanitizeAnamnesiEtichetta,
   MAX_ANAMNESI_ETICHETTA_LEN,
+  MAX_ANAMNESI_SEZIONI,
+  genAnamnesiCustomKey,
 } from "../../utils/anamnesiStrutturata";
 
 type SettingsNoticeScope = "profilo" | "ambulatori" | "modelli" | "duplicati";
@@ -543,17 +543,30 @@ const SettingsScreen = () => {
   const setAnamnesiMode = (tipo: AnamnesiVisitType, mode: AnamnesiMode) =>
     updateAnamnesiTipo(tipo, { mode });
 
-  const toggleAnamnesiCampo = (tipo: AnamnesiVisitType, key: AnamnesiCampoKey) => {
-    const campi = preferences.anamnesiConfig[tipo].campi;
-    const next = campi.includes(key)
-      ? campi.filter((k) => k !== key)
-      : [...campi, key];
-    updateAnamnesiTipo(tipo, { campi: next });
+  /** Aggiunge una nuova sezione personalizzata (max MAX_ANAMNESI_SEZIONI attive). */
+  const addCustomAnamnesiSezione = (tipo: AnamnesiVisitType) => {
+    const cfg = preferences.anamnesiConfig[tipo];
+    if (cfg.campi.length >= MAX_ANAMNESI_SEZIONI) return;
+    const key = genAnamnesiCustomKey();
+    const etichette = { ...(cfg.etichette ?? {}) };
+    etichette[key] = "Nuova sezione";
+    updateAnamnesiTipo(tipo, { campi: [...cfg.campi, key], etichette });
+  };
+
+  /** Elimina una sezione (predefinita o personalizzata): chiave + etichetta. */
+  const removeAnamnesiSezione = (tipo: AnamnesiVisitType, key: string) => {
+    const cfg = preferences.anamnesiConfig[tipo];
+    const etichette = { ...(cfg.etichette ?? {}) };
+    delete etichette[key];
+    updateAnamnesiTipo(tipo, {
+      campi: cfg.campi.filter((k) => k !== key),
+      etichette,
+    });
   };
 
   const moveAnamnesiCampo = (
     tipo: AnamnesiVisitType,
-    key: AnamnesiCampoKey,
+    key: string,
     dir: -1 | 1,
   ) => {
     const campi = [...preferences.anamnesiConfig[tipo].campi];
@@ -567,7 +580,7 @@ const SettingsScreen = () => {
   /** Imposta (o azzera, se vuota) l'etichetta personalizzata di una sezione. */
   const setAnamnesiEtichetta = (
     tipo: AnamnesiVisitType,
-    key: AnamnesiCampoKey,
+    key: string,
     value: string,
   ) => {
     const next = sanitizeAnamnesiEtichetta(value);
@@ -2544,6 +2557,7 @@ const SettingsScreen = () => {
         initialTemplate={currentTemplate}
         onSave={handleSaveTemplate}
         isSaving={isSavingTemplate}
+        anamnesiConfig={preferences.anamnesiConfig}
       />
 
       <Modal
@@ -2567,9 +2581,6 @@ const SettingsScreen = () => {
               {ANAMNESI_VISIT_TYPES.map((tipo) => {
                 const cfg = preferences.anamnesiConfig[tipo];
                 const enabled = cfg.campi;
-                const disabled = ALL_ANAMNESI_CAMPO_KEYS.filter(
-                  (k) => !enabled.includes(k),
-                );
                 return (
                   <div
                     key={tipo}
@@ -2625,6 +2636,9 @@ const SettingsScreen = () => {
                                   <ChevronDown size={14} />
                                 </button>
                               </div>
+                              <span className="text-[11px] font-semibold text-default-400 w-7 shrink-0 tabular-nums">
+                                1.{idx + 1}
+                              </span>
                               <Input
                                 size="sm"
                                 variant="flat"
@@ -2641,53 +2655,37 @@ const SettingsScreen = () => {
                                   input: "text-sm",
                                 }}
                               />
-                              <Switch
-                                size="sm"
-                                isSelected
-                                aria-label={`Disattiva ${meta.label}`}
-                                onValueChange={() =>
-                                  toggleAnamnesiCampo(tipo, key)
-                                }
-                              />
+                              <button
+                                type="button"
+                                aria-label={`Elimina ${meta.label}`}
+                                title="Elimina sezione"
+                                onClick={() => removeAnamnesiSezione(tipo, key)}
+                                className="text-default-400 hover:text-danger"
+                              >
+                                <Trash2 size={15} />
+                              </button>
                             </div>
                           );
                         })}
 
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          color="primary"
+                          startContent={<Plus size={14} />}
+                          isDisabled={enabled.length >= MAX_ANAMNESI_SEZIONI}
+                          onPress={() => addCustomAnamnesiSezione(tipo)}
+                          className="w-full"
+                        >
+                          Aggiungi sezione ({enabled.length}/
+                          {MAX_ANAMNESI_SEZIONI})
+                        </Button>
+
                         {enabled.length === 0 && (
                           <p className="text-xs text-warning-600">
-                            Nessuna sezione attiva: attivane almeno una o passa a
+                            Nessuna sezione: aggiungine almeno una o passa a
                             "Campo unico".
                           </p>
-                        )}
-
-                        {disabled.length > 0 && (
-                          <div className="pt-1">
-                            <p className="text-[11px] uppercase tracking-wider text-default-400 mb-1">
-                              Sezioni disattivate
-                            </p>
-                            {disabled.map((key) => {
-                              const meta = getAnamnesiCampoMeta(key);
-                              if (!meta) return null;
-                              return (
-                                <div
-                                  key={key}
-                                  className="flex items-center gap-2 px-2 py-1"
-                                >
-                                  <span className="text-sm text-default-400 flex-1">
-                                    {cfg.etichette?.[key]?.trim() || meta.label}
-                                  </span>
-                                  <Switch
-                                    size="sm"
-                                    isSelected={false}
-                                    aria-label={`Attiva ${meta.label}`}
-                                    onValueChange={() =>
-                                      toggleAnamnesiCampo(tipo, key)
-                                    }
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
                         )}
                       </div>
                     ) : (

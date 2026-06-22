@@ -14,6 +14,16 @@ import {
 import { FileText, ClipboardList, ChevronDown, Pill } from "lucide-react";
 import type { MedicalTemplate } from "../types/Storage";
 import { RefertoTextarea } from "./RefertoTextarea";
+import {
+  ANAMNESI_STRUTTURATA_FIELDS,
+  getAnamnesiCampoMeta,
+  resolveAnamnesiLabel,
+} from "../utils/anamnesiStrutturata";
+import type {
+  AnamnesiCampoKey,
+  AnamnesiConfig,
+  AnamnesiVisitType,
+} from "../utils/anamnesiStrutturata";
 
 type TemplateCategory = MedicalTemplate["category"];
 type TemplateSection = MedicalTemplate["section"];
@@ -38,6 +48,24 @@ const ANAMNESI_SUBSECTIONS: TemplateSection[] = [
   "anamnesiPartner",
 ];
 
+/** Categoria modello → tipo di visita da cui leggere le etichette personalizzate. */
+const CATEGORY_TO_ANAMNESI_TYPE: Partial<Record<TemplateCategory, AnamnesiVisitType>> = {
+  ginecologia: "ginecologica",
+  ostetricia: "ostetrica",
+};
+
+/** Categoria modello → tutti i tipi di visita che usano i suoi modelli (per decidere
+ *  se mostrare le sotto-sezioni anamnesi). Una categoria non influenza l'altra. */
+const CATEGORY_ANAMNESI_TYPES: Partial<Record<TemplateCategory, AnamnesiVisitType[]>> = {
+  ginecologia: ["ginecologica", "ginecologica_pediatrica"],
+  ostetricia: ["ostetrica"],
+};
+
+/** Sezione modello (anamnesi*) → chiave sezione anamnesi, per risolvere i nomi personalizzati. */
+const SECTION_TO_CAMPO = Object.fromEntries(
+  ANAMNESI_STRUTTURATA_FIELDS.map((f) => [f.templateSection, f.key]),
+) as Partial<Record<TemplateSection, AnamnesiCampoKey>>;
+
 const SECTION_LABELS: Partial<Record<TemplateSection, string>> = {
   prestazione: "1. Anamnesi (campo unico)",
   esameObiettivo: "3. Visita / Ecografia Office",
@@ -49,16 +77,6 @@ const SECTION_LABELS: Partial<Record<TemplateSection, string>> = {
   anamnesiFarmacologica: "1. Anamnesi · Farmacologica",
   anamnesiAllergica: "1. Anamnesi · Allergica",
   anamnesiPartner: "1. Anamnesi · Partner",
-};
-
-const ANAMNESI_SUB_LABELS: Partial<Record<TemplateSection, string>> = {
-  anamnesiFamiliare: "Familiare",
-  anamnesiFisiologica: "Fisiologica",
-  anamnesiPatologica: "Patologica",
-  anamnesiGinecologica: "Ginecologica",
-  anamnesiFarmacologica: "Farmacologica",
-  anamnesiAllergica: "Allergica",
-  anamnesiPartner: "Partner",
 };
 
 const SECTIONS_BY_CATEGORY: Record<TemplateCategory, TemplateSection[]> = {
@@ -83,11 +101,6 @@ const DEFAULT_SECTION: Record<TemplateCategory, TemplateSection> = {
 function getPreviewSection(category: TemplateCategory, section: TemplateSection): TemplateSection {
   if (category === "terapie") return "conclusioni";
   return section;
-}
-
-/** Le sotto-sezioni dell'anamnesi vengono evidenziate sul campo "1. Anamnesi" del mock. */
-function getMockSection(section: TemplateSection): TemplateSection {
-  return ANAMNESI_SUBSECTIONS.includes(section) ? "prestazione" : section;
 }
 
 type VisitFieldMock = {
@@ -442,14 +455,21 @@ function TemplatePlacementMap({
   section,
   onSectionChange,
   preview,
+  resolveSubLabel,
+  isAnamnesiSection,
 }: {
   category: TemplateCategory;
   section: TemplateSection;
   onSectionChange: (section: TemplateSection) => void;
   preview: LivePreviewContent;
+  resolveSubLabel: (section: TemplateSection) => string | null;
+  isAnamnesiSection: (section: TemplateSection) => boolean;
 }) {
   const previewSection = getPreviewSection(category, section);
-  const activeSection = getMockSection(previewSection);
+  // Le sezioni dell'anamnesi (predefinite o personalizzate) si evidenziano sul campo "1. Anamnesi".
+  const activeSection = isAnamnesiSection(previewSection)
+    ? "prestazione"
+    : previewSection;
 
   if (category === "ginecologia" || category === "ostetricia" || category === "terapie") {
     return (
@@ -463,7 +483,7 @@ function TemplatePlacementMap({
         onSectionChange={onSectionChange}
         preview={preview}
         readOnly={category === "terapie"}
-        anamnesiCampoLabel={ANAMNESI_SUB_LABELS[previewSection] ?? null}
+        anamnesiCampoLabel={resolveSubLabel(previewSection)}
       />
     );
   }
@@ -485,6 +505,8 @@ export type TemplateEditorModalProps = {
   initialTemplate: Partial<MedicalTemplate>;
   onSave: (template: Partial<MedicalTemplate>) => void | Promise<void>;
   isSaving?: boolean;
+  /** Config anamnesi per risolvere i nomi personalizzati delle sezioni. */
+  anamnesiConfig?: AnamnesiConfig;
 };
 
 export function TemplateEditorModal({
@@ -493,6 +515,7 @@ export function TemplateEditorModal({
   initialTemplate,
   onSave,
   isSaving = false,
+  anamnesiConfig,
 }: TemplateEditorModalProps) {
   const [draft, setDraft] = useState<Partial<MedicalTemplate>>(initialTemplate);
   const [errors, setErrors] = useState<{ label?: string; text?: string }>({});
@@ -504,9 +527,71 @@ export function TemplateEditorModal({
   }, [isOpen, initialTemplate]);
 
   const category = (draft.category ?? "ginecologia") as TemplateCategory;
-  const sectionOptions = SECTIONS_BY_CATEGORY[category];
-  const section = (draft.section ?? DEFAULT_SECTION[category]) as TemplateSection;
   const isEditing = Boolean(draft.id);
+
+  // Sezioni dell'anamnesi attive (dalla config del tipo di visita), numerate 1.1, 1.2…
+  // Per le sezioni personalizzate la "sezione modello" coincide con la chiave.
+  const anamnesiVisitType = CATEGORY_TO_ANAMNESI_TYPE[category];
+  const anamnesiTypeCfg =
+    anamnesiConfig && anamnesiVisitType
+      ? anamnesiConfig[anamnesiVisitType]
+      : undefined;
+  const anamnesiSections = (anamnesiTypeCfg?.campi ?? []).map((key, i) => {
+    const meta = getAnamnesiCampoMeta(key);
+    return {
+      templateSection: (meta?.templateSection ?? key) as TemplateSection,
+      num: i + 1,
+      subLabel: resolveAnamnesiLabel(key, anamnesiTypeCfg?.etichette),
+    };
+  });
+  const anamnesiByTs = new Map(
+    anamnesiSections.map((s) => [s.templateSection, s] as const),
+  );
+
+  const isAnamnesiSection = (sec: TemplateSection): boolean =>
+    ANAMNESI_SUBSECTIONS.includes(sec) || anamnesiByTs.has(sec);
+
+  const resolveSubLabel = (sec: TemplateSection): string | null => {
+    const dyn = anamnesiByTs.get(sec);
+    if (dyn) return dyn.subLabel;
+    // Sezione predefinita non attiva nella config (es. modello legacy): etichetta dalla config.
+    const campo = SECTION_TO_CAMPO[sec];
+    return campo ? resolveAnamnesiLabel(campo, anamnesiTypeCfg?.etichette) : null;
+  };
+  const sectionLabel = (sec: TemplateSection): string => {
+    const dyn = anamnesiByTs.get(sec);
+    if (dyn) return `1.${dyn.num} Anamnesi · ${dyn.subLabel}`;
+    const sub = resolveSubLabel(sec);
+    if (sub) return `1. Anamnesi · ${sub}`;
+    return SECTION_LABELS[sec] ?? sec;
+  };
+
+  const section = (draft.section ?? DEFAULT_SECTION[category]) as TemplateSection;
+
+  // Le sotto-sezioni dell'anamnesi strutturata compaiono solo se la modalità
+  // "Multi-sezione" è attiva per i tipi di visita di QUESTA categoria (la modalità
+  // di un'altra categoria non conta). Altrimenti resta solo "Anamnesi (campo unico)".
+  // (Si mostrano comunque se sto modificando un modello che punta già a una
+  // sotto-sezione, per non perderla.)
+  const categoryStructured = anamnesiConfig
+    ? (CATEGORY_ANAMNESI_TYPES[category] ?? []).some(
+        (t) => anamnesiConfig[t].mode === "strutturata",
+      )
+    : false;
+  const showAnamnesiSubsections =
+    categoryStructured || isAnamnesiSection(section);
+
+  const sectionOptions: TemplateSection[] =
+    category === "ginecologia" || category === "ostetricia"
+      ? [
+          "prestazione",
+          ...(showAnamnesiSubsections
+            ? anamnesiSections.map((s) => s.templateSection)
+            : []),
+          "esameObiettivo",
+          "conclusioni",
+        ]
+      : SECTIONS_BY_CATEGORY[category];
   const canPickSection = sectionOptions.length > 1 && category !== "terapie";
 
   const preview: LivePreviewContent = {
@@ -611,7 +696,7 @@ export function TemplateEditorModal({
               >
                 {sectionOptions.map((sec) => (
                   <SelectItem key={sec} value={sec}>
-                    {SECTION_LABELS[sec] ?? sec}
+                    {sectionLabel(sec)}
                   </SelectItem>
                 ))}
               </Select>
@@ -671,6 +756,8 @@ export function TemplateEditorModal({
               setDraft((prev) => ({ ...prev, section: nextSection }))
             }
             preview={preview}
+            resolveSubLabel={resolveSubLabel}
+            isAnamnesiSection={isAnamnesiSection}
           />
 
           <Divider />

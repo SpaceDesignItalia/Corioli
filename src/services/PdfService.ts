@@ -30,12 +30,10 @@ import {
   SIGNATURE_STAMP_PDF_LAYOUT_H,
 } from "../utils/signatureStamp";
 import {
-  ANAMNESI_STRUTTURATA_FIELDS,
   ALL_ANAMNESI_CAMPO_KEYS,
   hasAnamnesiStrutturataContent,
   resolveAnamnesiLabel,
   parseAnamnesiConfig,
-  type AnamnesiCampoKey,
 } from "../utils/anamnesiStrutturata";
 import { getRicettaTesto } from "../utils/ricettaTemplate";
 
@@ -51,7 +49,6 @@ const LH = 4.8;
 const K0 = [0, 0, 0] as const;
 const K30: [number, number, number] = [30, 30, 30];
 const K80: [number, number, number] = [80, 80, 80];
-const K100: [number, number, number] = [100, 100, 100];
 const K140: [number, number, number] = [140, 140, 140];
 const K200: [number, number, number] = [200, 200, 200];
 const K235: [number, number, number] = [235, 235, 235];
@@ -184,60 +181,58 @@ export class PdfService {
     this.dc(doc, K200); doc.setLineWidth(lw); doc.line(x1, y, x2, y);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // TABLE ENGINE — widths must exactly sum to PW (180mm)
-  // ─────────────────────────────────────────────────────────────────────────────
-  private static table(
-    doc: jsPDF, y: number,
-    cols: { header: string; w: number }[],
-    rows: string[][],
-    opts?: { rowH?: number; fontSize?: number; headerFontSize?: number },
+  /**
+   * Griglia "Inquadramento" in stile referto: titolo di sezione + N colonne,
+   * ciascuna con sotto-intestazione su barra grigia e righe "Etichetta: valore".
+   * Le righe con valore vuoto/zero ("-", "0", ...) vengono nascoste; se non resta
+   * alcun dato la sezione non viene disegnata. Condivisa tra referto ostetrico e
+   * ginecologico per garantire coerenza visiva.
+   */
+  private static drawInquadramentoGrid(
+    doc: jsPDF, y: number, title: string,
+    columns: { header: string; items: { label: string; value: string }[] }[],
   ): number {
-    const ROW_H = opts?.rowH ?? 7;
-    const FONT = opts?.fontSize ?? 8.5;
-    const HFONT = opts?.headerFontSize ?? 7.5;
-    const PAD = 1.8;
-    const totalW = cols.reduce((s, c) => s + c.w, 0);
+    const cols = columns.map((c) => ({
+      header: c.header,
+      items: c.items.filter((it) => !isInquadramentoValueEmpty(it.value)),
+    }));
+    if (!cols.some((c) => c.items.length > 0)) return y;
 
-    y = this.pb(doc, y, ROW_H * (rows.length + 1) + 4);
+    y = this.heading(doc, y, title);
+    y = this.pb(doc, y, 40);
 
-    // header
-    this.fc(doc, K235); doc.rect(ML, y, totalW, ROW_H, "F");
-    this.dc(doc, K200); doc.setLineWidth(0.2); doc.rect(ML, y, totalW, ROW_H, "S");
-    doc.setFont("helvetica", "bold"); doc.setFontSize(HFONT); this.tc(doc, K30);
-    let cx = ML;
-    cols.forEach(col => {
-      if (cx > ML) { this.dc(doc, K200); doc.setLineWidth(0.15); doc.line(cx, y, cx, y + ROW_H); }
-      const lines = doc.splitTextToSize(san(col.header), col.w - PAD * 2);
-      doc.text(lines[0] ?? '', cx + PAD, y + ROW_H / 2 + HFONT * 0.18, { baseline: "middle" });
-      cx += col.w;
-    });
-    y += ROW_H;
+    const colW = PW / cols.length;
+    let maxY = y;
 
-    // rows
-    const LINE_H = FONT * 0.42;
-    rows.forEach(row => {
-      doc.setFont("helvetica", "normal"); doc.setFontSize(FONT); this.tc(doc, K30);
-      const cellLinesPerCol = cols.map((col, ci) =>
-        doc.splitTextToSize(san(v(row[ci])), col.w - PAD * 2),
-      );
-      const maxLines = Math.max(1, ...cellLinesPerCol.map((lines) => lines.length));
-      const dynamicRowH = Math.max(ROW_H, PAD * 2 + maxLines * LINE_H);
+    for (let c = 0; c < cols.length; c++) {
+      const cx = ML + c * colW;
 
-      y = this.pb(doc, y, dynamicRowH + 2);
-      this.dc(doc, K200); doc.setLineWidth(0.15); doc.rect(ML, y, totalW, dynamicRowH, "S");
-      cx = ML;
-      cols.forEach((col, ci) => {
-        if (cx > ML) { this.dc(doc, K200); doc.setLineWidth(0.15); doc.line(cx, y, cx, y + dynamicRowH); }
-        cellLinesPerCol[ci].forEach((line: string, li: number) => {
-          doc.text(line, cx + PAD, y + PAD + (li + 1) * LINE_H);
-        });
-        cx += col.w;
-      });
-      y += dynamicRowH;
-    });
+      this.fc(doc, K240);
+      doc.rect(cx, y, colW - 2, 6, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K30);
+      doc.text(san(cols[c].header), cx + 2, y + 4);
 
-    return y + 3;
+      let cy = y + 11;
+      doc.setFontSize(8);
+
+      for (const item of cols[c].items) {
+        doc.setFont("helvetica", "bold"); this.tc(doc, K80);
+        const lbl = san(item.label) + ": ";
+        doc.text(lbl, cx, cy);
+
+        doc.setFont("helvetica", "normal"); this.tc(doc, K0);
+        const lblWidth = doc.getTextWidth(lbl);
+        const valueX = cx + lblWidth + 1; // piccolo margine tra titolo e valore
+        const vlines = doc.splitTextToSize(san(item.value), colW - lblWidth - 4);
+        for (const line of vlines) {
+          doc.text(line, valueX, cy);
+          cy += LH;
+        }
+      }
+      maxY = Math.max(maxY, cy);
+    }
+
+    return maxY + 2;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -587,7 +582,7 @@ export class PdfService {
   // ─────────────────────────────────────────────────────────────────────────────
   private static drawPatientBlock(
     doc: jsPDF, patient: Patient, visitDate: string,
-    y: number, dateLabel = "Data visita", opts?: { showDate?: boolean; showSesso?: boolean; showBirthDate?: boolean }
+    y: number, dateLabel = "Data visita", opts?: { showDate?: boolean; showSesso?: boolean; showBirthDate?: boolean; extraRight?: { label: string; value: string }[] }
   ): number {
     const a = calcAge(patient.dataNascita);
     const dob = patient.dataNascita
@@ -601,6 +596,7 @@ export class PdfService {
     const right: { label: string; value: string }[] = [
       ...(opts?.showDate === false ? [] : [{ label: dateLabel, value: fd(visitDate) }]),
       ...(opts?.showSesso !== false && patient.sesso ? [{ label: "Sesso", value: patient.sesso }] : []),
+      ...(opts?.extraRight ?? []),
     ];
 
     const halfW = PW / 2 - 4;
@@ -674,15 +670,17 @@ export class PdfService {
    */
   private static drawStructuredAnamnesi(
     doc: jsPDF, y: number, as: NonNullable<Visit["anamnesiStrutturata"]>,
-    order?: AnamnesiCampoKey[],
-    etichette?: Partial<Record<AnamnesiCampoKey, string>>
+    order?: string[],
+    etichette?: Record<string, string>
   ): number {
     // Ordine configurato per il tipo di visita; le sezioni con dato ma non
-    // incluse nell'ordine vengono comunque stampate in coda (no perdita dati).
-    const seen = new Set<AnamnesiCampoKey>();
-    const keys: AnamnesiCampoKey[] = [];
+    // incluse nell'ordine (predefinite o personalizzate) vengono comunque
+    // stampate in coda (no perdita dati).
+    const seen = new Set<string>();
+    const keys: string[] = [];
     for (const k of order ?? []) if (!seen.has(k)) { keys.push(k); seen.add(k); }
-    for (const k of ALL_ANAMNESI_CAMPO_KEYS) if (!seen.has(k)) keys.push(k);
+    for (const k of ALL_ANAMNESI_CAMPO_KEYS) if (!seen.has(k)) { keys.push(k); seen.add(k); }
+    for (const k of Object.keys(as)) if (!seen.has(k)) { keys.push(k); seen.add(k); }
 
     const rows = keys
       .map((key) => ({
@@ -1017,7 +1015,18 @@ export class PdfService {
     let y = this.drawHeader(doc,
       isPed ? "VISITA GINECOLOGICA PEDIATRICA" : "VISITA GINECOLOGICA",
       "Referto Specialistico", doctor);
-    y = this.drawPatientBlock(doc, patient, visit.dataVisita, y);
+    // Peso corporeo + BMI: mostrati nel blocco paziente (sotto "Sesso"), non in tabella.
+    const patAltezza = patient?.altezza ?? 0;
+    const pesoCorporeo = Number(gyn.pesoCorporeo) || 0;
+    const bmiGyn = patAltezza > 0 && pesoCorporeo > 0
+      ? (pesoCorporeo / Math.pow(patAltezza / 100, 2)).toFixed(1) : "-";
+    const extraRight = !isPed && pesoCorporeo > 0
+      ? [
+          { label: "Peso", value: `${pesoCorporeo} kg` },
+          ...(bmiGyn !== "-" ? [{ label: "BMI", value: bmiGyn }] : []),
+        ]
+      : [];
+    y = this.drawPatientBlock(doc, patient, visit.dataVisita, y, "Data visita", { extraRight });
 
     const partiV = gyn.partiSpontanei != null || gyn.partiCesarei != null
       ? `${gyn.parti} (${gyn.partiSpontanei ?? 0} PS, ${gyn.partiCesarei ?? 0} TC)` : String(gyn.parti);
@@ -1025,21 +1034,38 @@ export class PdfService {
       ? `${gyn.aborti} (${gyn.abortiSpontanei ?? 0} AS, ${gyn.ivg ?? 0} IVG)` : String(gyn.aborti);
 
     if (!isPed) {
-      y = this.heading(doc, y, "Dati anamnestici");
-      y = this.table(doc, y, [
-        { header: "Gravidanze (G)", w: 40 },
-        { header: "Parti (P)", w: 55 },
-        { header: "Aborti (A)", w: 55 },
-        { header: "Ultima Mestruazione", w: 30 },
-      ], [[String(gyn.gravidanze), partiV, abortiV,
-      gyn.ultimaMestruazione?.trim() ? fd(gyn.ultimaMestruazione) : "-"]], { rowH: 8 });
+      y = this.drawInquadramentoGrid(doc, y, "Inquadramento Ginecologico", [
+        {
+          header: "Datazione",
+          items: [
+            { label: "U.M.", value: gyn.ultimaMestruazione?.trim() ? fd(gyn.ultimaMestruazione) : "-" },
+          ],
+        },
+        {
+          header: "Storia Ginecologica",
+          items: [
+            { label: "Gravidanze (G)", value: String(gyn.gravidanze) },
+            { label: "Parti (P)", value: partiV },
+            { label: "Aborti (A)", value: abortiV },
+          ],
+        },
+      ]);
     } else {
-      y = this.heading(doc, y, "Dati anamnestici");
-      y = this.table(doc, y, [
-        { header: "Menarca", w: 60 },
-        { header: "Vaccinazione HPV", w: 60 },
-        { header: "Stadio Tanner (F)", w: 60 },
-      ], [[gyn.menarca ?? "-", gyn.vaccinazioneHPV ? "Si'" : "No", gyn.stadioTannerFemmina ?? "-"]], { rowH: 8 });
+      y = this.drawInquadramentoGrid(doc, y, "Inquadramento Ginecologico", [
+        {
+          header: "Sviluppo puberale",
+          items: [
+            { label: "Menarca", value: gyn.menarca ?? "-" },
+            { label: "Stadio Tanner (F)", value: gyn.stadioTannerFemmina ?? "-" },
+          ],
+        },
+        {
+          header: "Profilassi",
+          items: [
+            { label: "Vaccinazione HPV", value: gyn.vaccinazioneHPV ? "Si'" : "No" },
+          ],
+        },
+      ]);
     }
 
     const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
@@ -1138,51 +1164,11 @@ export class PdfService {
       { label: "Stile di vita", value: `${fumo} fumo, ${folico} acido folico` },
     ].filter((item) => !isInquadramentoValueEmpty(item.value));
 
-    const allBlocks = [dateInfo, historyInfo, materniInfo];
-    const hasAnyInquadramento = dateInfo.length > 0 || historyInfo.length > 0 || materniInfo.length > 0;
-
-    if (hasAnyInquadramento) {
-      y = this.heading(doc, y, "Inquadramento Ostetrico e Materno");
-      y = this.pb(doc, y, 40);
-
-      const colW = PW / 3;
-      let maxY = y;
-
-      const subHeaders = ["Datazione", "Storia Ostetrica", "Parametri Materni"];
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K100);
-      this.dc(doc, K200); doc.setLineWidth(0.2);
-
-      for (let c = 0; c < 3; c++) {
-        const cx = ML + c * colW;
-
-        this.fc(doc, K240);
-        doc.rect(cx, y, colW - 2, 6, "F");
-        doc.setFont("helvetica", "bold"); doc.setFontSize(8); this.tc(doc, K30);
-        doc.text(subHeaders[c], cx + 2, y + 4);
-
-        let cy = y + 11;
-        doc.setFontSize(8);
-
-        for (const item of allBlocks[c]) {
-          if (!item) continue;
-          doc.setFont("helvetica", "bold"); this.tc(doc, K80);
-          const lbl = san(item.label) + ": ";
-          doc.text(lbl, cx, cy);
-
-          doc.setFont("helvetica", "normal"); this.tc(doc, K0);
-          const lblWidth = doc.getTextWidth(lbl);
-          const valueX = cx + lblWidth + 1; // piccolo margine tra titolo e valore
-          const vlines = doc.splitTextToSize(san(item.value), colW - lblWidth - 4);
-          for (const line of vlines) {
-            doc.text(line, valueX, cy);
-            cy += LH;
-          }
-        }
-        maxY = Math.max(maxY, cy);
-      }
-
-      y = maxY + 2;
-    }
+    y = this.drawInquadramentoGrid(doc, y, "Inquadramento Ostetrico e Materno", [
+      { header: "Datazione", items: dateInfo },
+      { header: "Storia Ostetrica", items: historyInfo },
+      { header: "Parametri Materni", items: materniInfo },
+    ]);
 
     // ── SEZIONE 4 — Biometria fetale con barre percentile inline ─────────────
     y = this.drawBiometriaTable(

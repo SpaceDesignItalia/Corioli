@@ -22,20 +22,26 @@ export type AnamnesiMode = "singola" | "strutturata";
 /** Configurazione dell'anamnesi per un singolo tipo di visita. */
 export interface AnamnesiTypeConfig {
   mode: AnamnesiMode;
-  /** Sezioni attive, nell'ordine scelto (rilevante solo in modalità `strutturata`). */
-  campi: AnamnesiCampoKey[];
+  /**
+   * Sezioni attive, nell'ordine scelto (rilevante solo in modalità `strutturata`).
+   * Ogni voce è una chiave predefinita ([[AnamnesiCampoKey]]) o una chiave di
+   * sezione personalizzata generata (es. "custom_xxx").
+   */
+  campi: string[];
   /**
    * Etichette personalizzate per sezione (sovrascrivono il nome predefinito).
+   * Per le sezioni personalizzate è il nome stesso della sezione.
    * Chiave assente o stringa vuota ⇒ si usa l'etichetta di default.
    */
-  etichette?: Partial<Record<AnamnesiCampoKey, string>>;
+  etichette?: Record<string, string>;
 }
 
 /** Configurazione completa per medico: una voce per ciascun tipo di visita. */
 export type AnamnesiConfig = Record<AnamnesiVisitType, AnamnesiTypeConfig>;
 
 type AnamnesiCampoMeta = {
-  key: AnamnesiCampoKey;
+  /** Chiave predefinita ([[AnamnesiCampoKey]]) o chiave custom generata. */
+  key: string;
   label: string;
   placeholder: string;
   minRows: number;
@@ -104,7 +110,25 @@ export const ANAMNESI_STRUTTURATA_FIELDS: AnamnesiCampoMeta[] = [
 
 /** Tutte le chiavi di sezione nell'ordine naturale. */
 export const ALL_ANAMNESI_CAMPO_KEYS: AnamnesiCampoKey[] =
-  ANAMNESI_STRUTTURATA_FIELDS.map((f) => f.key);
+  ANAMNESI_STRUTTURATA_FIELDS.map((f) => f.key as AnamnesiCampoKey);
+
+/** Numero massimo di sezioni attive per tipo di visita (predefinite + personalizzate). */
+export const MAX_ANAMNESI_SEZIONI = 10;
+
+/** Prefisso delle chiavi delle sezioni personalizzate. */
+const CUSTOM_KEY_PREFIX = "custom_";
+
+/** True se la chiave è una sezione personalizzata (non predefinita). */
+export function isCustomAnamnesiKey(key: string): boolean {
+  return !ALL_ANAMNESI_CAMPO_KEYS.includes(key as AnamnesiCampoKey);
+}
+
+/** Genera una chiave univoca per una nuova sezione personalizzata. */
+export function genAnamnesiCustomKey(): string {
+  return `${CUSTOM_KEY_PREFIX}${Date.now().toString(36)}${Math.random()
+    .toString(36)
+    .slice(2, 6)}`;
+}
 
 export const ANAMNESI_VISIT_TYPES: AnamnesiVisitType[] = [
   "ginecologica",
@@ -118,38 +142,28 @@ export const ANAMNESI_VISIT_TYPE_LABELS: Record<AnamnesiVisitType, string> = {
   ostetrica: "Visita Ostetrica",
 };
 
-/** Sezioni attive di default per ciascun tipo di visita. */
+/** Sezioni attive di default per ciascun tipo di visita: le 3 principali. */
 const DEFAULT_CAMPI_BY_TYPE: Record<AnamnesiVisitType, AnamnesiCampoKey[]> = {
-  ginecologica: [
-    "familiare",
-    "fisiologica",
-    "patologica",
-    "ginecologica",
-    "farmacologica",
-    "allergica",
-  ],
-  ginecologica_pediatrica: [
-    "familiare",
-    "fisiologica",
-    "patologica",
-    "farmacologica",
-    "allergica",
-  ],
-  ostetrica: [
-    "familiare",
-    "fisiologica",
-    "patologica",
-    "farmacologica",
-    "allergica",
-    "partner",
-  ],
+  ginecologica: ["familiare", "fisiologica", "patologica"],
+  ginecologica_pediatrica: ["familiare", "fisiologica", "patologica"],
+  ostetrica: ["familiare", "fisiologica", "patologica"],
 };
 
-/** Metadati di una sezione dalla chiave. */
+/** Metadati di una sezione dalla chiave (predefinita o personalizzata). */
 export function getAnamnesiCampoMeta(
-  key: AnamnesiCampoKey,
+  key: string,
 ): AnamnesiCampoMeta | undefined {
-  return ANAMNESI_STRUTTURATA_FIELDS.find((f) => f.key === key);
+  const predef = ANAMNESI_STRUTTURATA_FIELDS.find((f) => f.key === key);
+  if (predef) return predef;
+  if (!key) return undefined;
+  // Sezione personalizzata: metadati sintetici (etichetta risolta a parte).
+  return {
+    key,
+    label: "Sezione",
+    placeholder: "",
+    minRows: 3,
+    templateSection: key,
+  };
 }
 
 /** Lunghezza massima di un'etichetta personalizzata. */
@@ -167,50 +181,60 @@ export function sanitizeAnamnesiEtichetta(value: string): string {
  * presente, altrimenti il nome predefinito; fallback finale alla chiave.
  */
 export function resolveAnamnesiLabel(
-  key: AnamnesiCampoKey,
-  etichette?: Partial<Record<AnamnesiCampoKey, string>> | null,
+  key: string,
+  etichette?: Record<string, string> | null,
 ): string {
   const custom = etichette?.[key]?.trim();
-  return custom || getAnamnesiCampoMeta(key)?.label || key;
+  if (custom) return custom;
+  const predef = ANAMNESI_STRUTTURATA_FIELDS.find((f) => f.key === key);
+  return predef?.label || "Sezione";
 }
 
 /** Etichette personalizzate configurate per un tipo di visita (vuoto se nessuna). */
 export function getAnamnesiEtichette(
   config: AnamnesiConfig,
   visitType: string | undefined,
-): Partial<Record<AnamnesiCampoKey, string>> {
+): Record<string, string> {
   return typeConfig(config, visitType).etichette ?? {};
 }
 
-/** Configurazione di default (tutte le sezioni predefinite, nella modalità data). */
-export function createDefaultAnamnesiConfig(
-  mode: AnamnesiMode = "strutturata",
-): AnamnesiConfig {
-  return {
-    ginecologica: { mode, campi: [...DEFAULT_CAMPI_BY_TYPE.ginecologica] },
-    ginecologica_pediatrica: {
-      mode,
-      campi: [...DEFAULT_CAMPI_BY_TYPE.ginecologica_pediatrica],
-    },
-    ostetrica: { mode, campi: [...DEFAULT_CAMPI_BY_TYPE.ostetrica] },
-  };
+/** Etichette di default (nomi reali) per le sezioni date — così nel config non
+ *  compaiono come placeholder ma come testo già scritto. */
+function defaultEtichette(campi: AnamnesiCampoKey[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of campi) {
+    const meta = ANAMNESI_STRUTTURATA_FIELDS.find((f) => f.key === k);
+    if (meta) out[k] = meta.label;
+  }
+  return out;
 }
 
-function isValidCampo(x: unknown): x is AnamnesiCampoKey {
-  return (
-    typeof x === "string" &&
-    ALL_ANAMNESI_CAMPO_KEYS.includes(x as AnamnesiCampoKey)
-  );
+/** Configurazione di default: 3 sezioni principali, nomi reali pre-compilati.
+ *  Modalità di default: "singola" (campo unico). */
+export function createDefaultAnamnesiConfig(
+  mode: AnamnesiMode = "singola",
+): AnamnesiConfig {
+  const build = (campi: AnamnesiCampoKey[]): AnamnesiTypeConfig => ({
+    mode,
+    campi: [...campi],
+    etichette: defaultEtichette(campi),
+  });
+  return {
+    ginecologica: build(DEFAULT_CAMPI_BY_TYPE.ginecologica),
+    ginecologica_pediatrica: build(DEFAULT_CAMPI_BY_TYPE.ginecologica_pediatrica),
+    ostetrica: build(DEFAULT_CAMPI_BY_TYPE.ostetrica),
+  };
 }
 
 /** Estrae/sanifica le etichette personalizzate; scarta chiavi/valori non validi. */
 function parseEtichette(
   raw: unknown,
-): Partial<Record<AnamnesiCampoKey, string>> | undefined {
+): Record<string, string> | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const out: Partial<Record<AnamnesiCampoKey, string>> = {};
+  const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (!isValidCampo(k) || typeof v !== "string") continue;
+    // Accetta sia le chiavi predefinite sia quelle personalizzate (non vuote).
+    if (!k || typeof v !== "string") continue;
     const label = sanitizeAnamnesiEtichetta(v).trim();
     if (label) out[k] = label;
   }
@@ -218,16 +242,17 @@ function parseEtichette(
 }
 
 /**
- * Legge/normalizza la configurazione dalle preferenze, con migrazione dalla
- * vecchia preferenza booleana `anamnesiStrutturataEnabled` (false → campo unico).
+ * Legge/normalizza la configurazione dalle preferenze. Default: campo unico
+ * ("singola"); solo chi aveva esplicitamente attivato la vecchia preferenza
+ * booleana `anamnesiStrutturataEnabled === true` mantiene "strutturata".
  * Garantisce sempre una voce valida per ciascun tipo di visita.
  */
 export function parseAnamnesiConfig(
   prefs?: Record<string, unknown> | null,
 ): AnamnesiConfig {
-  const legacyDisabled = prefs?.anamnesiStrutturataEnabled === false;
+  const legacyEnabled = prefs?.anamnesiStrutturataEnabled === true;
   const base = createDefaultAnamnesiConfig(
-    legacyDisabled ? "singola" : "strutturata",
+    legacyEnabled ? "strutturata" : "singola",
   );
   const raw = prefs?.anamnesiConfig as
     | Partial<Record<AnamnesiVisitType, Partial<AnamnesiTypeConfig>>>
@@ -241,9 +266,13 @@ export function parseAnamnesiConfig(
       r?.mode === "singola" || r?.mode === "strutturata"
         ? r.mode
         : base[t].mode;
-    const campi = Array.isArray(r?.campi)
-      ? (r!.campi!.filter(isValidCampo) as AnamnesiCampoKey[])
+    // Accetta chiavi predefinite e personalizzate; dedup + tetto a MAX_ANAMNESI_SEZIONI.
+    const rawCampi = Array.isArray(r?.campi)
+      ? r!.campi!.filter(
+          (k): k is string => typeof k === "string" && k.trim().length > 0,
+        )
       : base[t].campi;
+    const campi = Array.from(new Set(rawCampi)).slice(0, MAX_ANAMNESI_SEZIONI);
     const etichette = parseEtichette(r?.etichette);
     out[t] = {
       mode,
@@ -316,12 +345,14 @@ export function createEmptyAnamnesiStrutturata(): AnamnesiStrutturata {
   };
 }
 
-/** True se almeno un campo dell'anamnesi strutturata è valorizzato. */
+/** True se almeno un campo dell'anamnesi strutturata è valorizzato (incl. sezioni custom). */
 export function hasAnamnesiStrutturataContent(
   as?: AnamnesiStrutturata | null,
 ): boolean {
   if (!as) return false;
-  return ALL_ANAMNESI_CAMPO_KEYS.some((key) => (as[key] ?? "").trim() !== "");
+  return Object.values(as).some(
+    (v) => typeof v === "string" && v.trim() !== "",
+  );
 }
 
 /**
@@ -333,8 +364,8 @@ export function cleanAnamnesiStrutturata(
 ): AnamnesiStrutturata | undefined {
   if (!hasAnamnesiStrutturataContent(as)) return undefined;
   const out: AnamnesiStrutturata = {};
-  for (const key of ALL_ANAMNESI_CAMPO_KEYS) {
-    const val = (as?.[key] ?? "").trim();
+  for (const [key, raw] of Object.entries(as!)) {
+    const val = (raw ?? "").trim();
     if (val) out[key] = val;
   }
   return out;
@@ -348,20 +379,30 @@ export function cleanAnamnesiStrutturata(
  */
 export function formatAnamnesiStrutturataText(
   as?: AnamnesiStrutturata | null,
-  order?: AnamnesiCampoKey[],
-  etichette?: Partial<Record<AnamnesiCampoKey, string>> | null,
+  order?: string[],
+  etichette?: Record<string, string> | null,
 ): string {
   if (!as) return "";
-  const seen = new Set<AnamnesiCampoKey>();
-  const ordered: AnamnesiCampoKey[] = [];
+  const seen = new Set<string>();
+  const ordered: string[] = [];
   for (const k of order ?? []) {
-    if (isValidCampo(k) && !seen.has(k)) {
+    if (k && !seen.has(k)) {
       ordered.push(k);
       seen.add(k);
     }
   }
   for (const k of ALL_ANAMNESI_CAMPO_KEYS) {
-    if (!seen.has(k)) ordered.push(k);
+    if (!seen.has(k)) {
+      ordered.push(k);
+      seen.add(k);
+    }
+  }
+  // Sezioni personalizzate con dato ma non incluse nell'ordine: in coda (no perdita dati).
+  for (const k of Object.keys(as)) {
+    if (!seen.has(k)) {
+      ordered.push(k);
+      seen.add(k);
+    }
   }
   return ordered
     .map((key) => {

@@ -47,7 +47,6 @@ import {
 import { PdfService } from "../../services/PdfService";
 import { Patient, Visit, MedicalTemplate } from "../../types/Storage";
 import {
-  AnamnesiCampoKey,
   createDefaultAnamnesiConfig,
   parseAnamnesiConfig,
   getCampiAttivi,
@@ -271,6 +270,7 @@ const createDefaultGinecologiaData = () => ({
   aborti: 0,
   abortiSpontanei: 0,
   ivg: 0,
+  pesoCorporeo: 0,
   menarca: "",
   stadioTannerFemmina: "",
   ultimaMestruazione: "",
@@ -426,14 +426,13 @@ export default function AddVisit() {
   const [isFlattenAnamnesiModalOpen, setIsFlattenAnamnesiModalOpen] =
     useState(false);
   const [flattenAnamnesiOptions, setFlattenAnamnesiOptions] = useState<
-    { key: AnamnesiCampoKey; label: string }[]
+    { key: string; label: string }[]
   >([]);
-  const [flattenAnamnesiSelected, setFlattenAnamnesiSelected] = useState<
-    AnamnesiCampoKey | ""
-  >("");
+  const [flattenAnamnesiSelected, setFlattenAnamnesiSelected] =
+    useState<string>("");
   const [flattenAnamnesiSource, setFlattenAnamnesiSource] = useState("");
   const flattenAnamnesiResolverRef = useRef<
-    ((value: AnamnesiCampoKey | null) => void) | null
+    ((value: string | null) => void) | null
   >(null);
   const [
     isIncludeFetalGrowthChartModalOpen,
@@ -508,6 +507,10 @@ export default function AddVisit() {
   /** Altezza da salvare in scheda paziente (banner BMI). */
   const [altezzaPendingInput, setAltezzaPendingInput] = useState("");
   const [savingAltezza, setSavingAltezza] = useState(false);
+  /** Testo libero peso corporeo (ginecologia) mentre il campo ha focus. */
+  const [pesoCorporeoDraft, setPesoCorporeoDraft] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     const loadData = async () => {
@@ -525,6 +528,7 @@ export default function AddVisit() {
       setAnamnesiStrutturata(createEmptyAnamnesiStrutturata());
       setFlussimetriaOmbelicaleDraft({ pi: null, ri: null });
       setPesoInputDraft({ pre: null, attuale: null });
+      setPesoCorporeoDraft(null);
       setAltezzaPendingInput("");
       setSavingAltezza(false);
 
@@ -873,6 +877,15 @@ export default function AddVisit() {
           showToast(message, "error");
           return false;
         }
+        if (
+          altezzaPendingInput.trim() &&
+          (!patient.altezza || patient.altezza <= 0)
+        ) {
+          const valid = parseOptionalHeight(altezzaPendingInput.trim());
+          if (valid != null) {
+            await persistPatientAltezzaIfNeeded(valid);
+          }
+        }
       }
 
       if (visitData.tipo === "ostetrica") {
@@ -948,6 +961,13 @@ export default function AddVisit() {
         visitData.tipo === "ostetrica"
           ? computeFlussimetriaCalcoliSnapshot(ostetriciaForSave)
           : null;
+      const ginecologiaForSave =
+        pesoCorporeoDraft !== null
+          ? {
+              ...ginecologiaData,
+              pesoCorporeo: parseWeightFieldBlur(pesoCorporeoDraft),
+            }
+          : ginecologiaData;
 
       // Modalità strutturata: salva i sotto-campi (puliti) e lascia intatta
       // `prestazione` (per non perdere dati se si torna alla modalità singola).
@@ -971,7 +991,7 @@ export default function AddVisit() {
         ginecologia:
           visitData.tipo === "ginecologica" ||
           visitData.tipo === "ginecologica_pediatrica"
-            ? ginecologiaData
+            ? ginecologiaForSave
             : undefined,
         ostetricia:
           visitData.tipo === "ostetrica"
@@ -1331,9 +1351,9 @@ export default function AddVisit() {
   };
 
   const askConfirmFlattenSingleToMulti = (
-    campi: { key: AnamnesiCampoKey; label: string }[],
+    campi: { key: string; label: string }[],
     sourceText: string,
-  ): Promise<AnamnesiCampoKey | null> => {
+  ): Promise<string | null> => {
     setFlattenAnamnesiOptions(campi);
     setFlattenAnamnesiSelected(campi[0]?.key ?? "");
     setFlattenAnamnesiSource(sourceText);
@@ -1344,7 +1364,7 @@ export default function AddVisit() {
   };
 
   /** `null` = distribuisci manualmente (nessun campo precompilato). */
-  const resolveFlattenAnamnesi = (value: AnamnesiCampoKey | null) => {
+  const resolveFlattenAnamnesi = (value: string | null) => {
     setIsFlattenAnamnesiModalOpen(false);
     flattenAnamnesiResolverRef.current?.(value);
     flattenAnamnesiResolverRef.current = null;
@@ -1523,14 +1543,14 @@ export default function AddVisit() {
   };
 
   const handleAnamnesiStrutturataChange = (
-    field: AnamnesiCampoKey,
+    field: string,
     value: string,
   ) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
     setAnamnesiStrutturata((prev) => ({ ...prev, [field]: value }));
   };
 
-  const applyAnamnesiTemplate = (field: AnamnesiCampoKey, text: string) => {
+  const applyAnamnesiTemplate = (field: string, text: string) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
     setAnamnesiStrutturata((prev) => ({
       ...prev,
@@ -1614,6 +1634,26 @@ export default function AddVisit() {
     setOstetriciaData((prev) => ({
       ...prev,
       [field]: parseWeightFieldBlur(raw),
+    }));
+  };
+
+  const liveGinecologiaWeight = (raw: string) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    const live = parseWeightFieldLive(raw);
+    if (live === "incomplete") {
+      if (raw === "" || raw === ".") {
+        setGinecologiaData((prev) => ({ ...prev, pesoCorporeo: 0 }));
+      }
+      return;
+    }
+    setGinecologiaData((prev) => ({ ...prev, pesoCorporeo: live }));
+  };
+
+  const commitGinecologiaWeight = (raw: string) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setGinecologiaData((prev) => ({
+      ...prev,
+      pesoCorporeo: parseWeightFieldBlur(raw),
     }));
   };
 
@@ -1899,7 +1939,7 @@ export default function AddVisit() {
       {useStructuredAnamnesi ? (
         <div className="space-y-3">
           {campiAnamnesiAttivi.map(
-            ({ key, label, placeholder, minRows, optional, templateSection }) => {
+            ({ key, label, placeholder, minRows, optional, templateSection }, idx) => {
               const fieldTemplates = allTemplates.filter(
                 (t) =>
                   t.category === templateCategory &&
@@ -1909,7 +1949,7 @@ export default function AddVisit() {
                 <div key={key} className="space-y-1">
                   <div className="flex justify-between items-end">
                     <label className="text-xs font-semibold text-gray-500">
-                      {label}
+                      {`1.${idx + 1} ${label}`}
                       {optional ? " (facoltativa)" : ""}
                     </label>
                     {fieldTemplates.length > 0 && (
@@ -2303,6 +2343,113 @@ export default function AddVisit() {
                           classNames={{ input: "text-center" }}
                         />
                       </div>
+                    </div>
+
+                    <Divider className="my-2" />
+
+                    {/* Peso corporeo + BMI (stessa UI dell'ostetrica) */}
+                    {patient != null &&
+                      getAltezzaCmForBmi(patient) == null && (
+                        <div className="mb-3 rounded-xl border border-dashed border-primary-200 bg-gradient-to-r from-primary-50/70 via-white to-primary-50/40 px-3 py-2.5">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary">
+                              <Ruler size={14} />
+                            </div>
+                            <p className="text-xs font-semibold text-primary-800">
+                              Inserisci l&apos;altezza (cm) per calcolare il BMI
+                            </p>
+                          </div>
+                          <div className="flex w-full flex-col gap-2">
+                            <Input
+                              aria-label="Altezza in cm"
+                              type="text"
+                              inputMode="numeric"
+                              size="sm"
+                              variant="bordered"
+                              placeholder="Es. 165"
+                              className="w-full"
+                              classNames={{ base: "w-full" }}
+                              value={altezzaPendingInput}
+                              onValueChange={(v) => {
+                                if (!isValidHeightInputDraft(v)) return;
+                                setAltezzaPendingInput(v);
+                              }}
+                            />
+                            <Button
+                              size="sm"
+                              color="primary"
+                              className="corioli-cta w-full"
+                              isLoading={savingAltezza}
+                              onPress={() => void handleSaveAltezza()}
+                            >
+                              Salva
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                    <div className="flex flex-col sm:flex-row items-end gap-3 w-full">
+                      <Input
+                        label="Peso corporeo (kg)"
+                        type="text"
+                        inputMode="decimal"
+                        size="sm"
+                        variant="bordered"
+                        labelPlacement="outside"
+                        value={
+                          pesoCorporeoDraft ??
+                          (ginecologiaData.pesoCorporeo === 0
+                            ? ""
+                            : ginecologiaData.pesoCorporeo.toString())
+                        }
+                        onFocus={() => {
+                          setPesoCorporeoDraft(
+                            ginecologiaData.pesoCorporeo > 0
+                              ? ginecologiaData.pesoCorporeo.toString()
+                              : "",
+                          );
+                        }}
+                        onBlur={() => {
+                          if (pesoCorporeoDraft !== null) {
+                            commitGinecologiaWeight(pesoCorporeoDraft);
+                          }
+                          setPesoCorporeoDraft(null);
+                        }}
+                        onValueChange={(v) => {
+                          if (!isValidWeightInputDraft(v)) return;
+                          setPesoCorporeoDraft(v);
+                          liveGinecologiaWeight(v);
+                        }}
+                        placeholder="Es. 65"
+                        className="flex-1"
+                        classNames={{ label: "pb-1" }}
+                      />
+
+                      {/* Indicatore BMI (compatto e discreto) — stesso stile dell'ostetrica */}
+                      {ginecologiaData.pesoCorporeo > 0 &&
+                        (() => {
+                          const altezzaCm = getAltezzaCmForBmi(patient);
+                          const bmi =
+                            altezzaCm != null
+                              ? computeBmi(
+                                  ginecologiaData.pesoCorporeo,
+                                  altezzaCm,
+                                )
+                              : null;
+                          if (bmi == null) return null;
+                          return (
+                            <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
+                              <div
+                                className="flex flex-col items-center gap-0 rounded-md border px-2 py-1 text-primary-600 bg-primary-50/80 border-primary-200"
+                                title="Indice di massa corporea"
+                              >
+                                <div className="flex items-center gap-1 text-xs font-semibold">
+                                  <span>BMI {bmi}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
                     </div>
                   </CardBody>
                 </Card>
@@ -3907,7 +4054,7 @@ export default function AddVisit() {
               }
               onSelectionChange={(keys) =>
                 setFlattenAnamnesiSelected(
-                  (Array.from(keys)[0] as AnamnesiCampoKey) ?? "",
+                  (Array.from(keys)[0] as string) ?? "",
                 )
               }
             >

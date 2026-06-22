@@ -15,29 +15,19 @@ import { normalCDF } from "./fetalGrowthCentiles";
 export type BiometryParam = "bpdMm" | "hcMm" | "acMm" | "flMm";
 
 // ─── Medie biometriche ────────────────────────────────────────────────────────
-// BPD/AC/FL usano regressione cubica Hadlock; HC usa lookup p50 interpolata.
+// BPD/HC/AC/FL usano tutte regressione cubica Hadlock (p50 in mm).
 
 const BPD_MEAN = (ga: number): number =>
   -11.41647 + 1.7995 * ga + 0.085263 * ga * ga + -0.0016004 * ga * ga * ga;
 
-const HC_P50_TABLE: Record<number, number> = {
-  14: 103, 15: 113, 16: 124, 17: 135, 18: 146, 19: 158,
-  20: 181, 21: 191, 22: 201, 23: 211, 24: 221, 25: 230,
-  26: 240, 27: 249, 28: 258, 29: 263, 30: 275, 31: 283,
-  32: 291, 33: 298, 34: 305, 35: 311, 36: 317, 37: 322,
-  38: 326, 39: 330, 40: 333, 41: 335, 42: 337,
-};
-
-const HC_MEAN = (ga: number): number => {
-  const w0 = Math.floor(ga);
-  const w1 = w0 + 1;
-  const t = ga - w0;
-  const v0 = HC_P50_TABLE[w0];
-  const v1 = HC_P50_TABLE[w1];
-  if (v0 == null) return 0;
-  if (v1 == null) return v0;
-  return v0 + t * (v1 - v0);
-};
+// HC: regressione cubica (mm), stessa forma di BPD/AC/FL. Coefficienti = fit ai
+// p50 Hadlock lisci [99,124,150,…,343] su 14→40w (errore max 0.6mm), curva
+// monotona con incrementi che calano dolcemente (~13→3 mm/sett).
+// Sostituisce la precedente lookup table battuta a mano, che aveva incrementi
+// irregolari (es. 19→20w +23mm contro ~11 dei vicini) e generava un'"onda"
+// visibile a inizio curva nel grafico PDF; inoltre era ~10mm bassa a 32w.
+const HC_MEAN = (ga: number): number =>
+  -80.49129 + 11.75369 * ga + 0.130135 * ga * ga + -0.0039871 * ga * ga * ga;
 
 const AC_MEAN = (ga: number): number =>
   -63.21499 + 8.44699 * ga + 0.170025 * ga * ga + -0.0030702 * ga * ga * ga;
@@ -52,7 +42,7 @@ const FL_MEAN = (ga: number): number =>
 //
 //   Param  SD@14w  SD@40w   SD@32w    → verificato vs percentile di riferimento
 //   BPD      2.5     4.0    ~3.55mm   → BPD 84mm = 77° (rif: 78°) ✓
-//   HC       6.0     8.0    ~7.40mm   → usata con lookup p50 HC
+//   HC       6.0    11.0    ~9.50mm   → HC 311mm = 89° (rif: 89°) ✓
 //   AC       6.0    16.0   ~12.98mm   → AC 292mm = 78° (rif: 78°) ✓
 //   FL       1.5     4.0    ~3.25mm   → FL 62mm  = 61° (rif: 61°) ✓
 
@@ -62,7 +52,7 @@ function hadlockSd(ga: number, sd14: number, sd40: number): number {
 }
 
 const BPD_SD = (ga: number): number => hadlockSd(ga, 2.5, 4.0);
-const HC_SD  = (ga: number): number => hadlockSd(ga, 6.0, 8.0);
+const HC_SD  = (ga: number): number => hadlockSd(ga, 6.0, 11.0);
 const AC_SD  = (ga: number): number => hadlockSd(ga, 6.0, 16.0);
 const FL_SD  = (ga: number): number => hadlockSd(ga, 1.5, 4.0);
 
