@@ -2397,14 +2397,18 @@ const SettingsScreen = () => {
                     <TableCell>
                       <Chip size="sm" variant="flat" className="capitalize">
                         {template.section === "esameObiettivo"
-                          ? "Esame Ob."
-                          : template.category === "ricette"
-                            ? "Farmaci"
-                            : template.category === "terapie"
-                              ? "Terapia"
-                              : template.section === "generale" && template.category === "certificato"
-                                ? "Testo"
-                                : template.section}
+                          ? "Visita / Eco Office"
+                          : template.section === "prestazione"
+                            ? "Anamnesi"
+                            : template.section === "conclusioni"
+                              ? "Conclusioni"
+                              : template.category === "ricette"
+                                ? "Farmaci"
+                                : template.category === "terapie"
+                                  ? "Terapia"
+                                  : template.section === "generale" && template.category === "certificato"
+                                    ? "Testo"
+                                    : template.section}
                       </Chip>
                     </TableCell>
                     <TableCell>
