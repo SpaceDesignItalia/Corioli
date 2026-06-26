@@ -1,5 +1,6 @@
-import { StorageService, Patient, Visit, Doctor, Document, AppData, MedicalTemplate, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
+import { StorageService, Patient, Visit, VisitRevision, Doctor, Document, AppData, MedicalTemplate, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
 import { MedicalTemplates } from '../data/medicalTemplates';
+import { computeVisitChanges } from '../utils/visitHistory';
 
 declare global {
   interface Window {
@@ -355,15 +356,53 @@ class LocalStorageFallbackService implements StorageService {
       throw new Error('Visita non trovata');
     }
 
-    visits[index] = {
-      ...visits[index],
+    const previousVisit = visits[index];
+    const updatedVisit: Visit = {
+      ...previousVisit,
       ...visitData,
       id,
       updatedAt: this.getCurrentTimestamp()
     };
 
+    // Registra la cronologia in uno store dedicato e indipendente:
+    // data/ora + campi modificati con valore precedente. Non viene mai cancellata.
+    const changes = computeVisitChanges(previousVisit, updatedVisit);
+    if (changes.length > 0) {
+      const patient = await this.getPatientById(updatedVisit.patientId);
+      const revision: VisitRevision = {
+        id: this.generateId(),
+        visitId: id,
+        patientId: updatedVisit.patientId,
+        patientName: patient
+          ? `${patient.cognome} ${patient.nome}`.trim()
+          : undefined,
+        visitDate: updatedVisit.dataVisita,
+        visitType: updatedVisit.tipo,
+        modifiedAt: updatedVisit.updatedAt,
+        changes,
+      };
+      await this.appendVisitRevision(revision);
+    }
+
+    visits[index] = updatedVisit;
+
     await this.saveToStorage('visits', visits);
     return visits[index];
+  }
+
+  // Cronologia modifiche visite (store dedicato, mai cancellato)
+  async getVisitRevisions(): Promise<VisitRevision[]> {
+    const list = await this.getFromStorage<VisitRevision>('visit_revisions');
+    return list.sort(
+      (a, b) =>
+        new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime(),
+    );
+  }
+
+  private async appendVisitRevision(revision: VisitRevision): Promise<void> {
+    const list = await this.getFromStorage<VisitRevision>('visit_revisions');
+    list.push(revision);
+    await this.saveToStorage('visit_revisions', list);
   }
 
   async deleteVisit(id: string): Promise<void> {
@@ -620,9 +659,10 @@ class LocalStorageFallbackService implements StorageService {
 
   // Backup/Export
   async exportData(): Promise<AppData> {
-    const [patients, visits, richiesteEsami, certificatiPaziente, ricettePaziente, doctor, documents, templates] = await Promise.all([
+    const [patients, visits, visitRevisions, richiesteEsami, certificatiPaziente, ricettePaziente, doctor, documents, templates] = await Promise.all([
       this.getPatients(),
       this.getVisits(),
+      this.getFromStorage<VisitRevision>('visit_revisions'),
       this.getFromStorage<RichiestaEsameComplementare>('richieste_esami'),
       this.getFromStorage<CertificatoPaziente>('certificati_paziente'),
       this.getFromStorage<RicettaPaziente>('ricette_paziente'),
@@ -634,6 +674,7 @@ class LocalStorageFallbackService implements StorageService {
     return {
       patients,
       visits,
+      visitRevisions,
       richiesteEsami,
       certificatiPaziente,
       ricettePaziente,
@@ -653,9 +694,29 @@ class LocalStorageFallbackService implements StorageService {
     };
   }
 
+  /** Unisce le cronologie in ingresso con quelle presenti, senza duplicati e senza cancellare nulla. */
+  private async mergeVisitRevisions(incoming?: VisitRevision[]): Promise<void> {
+    if (!incoming || incoming.length === 0) return;
+    const existing = await this.getFromStorage<VisitRevision>('visit_revisions');
+    const existingIds = new Set(existing.map((r) => r.id));
+    let changed = false;
+    for (const rev of incoming) {
+      if (rev && rev.id && !existingIds.has(rev.id)) {
+        existing.push(rev);
+        existingIds.add(rev.id);
+        changed = true;
+      }
+    }
+    if (changed) {
+      await this.saveToStorage('visit_revisions', existing);
+    }
+  }
+
   async importData(data: AppData, mode: BackupImportMode = 'replace'): Promise<void> {
     if (mode === 'replace') {
+      // clearAllData preserva la cronologia esistente; uniamo poi quella del backup.
       await this.clearAllData();
+      await this.mergeVisitRevisions(data.visitRevisions);
 
       if (data.patients && data.patients.length > 0) {
         await this.saveToStorage('patients', data.patients);
@@ -833,6 +894,8 @@ class LocalStorageFallbackService implements StorageService {
       this.saveToStorage('templates', mergedTemplates),
     ]);
 
+    await this.mergeVisitRevisions(data.visitRevisions);
+
     if (data.doctor) {
       const incomingDoctor = data.doctor;
 
@@ -898,6 +961,9 @@ class LocalStorageFallbackService implements StorageService {
   }
 
   async clearAllData(): Promise<void> {
+    // La cronologia delle modifiche non va mai cancellata, nemmeno col reset totale.
+    const preservedRevisions = await this.getFromStorage<VisitRevision>('visit_revisions');
+
     if (useSqlite()) {
       await window.electronAPI!.kvClearAppDottori();
     } else {
@@ -911,6 +977,11 @@ class LocalStorageFallbackService implements StorageService {
       localStorage.removeItem(this.getStorageKey('templates'));
       localStorage.removeItem(this.getStorageKey('preferences'));
       localStorage.removeItem(this.getStorageKey('recent_patient_searches'));
+    }
+
+    // Ripristina la cronologia preservata (kvClearAppDottori cancella anche questa chiave).
+    if (preservedRevisions.length > 0) {
+      await this.saveToStorage('visit_revisions', preservedRevisions);
     }
   }
 }

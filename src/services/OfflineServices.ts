@@ -1,5 +1,5 @@
 import { storageService } from './StorageServiceFallback';
-import { Patient, Visit, Doctor, Document, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
+import { Patient, Visit, VisitRevision, Doctor, Document, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
 
 // Servizio per gestire i pazienti offline
 export class PatientService {
@@ -89,6 +89,11 @@ export class VisitService {
     return visits.filter(visit =>
       visit.dataVisita >= startDate && visit.dataVisita <= endDate
     );
+  }
+
+  /** Cronologia di tutte le modifiche alle visite (store dedicato, mai cancellato). */
+  static async getAllRevisions(): Promise<VisitRevision[]> {
+    return await storageService.getVisitRevisions();
   }
 }
 

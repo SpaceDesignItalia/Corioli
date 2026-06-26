@@ -94,6 +94,42 @@ export interface RicettaPaziente {
   updatedAt: string;
 }
 
+/** Singolo campo modificato in una revisione della visita. I valori sono già formattati per la lettura. */
+export interface VisitFieldChange {
+  /** Chiave tecnica del campo (eventualmente con prefisso sezione, es. "ostetricia.pesoAttuale"). */
+  field: string;
+  /** Etichetta leggibile in italiano (es. "Ostetricia · Peso attuale"). */
+  label: string;
+  /** Valore precedente, formattato come stringa per la visualizzazione. */
+  previousValue: string;
+  /** Nuovo valore, formattato come stringa per la visualizzazione. */
+  newValue: string;
+}
+
+/**
+ * Una voce della cronologia delle modifiche di una visita.
+ * Viene salvata in uno store dedicato e indipendente dalla visita/paziente:
+ * non deve mai essere eliminata (né eliminando il paziente, né la visita, né col reset totale).
+ * Per questo include uno snapshot dei dati di contesto (nome paziente, data visita...).
+ */
+export interface VisitRevision {
+  id: string;
+  /** Id della visita a cui si riferisce la modifica. */
+  visitId: string;
+  /** Id del paziente. */
+  patientId: string;
+  /** Nome del paziente al momento della modifica (resta leggibile anche se il paziente viene eliminato). */
+  patientName?: string;
+  /** Data della visita al momento della modifica (snapshot ISO). */
+  visitDate: string;
+  /** Tipo di visita al momento della modifica. */
+  visitType?: string;
+  /** Data e ora in cui la modifica è stata salvata (ISO). */
+  modifiedAt: string;
+  /** Elenco dei campi modificati con il relativo valore precedente. */
+  changes: VisitFieldChange[];
+}
+
 export interface Visit {
   id: string;
   patientId: string;
@@ -298,6 +334,8 @@ export interface MedicalTemplate {
 export interface AppData {
   patients: Patient[];
   visits: Visit[];
+  /** Cronologia delle modifiche delle visite (store indipendente, non viene mai cancellata). */
+  visitRevisions?: VisitRevision[];
   richiesteEsami?: RichiestaEsameComplementare[];
   certificatiPaziente?: CertificatoPaziente[];
   ricettePaziente?: RicettaPaziente[];
@@ -325,6 +363,9 @@ export interface StorageService {
   addVisit(visit: Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>): Promise<Visit>;
   updateVisit(id: string, visit: Partial<Visit>): Promise<Visit>;
   deleteVisit(id: string): Promise<void>;
+
+  /** Cronologia modifiche visite (store dedicato, mai cancellato dalle eliminazioni o dal reset). */
+  getVisitRevisions(): Promise<VisitRevision[]>;
 
   // Richieste esami complementari (entità separata dalla visita)
   getRichiesteEsamiByPatientId(patientId: string): Promise<RichiestaEsameComplementare[]>;

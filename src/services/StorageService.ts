@@ -1,8 +1,9 @@
-import { StorageService, Patient, Visit, Doctor, AppData, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente } from '../types/Storage';
+import { StorageService, Patient, Visit, VisitRevision, Doctor, AppData, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente } from '../types/Storage';
+import { computeVisitChanges } from '../utils/visitHistory';
 
 class LocalStorageService implements StorageService {
   private dbName = 'AppDottoriDB';
-  private version = 3;
+  private version = 4;
   private db: IDBDatabase | null = null;
 
   private async initDB(): Promise<IDBDatabase> {
@@ -55,6 +56,13 @@ class LocalStorageService implements StorageService {
         if (!db.objectStoreNames.contains('certificati_paziente')) {
           const certStore = db.createObjectStore('certificati_paziente', { keyPath: 'id' });
           certStore.createIndex('patientId', 'patientId');
+        }
+
+        // Store per la cronologia modifiche visite (indipendente: non viene mai cancellato)
+        if (!db.objectStoreNames.contains('visit_revisions')) {
+          const revStore = db.createObjectStore('visit_revisions', { keyPath: 'id' });
+          revStore.createIndex('visitId', 'visitId');
+          revStore.createIndex('patientId', 'patientId');
         }
       };
     });
@@ -431,6 +439,22 @@ class LocalStorageService implements StorageService {
       updatedAt: this.getCurrentTimestamp()
     };
 
+    const changes = computeVisitChanges(existingVisit, updatedVisit);
+    if (changes.length > 0) {
+      const patient = await this.getPatientById(updatedVisit.patientId);
+      const revision: VisitRevision = {
+        id: this.generateId(),
+        visitId: id,
+        patientId: updatedVisit.patientId,
+        patientName: patient ? `${patient.cognome} ${patient.nome}`.trim() : undefined,
+        visitDate: updatedVisit.dataVisita,
+        visitType: updatedVisit.tipo,
+        modifiedAt: updatedVisit.updatedAt,
+        changes,
+      };
+      await this.appendVisitRevision(revision);
+    }
+
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(['visits'], 'readwrite');
       const store = transaction.objectStore('visits');
@@ -448,6 +472,35 @@ class LocalStorageService implements StorageService {
       const store = transaction.objectStore('visits');
       const request = store.delete(id);
 
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  // Cronologia modifiche visite (store dedicato, mai cancellato)
+  async getVisitRevisions(): Promise<VisitRevision[]> {
+    const db = await this.initDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['visit_revisions'], 'readonly');
+      const store = transaction.objectStore('visit_revisions');
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const list = (request.result || []).sort(
+          (a: VisitRevision, b: VisitRevision) =>
+            new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime(),
+        );
+        resolve(list);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private async appendVisitRevision(revision: VisitRevision): Promise<void> {
+    const db = await this.initDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['visit_revisions'], 'readwrite');
+      const store = transaction.objectStore('visit_revisions');
+      const request = store.add(revision);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });

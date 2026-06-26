@@ -39,9 +39,11 @@ import {
   Upload,
   FileSpreadsheet,
   AlertTriangle,
-  Save
+  Save,
+  History,
+  ArrowRight
 } from 'lucide-react';
-import { BackupImportMode } from '../types/Storage';
+import { BackupImportMode, VisitRevision } from '../types/Storage';
 import {
   BackupService,
   PatientService,
@@ -172,6 +174,9 @@ const BackupManager: React.FC = () => {
         case "documents":
           result = await DocumentService.getAllDocuments();
           break;
+        case "history":
+          result = await VisitService.getAllRevisions();
+          break;
       }
       setData(result);
     } catch (error) {
@@ -185,10 +190,23 @@ const BackupManager: React.FC = () => {
   const confirmResetTotal = async () => {
     setIsResetting(true);
     try {
+      // La cronologia delle modifiche non va mai cancellata, nemmeno col reset totale.
+      const preservedRevisions = await VisitService.getAllRevisions();
+      const revisionsKey = "AppDottori_visit_revisions";
+
       if (window.electronAPI?.kvClearAppDottori) {
         await window.electronAPI.kvClearAppDottori();
+        if (preservedRevisions.length > 0 && window.electronAPI?.kvSet) {
+          await window.electronAPI.kvSet(
+            revisionsKey,
+            JSON.stringify(preservedRevisions),
+          );
+        }
       } else {
         localStorage.clear();
+        if (preservedRevisions.length > 0) {
+          localStorage.setItem(revisionsKey, JSON.stringify(preservedRevisions));
+        }
       }
       window.location.reload();
     } catch (error) {
@@ -567,6 +585,87 @@ const BackupManager: React.FC = () => {
     </Table>
   );
 
+  const formatDateTime = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString("it-IT", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  const renderHistory = () => {
+    // Filtra solo voci di cronologia valide: al cambio tab `items` può contenere
+    // ancora dati della tab precedente (es. visite) prima che loadData aggiorni lo stato.
+    const revisions = (items as VisitRevision[]).filter(
+      (r) => r && Array.isArray(r.changes),
+    );
+    if (revisions.length === 0) {
+      return (
+        <div className="text-center text-default-500 py-10">
+          Nessuna modifica registrata. La cronologia si popola quando una visita
+          viene modificata.
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-4">
+        {revisions.map((rev) => (
+          <Card key={rev.id} className="border border-default-200">
+            <CardBody className="gap-3">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+                <div className="flex items-center gap-2">
+                  <History size={16} className="text-primary" />
+                  <span className="text-xs text-default-500">
+                    Visita del{" "}
+                    <span className="font-semibold text-default-700">
+                      {formatDateTime(rev.visitDate)}
+                    </span>
+                  </span>
+                </div>
+                <span className="text-xs text-default-500">
+                  Modificata il{" "}
+                  <span className="font-semibold text-default-700">
+                    {formatDateTime(rev.modifiedAt)}
+                  </span>
+                </span>
+              </div>
+              <ul className="space-y-2">
+                {rev.changes.map((change, ci) => (
+                  <li
+                    key={`${rev.id}-${change.field}-${ci}`}
+                    className="bg-default-50 rounded-lg px-3 py-2"
+                  >
+                    <p className="text-xs font-semibold text-default-700 mb-1">
+                      {change.label}
+                    </p>
+                    <div className="flex items-start gap-2 text-xs">
+                      <span className="flex-1 text-danger-600 line-through whitespace-pre-wrap break-words">
+                        {change.previousValue}
+                      </span>
+                      <ArrowRight
+                        size={14}
+                        className="text-default-400 mt-0.5 shrink-0"
+                      />
+                      <span className="flex-1 text-success-700 whitespace-pre-wrap break-words">
+                        {change.newValue}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          </Card>
+        ))}
+      </div>
+    );
+  };
+
   const renderEditModal = () => (
     <Modal isOpen={!!editingItem} onClose={() => setEditingItem(null)}>
       <ModalContent>
@@ -929,6 +1028,34 @@ const BackupManager: React.FC = () => {
                           )}
                         </CardBody>
                       </Card>
+                    </div>
+                  </Tab>
+
+                  <Tab key="history" title={
+                    <div className="flex items-center gap-2">
+                      <History size={18} />
+                      <span>Cronologia visite</span>
+                    </div>
+                  }>
+                    <div className="space-y-4 pt-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <Input
+                          placeholder="Cerca per data..."
+                          startContent={<Search size={18} />}
+                          value={searchQuery}
+                          onValueChange={setSearchQuery}
+                          className="max-w-xs"
+                        />
+                        <Button isIconOnly variant="light" onPress={loadData}>
+                          <RefreshCw size={18} />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-default-500">
+                        Storico di tutte le modifiche alle visite. Questi dati non
+                        vengono mai cancellati, nemmeno eliminando la visita, il
+                        paziente o eseguendo il reset totale.
+                      </p>
+                      {isLoading ? <Spinner /> : renderHistory()}
                     </div>
                   </Tab>
                 </Tabs>
