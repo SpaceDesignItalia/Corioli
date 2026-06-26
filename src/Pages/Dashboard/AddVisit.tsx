@@ -21,6 +21,7 @@ import {
   DropdownMenu,
   DropdownItem,
   Chip,
+  Tooltip,
 } from "@nextui-org/react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 
@@ -111,6 +112,7 @@ import {
   TrendingUp,
   TrendingDown,
   Ruler,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { Breadcrumb } from "../../components/Breadcrumb";
@@ -163,6 +165,45 @@ function PercentileBar({
         </span>
       )}
     </div>
+  );
+}
+
+/** Soglia (in punti percentile) oltre la quale segnaliamo una divergenza tra
+ *  percentile inserito a mano e percentile calcolato dalla misura. */
+const PERCENTILE_MISMATCH_THRESHOLD = 5;
+
+/**
+ * Avviso visivo (non distruttivo) quando il percentile mostrato/inserito diverge
+ * dal percentile calcolato sulla misura corrente. Non modifica alcun dato:
+ * segnala soltanto al medico una possibile incoerenza (es. valore stantio od
+ * override sbagliato). Se i due coincidono (o non sono calcolabili) non mostra nulla.
+ */
+function PercentileMismatchWarning({
+  displayed,
+  auto,
+}: {
+  displayed: number | null | undefined;
+  auto: number | null | undefined;
+}) {
+  if (
+    displayed == null ||
+    auto == null ||
+    !Number.isFinite(displayed) ||
+    !Number.isFinite(auto) ||
+    Math.abs(displayed - auto) <= PERCENTILE_MISMATCH_THRESHOLD
+  ) {
+    return null;
+  }
+  return (
+    <Tooltip
+      content={`Il percentile indicato (${formatCentileLabel(displayed)}) non corrisponde alla misura inserita, che risulta ${formatCentileLabel(auto)}. Controlla la misura o il percentile.`}
+      color="warning"
+      placement="top"
+    >
+      <span className="shrink-0 inline-flex text-warning-500 cursor-help">
+        <AlertTriangle size={14} />
+      </span>
+    </Tooltip>
   );
 }
 
@@ -1928,7 +1969,7 @@ export default function AddVisit() {
   ) => (
     <div className="space-y-2 relative">
       <div className="flex justify-between items-end mb-1">
-        <label className="text-sm font-bold text-gray-700">1. Anamnesi</label>
+        <label className="text-sm font-bold text-gray-700">2. Anamnesi</label>
         {!useStructuredAnamnesi && (
           <TemplateSelector
             templates={prestazioneTemplates}
@@ -2528,7 +2569,23 @@ export default function AddVisit() {
                     Referto Medico
                   </CardHeader>
                   <CardBody className="p-6 space-y-8">
-                    {/* Sezione 1: Anamnesi */}
+                    {/* Sezione 1: Descrizione */}
+                    <div className="space-y-2 group">
+                      <label className="text-sm font-bold text-gray-700 block mb-1">
+                        1. Descrizione Problema / Dati Clinici
+                      </label>
+                      <RefertoTextarea
+                        value={ginecologiaData.problemaClinico}
+                        onValueChange={(value) =>
+                          handleGinecologiaChange("problemaClinico", value)
+                        }
+                        variant="bordered"
+                        minRows={3}
+                        placeholder="La paziente riferisce..."
+                      />
+                    </div>
+
+                    {/* Sezione 2: Anamnesi */}
                     {renderAnamnesiSection(
                       "ginecologia",
                       ginecologiaData.prestazione,
@@ -2541,22 +2598,6 @@ export default function AddVisit() {
                       (t) =>
                         handleTemplateSelect("ginecologia", "prestazione", t),
                     )}
-
-                    {/* Sezione 2: Descrizione */}
-                    <div className="space-y-2 group">
-                      <label className="text-sm font-bold text-gray-700 block mb-1">
-                        2. Descrizione Problema / Dati Clinici
-                      </label>
-                      <RefertoTextarea
-                        value={ginecologiaData.problemaClinico}
-                        onValueChange={(value) =>
-                          handleGinecologiaChange("problemaClinico", value)
-                        }
-                        variant="bordered"
-                        minRows={3}
-                        placeholder="La paziente riferisce..."
-                      />
-                    </div>
 
                     {/* Sezione 3: Esame Obiettivo */}
                     <div className="space-y-2 relative group">
@@ -2762,7 +2803,23 @@ export default function AddVisit() {
                       Referto Medico
                     </CardHeader>
                     <CardBody className="p-6 space-y-8">
-                      {/* Sezione 1: Anamnesi */}
+                      {/* Sezione 1: Descrizione */}
+                      <div className="space-y-2 group">
+                        <label className="text-sm font-bold text-gray-700 block mb-1">
+                          1. Descrizione Problema / Dati Clinici
+                        </label>
+                        <RefertoTextarea
+                          value={ginecologiaData.problemaClinico}
+                          onValueChange={(value) =>
+                            handleGinecologiaChange("problemaClinico", value)
+                          }
+                          variant="bordered"
+                          minRows={3}
+                          placeholder="La paziente riferisce..."
+                        />
+                      </div>
+
+                      {/* Sezione 2: Anamnesi */}
                       {renderAnamnesiSection(
                         "ginecologia",
                         ginecologiaData.prestazione,
@@ -2776,22 +2833,6 @@ export default function AddVisit() {
                         (t) =>
                           handleTemplateSelect("ginecologia", "prestazione", t),
                       )}
-
-                      {/* Sezione 2: Descrizione */}
-                      <div className="space-y-2 group">
-                        <label className="text-sm font-bold text-gray-700 block mb-1">
-                          2. Descrizione Problema / Dati Clinici
-                        </label>
-                        <RefertoTextarea
-                          value={ginecologiaData.problemaClinico}
-                          onValueChange={(value) =>
-                            handleGinecologiaChange("problemaClinico", value)
-                          }
-                          variant="bordered"
-                          minRows={3}
-                          placeholder="La paziente riferisce..."
-                        />
-                      </div>
 
                       {/* Sezione 3: Esame Obiettivo */}
                       <div className="space-y-2 relative group">
@@ -3510,21 +3551,24 @@ export default function AddVisit() {
                               : field === "acMm"
                                 ? "acPercentile"
                                 : "flPercentile";
-                        let currentPct = ostetriciaData.biometriaFetale?.[
+                        const storedPct = ostetriciaData.biometriaFetale?.[
                           pctKey as keyof typeof ostetriciaData.biometriaFetale
                         ] as number | undefined;
 
-                        // Se manca, prova a calcolarlo al volo
-                        if (currentPct == null) {
+                        // Percentile calcolato dalla misura (sempre, per il confronto)
+                        let autoPct: number | undefined;
+                        {
                           const val = ostetriciaData.biometriaFetale?.[field];
                           const ga = parseGestationalWeeks(
                             ostetriciaData.settimaneGestazione ?? "",
                           );
                           if (val && val > 0 && ga != null) {
                             const p = getBiometryPercentile(val, ga, field);
-                            if (p != null) currentPct = Math.round(p);
+                            if (p != null) autoPct = Math.round(p);
                           }
                         }
+                        // Mostrato: l'eventuale valore inserito/salvato, altrimenti il calcolato
+                        const currentPct = storedPct ?? autoPct;
 
                         return (
                           <div key={field} className="flex flex-col gap-1">
@@ -3575,6 +3619,10 @@ export default function AddVisit() {
                                   °
                                 </span>
                               </div>
+                              <PercentileMismatchWarning
+                                displayed={currentPct}
+                                auto={autoPct}
+                              />
                             </div>
                           </div>
                         );
@@ -3643,6 +3691,10 @@ export default function AddVisit() {
                                       °
                                     </span>
                                   </div>
+                                  <PercentileMismatchWarning
+                                    displayed={currentEfwPct}
+                                    auto={centileCalcolato}
+                                  />
                                 </div>
                               </div>
                             );
@@ -3683,12 +3735,14 @@ export default function AddVisit() {
                           ostetriciaData.flussimetriaOmbelicale?.[
                             item.key as "pi" | "ri"
                           ];
-                        let currentPct = ostetriciaData
+                        const storedPct = ostetriciaData
                           .flussimetriaOmbelicale?.[
                           item.pctKey as keyof typeof ostetriciaData.flussimetriaOmbelicale
                         ] as number | undefined;
 
-                        if (currentPct == null) {
+                        // Percentile calcolato dal valore (sempre, per il confronto)
+                        let autoPct: number | undefined;
+                        {
                           const ga = parseGestationalWeeks(
                             ostetriciaData.settimaneGestazione ?? "",
                           );
@@ -3702,15 +3756,14 @@ export default function AddVisit() {
                             Number.isFinite(valNum) &&
                             valNum > 0
                           ) {
-                            if (item.key === "pi") {
-                              const p = getUmbilicalPiPercentile(valNum, ga);
-                              if (p != null) currentPct = Math.round(p);
-                            } else if (item.key === "ri") {
-                              const p = getUmbilicalRiPercentile(valNum, ga);
-                              if (p != null) currentPct = Math.round(p);
-                            }
+                            const p =
+                              item.key === "pi"
+                                ? getUmbilicalPiPercentile(valNum, ga)
+                                : getUmbilicalRiPercentile(valNum, ga);
+                            if (p != null) autoPct = Math.round(p);
                           }
                         }
+                        const currentPct = storedPct ?? autoPct;
 
                         const fieldKey = item.key as "pi" | "ri";
                         const draftVal =
@@ -3804,6 +3857,10 @@ export default function AddVisit() {
                                   °
                                 </span>
                               </div>
+                              <PercentileMismatchWarning
+                                displayed={currentPct}
+                                auto={autoPct}
+                              />
                             </div>
                           </div>
                         );
@@ -3817,23 +3874,10 @@ export default function AddVisit() {
                     Referto Medico
                   </CardHeader>
                   <CardBody className="p-6 space-y-8">
-                    {/* Sezione 1: Anamnesi */}
-                    {renderAnamnesiSection(
-                      "ostetricia",
-                      ostetriciaData.prestazione,
-                      (value) => handleOstetriciaChange("prestazione", value),
-                      allTemplates.filter(
-                        (t) =>
-                          t.category === "ostetricia" &&
-                          t.section === "prestazione",
-                      ),
-                      (t) => handleTemplateSelect("ostetrica", "prestazione", t),
-                    )}
-
-                    {/* Sezione 2: Descrizione */}
+                    {/* Sezione 1: Descrizione */}
                     <div className="space-y-2 group">
                       <label className="text-sm font-bold text-gray-700 block mb-1">
-                        2. Descrizione Problema
+                        1. Descrizione Problema / Dati Clinici
                       </label>
                       <RefertoTextarea
                         value={ostetriciaData.problemaClinico}
@@ -3845,6 +3889,19 @@ export default function AddVisit() {
                         placeholder="Motivo della visita, sintomi riferiti..."
                       />
                     </div>
+
+                    {/* Sezione 2: Anamnesi */}
+                    {renderAnamnesiSection(
+                      "ostetricia",
+                      ostetriciaData.prestazione,
+                      (value) => handleOstetriciaChange("prestazione", value),
+                      allTemplates.filter(
+                        (t) =>
+                          t.category === "ostetricia" &&
+                          t.section === "prestazione",
+                      ),
+                      (t) => handleTemplateSelect("ostetrica", "prestazione", t),
+                    )}
 
                     {/* Sezione 3: Esame Obiettivo */}
                     <div className="space-y-2 relative group">

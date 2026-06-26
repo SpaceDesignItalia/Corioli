@@ -259,10 +259,15 @@ export class PdfService {
     const lineX1 = bx + barW - PAD_R;
     const lineW = lineX1 - lineX0;
 
-    // Map a measurement value to X position (clamped to bar range)
-    const toX = (val: number): number => {
-      const frac = (val - p5) / (p95 - p5);
-      return lineX0 + Math.min(1, Math.max(0, frac)) * lineW;
+    // Il rango centile determina SIA la posizione del rombo SIA l'etichetta,
+    // così barra e numero sono sempre coerenti (anche con override manuale).
+    const rank = overrideRank != null ? overrideRank : estimateCentileRank(patVal, p5, p50, p95);
+
+    // Mappa un rango centile (0–100) sulla scala 5°–95° (clamp), identica alla UI:
+    // 5° = estremo sinistro, 50° = centro, 95° = estremo destro.
+    const toX = (r: number): number => {
+      const clamped = Math.min(95, Math.max(5, r));
+      return lineX0 + ((clamped - 5) / 90) * lineW;
     };
 
     const midY = by;
@@ -277,13 +282,13 @@ export class PdfService {
     doc.line(lineX0, midY - tickH, lineX0, midY + tickH); // left |
     doc.line(lineX1, midY - tickH, lineX1, midY + tickH); // right |
 
-    // ── P50 middle tick  +  ──
-    const x50 = toX(p50);
+    // ── P50 middle tick  +  (50° = centro) ──
+    const x50 = toX(50);
     doc.setLineWidth(0.3);
     doc.line(x50, midY - tickH * 1.1, x50, midY + tickH * 1.1);
 
-    // ── patient diamond marker  ◆ ──
-    const xPat = toX(patVal);
+    // ── patient diamond marker  ◆  (posizionato sul percentile, non sul valore grezzo) ──
+    const xPat = toX(rank);
     const dSize = 1.6;  // half-diagonal of diamond
     this.fc(doc, K30); this.dc(doc, K30); doc.setLineWidth(0.1);
     // draw a rotated square (diamond) using polygon
@@ -295,7 +300,6 @@ export class PdfService {
     (doc as any).fillStroke();
 
     // ── centile % text ──
-    const rank = overrideRank != null ? overrideRank : estimateCentileRank(patVal, p5, p50, p95);
     let pctStr = formatCentileLabel(rank);
 
     if (showGrowthAlert && getGrowthCategory(rank) !== "AGA") {
@@ -1069,6 +1073,7 @@ export class PdfService {
     }
 
     const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
+    y = this.drawTextSection(doc, y, "Descrizione Problema / Dati Clinici", gyn.problemaClinico);
     if (hasAnamnesiStrutturataContent(nv.anamnesiStrutturata)) {
       const anamnesiCfg = parseAnamnesiConfig(prefs)[
         visit.tipo === "ginecologica_pediatrica"
@@ -1081,7 +1086,6 @@ export class PdfService {
     } else {
       y = this.drawTextSection(doc, y, "Anamnesi", gyn.prestazione);
     }
-    y = this.drawTextSection(doc, y, "Descrizione Problema / Dati Clinici", gyn.problemaClinico);
     y = this.drawTextSection(doc, y, "Visita / Ecografia Office", gyn.esameBimanuale, SIEOG);
     if (options?.includeEcografiaImages) y = await this.drawImages(doc, gyn.ecografiaImmagini, y);
     y = this.drawTextSection(doc, y, "Conclusioni e Terapia", gyn.terapiaSpecifica);
@@ -1248,6 +1252,7 @@ export class PdfService {
 
     // ── SEZIONI TESTO LIBERO ─────────────────────────────────────────────────
     const SIEOG = "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di cio' si informa la persona assistita.";
+    y = this.drawTextSection(doc, y, "Descrizione Problema / Dati Clinici", obs.problemaClinico);
     if (hasAnamnesiStrutturataContent(nv.anamnesiStrutturata)) {
       const anamnesiCfg = parseAnamnesiConfig(prefs).ostetrica;
       y = this.drawStructuredAnamnesi(
@@ -1256,7 +1261,6 @@ export class PdfService {
     } else {
       y = this.drawTextSection(doc, y, "Anamnesi", obs.prestazione);
     }
-    y = this.drawTextSection(doc, y, "Dati clinici", obs.problemaClinico);
     y = this.drawTextSection(doc, y, "Ecografia Office / Esame obiettivo", obs.esameObiettivo, SIEOG);
     y = this.drawTextSection(doc, y, "Conclusioni e Terapia", obs.noteOstetriche);
 
