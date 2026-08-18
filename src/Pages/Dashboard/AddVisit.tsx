@@ -261,7 +261,11 @@ const TemplateSelector = ({
   if (templates.length === 0) return null;
 
   return (
-    <Dropdown>
+    <Dropdown
+      classNames={{
+        content: "max-h-[min(20rem,60vh)] overflow-y-auto",
+      }}
+    >
       <DropdownTrigger>
         <Button
           size="sm"

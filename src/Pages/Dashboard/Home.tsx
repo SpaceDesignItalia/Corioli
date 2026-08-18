@@ -66,10 +66,9 @@ interface DashboardStats {
 
 const getGreetingMessage = () => {
   const currentHour = new Date().getHours();
-  if (currentHour < 12 && currentHour >= 6) return "Buongiorno";
-  if (currentHour < 18 && currentHour >= 12) return "Buon pomeriggio";
-  if (currentHour < 20 && currentHour >= 18) return "Buona sera";
-  return "Buona notte";
+  if (currentHour >= 6 && currentHour < 12) return "Buongiorno";
+  if (currentHour >= 12 && currentHour < 18) return "Buon pomeriggio";
+  return "Buonasera";
 };
 
 const calculateAge = (birthDateString: string): number => {
@@ -178,8 +177,8 @@ const buildDashboardSubtitle = (
   if (visitsToday.length > 0) {
     const n = visitsToday.length;
     return n === 1
-      ? "Hai 1 visita programmata oggi"
-      : `Hai ${n} visite programmate oggi`;
+      ? "Hai registrato 1 visita oggi"
+      : `Hai registrato ${n} visite oggi`;
   }
 
   const todayKey = today.toISOString().slice(0, 10);
@@ -254,7 +253,7 @@ export default function Home() {
           VisitService.getAllVisits(),
         ]);
 
-        setDoctorName(`${doctor.nome} ${doctor.cognome}`);
+        setDoctorName(doctor.cognome);
 
         const now = new Date();
         const thisMonthStart = new Date(
@@ -376,7 +375,7 @@ export default function Home() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title={`${getGreetingMessage()}, ${doctorName || "Dottore"}`}
+        title={`${getGreetingMessage()}, ${doctorName ? `Dott.ssa ${doctorName}` : "Dottoressa"}`}
         subtitle={stats.subtitle}
         icon={LayoutDashboard}
         iconColor="primary"
