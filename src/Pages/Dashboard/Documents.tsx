@@ -7,7 +7,6 @@ import {
   Input,
   Select,
   SelectItem,
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -31,6 +30,8 @@ import { format, parseISO } from "date-fns";
 import { PageHeader } from "../../components/PageHeader";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { DocumentsGridSkeleton } from "../../components/AppStartupSkeleton";
+import { todayIsoDate } from "../../utils/dateUtils";
+import { AppModal } from "../../components/AppModal";
 
 const CATEGORY_OPTIONS = [
   { key: "all", label: "Tutte le categorie" },
@@ -170,7 +171,7 @@ export default function Documents() {
         fileSize: selectedFile.size,
         mimeType: selectedFile.type,
         category: uploadData.category as any,
-        uploadDate: new Date().toISOString().slice(0, 10),
+        uploadDate: todayIsoDate(),
         expiryDate: uploadData.expiryDate || undefined,
         credits: uploadData.credits ? parseInt(uploadData.credits) : undefined,
         fileData
@@ -448,7 +449,7 @@ export default function Documents() {
       )}
 
       {/* Anteprima documento (PDF) */}
-      <Modal
+      <AppModal
         isOpen={isPreviewOpen}
         onClose={closePreview}
         size="5xl"
@@ -486,10 +487,10 @@ export default function Documents() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* Upload Modal */}
-      <Modal isOpen={isUploadOpen} onClose={onUploadClose} size="2xl">
+      <AppModal isOpen={isUploadOpen} onClose={onUploadClose} size="2xl">
         <ModalContent>
           <ModalHeader>
             <h2 className="text-xl font-bold">Carica Nuovo Documento</h2>
@@ -594,7 +595,7 @@ export default function Documents() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       <ConfirmDangerModal
         isOpen={isDeleteOpen}

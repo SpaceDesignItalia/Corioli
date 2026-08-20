@@ -1,4 +1,5 @@
 import { PatientService, VisitService } from "./OfflineServices";
+import { todayIsoDate } from "../utils/dateUtils";
 
 interface ImportResult {
   patientsImported: number;
@@ -399,7 +400,7 @@ export class CsvImportService {
         if (clinicalNote) {
           pendingClinicalNotes.push({
             patientId: newPatient.id,
-            dataVisita: dataNascita || new Date().toISOString().slice(0, 10),
+            dataVisita: dataNascita || todayIsoDate(),
             note: clinicalNote,
           });
         }

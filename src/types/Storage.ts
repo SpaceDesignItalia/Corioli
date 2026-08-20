@@ -332,6 +332,12 @@ export interface MedicalTemplate {
 }
 
 export interface AppData {
+  /** Versione dello schema del backup (assente nei backup prodotti prima della 1.3.2). */
+  schemaVersion?: number;
+  /** Versione dell'app che ha generato il backup. */
+  appVersion?: string;
+  /** Data/ora di generazione (ISO). */
+  exportedAt?: string;
   patients: Patient[];
   visits: Visit[];
   /** Cronologia delle modifiche delle visite (store indipendente, non viene mai cancellata). */

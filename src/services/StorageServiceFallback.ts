@@ -1,6 +1,7 @@
 import { StorageService, Patient, Visit, VisitRevision, Doctor, Document, AppData, MedicalTemplate, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
 import { MedicalTemplates } from '../data/medicalTemplates';
 import { computeVisitChanges } from '../utils/visitHistory';
+import { BACKUP_SCHEMA_VERSION } from '../utils/backupValidation';
 
 declare global {
   interface Window {
@@ -13,7 +14,7 @@ declare global {
   }
 }
 
-function useSqlite(): boolean {
+function isSqliteAvailable(): boolean {
   return typeof window !== 'undefined' && !!window.electronAPI?.kvGet;
 }
 
@@ -43,7 +44,7 @@ class LocalStorageFallbackService implements StorageService {
     try {
       const fullKey = this.getStorageKey(key);
       let data: string | null;
-      if (useSqlite()) {
+      if (isSqliteAvailable()) {
         data = await window.electronAPI!.kvGet(fullKey);
       } else {
         data = localStorage.getItem(fullKey);
@@ -59,7 +60,7 @@ class LocalStorageFallbackService implements StorageService {
     try {
       const fullKey = this.getStorageKey(key);
       const value = JSON.stringify(data);
-      if (useSqlite()) {
+      if (isSqliteAvailable()) {
         await window.electronAPI!.kvSet(fullKey, value);
       } else {
         localStorage.setItem(fullKey, value);
@@ -73,7 +74,7 @@ class LocalStorageFallbackService implements StorageService {
   /** Chiave/valore per preferenze e altri dati (in Electron usa il db). */
   async getPreference(key: string): Promise<string | null> {
     const fullKey = this.getStorageKey(key);
-    if (useSqlite()) {
+    if (isSqliteAvailable()) {
       return await window.electronAPI!.kvGet(fullKey);
     }
     return localStorage.getItem(fullKey);
@@ -81,7 +82,7 @@ class LocalStorageFallbackService implements StorageService {
 
   async setPreference(key: string, value: string): Promise<void> {
     const fullKey = this.getStorageKey(key);
-    if (useSqlite()) {
+    if (isSqliteAvailable()) {
       await window.electronAPI!.kvSet(fullKey, value);
     } else {
       localStorage.setItem(fullKey, value);
@@ -465,7 +466,7 @@ class LocalStorageFallbackService implements StorageService {
     try {
       const fullKey = this.getStorageKey('doctor');
       let data: string | null;
-      if (useSqlite()) {
+      if (isSqliteAvailable()) {
         data = await window.electronAPI!.kvGet(fullKey);
       } else {
         data = localStorage.getItem(fullKey);
@@ -497,7 +498,7 @@ class LocalStorageFallbackService implements StorageService {
     try {
       const fullKey = this.getStorageKey('doctor');
       const value = JSON.stringify(doctor);
-      if (useSqlite()) {
+      if (isSqliteAvailable()) {
         await window.electronAPI!.kvSet(fullKey, value);
       } else {
         localStorage.setItem(fullKey, value);
@@ -672,6 +673,9 @@ class LocalStorageFallbackService implements StorageService {
     ]);
 
     return {
+      schemaVersion: BACKUP_SCHEMA_VERSION,
+      appVersion: import.meta.env?.VITE_APP_VERSION,
+      exportedAt: this.getCurrentTimestamp(),
       patients,
       visits,
       visitRevisions,
@@ -694,6 +698,51 @@ class LocalStorageFallbackService implements StorageService {
     };
   }
 
+  /** Tutte le chiavi gestite dall'app, usate per snapshot e rollback dell'import. */
+  private static readonly MANAGED_KEYS = [
+    'patients',
+    'visits',
+    'visit_revisions',
+    'richieste_esami',
+    'certificati_paziente',
+    'ricette_paziente',
+    'doctor',
+    'documents',
+    'templates',
+    'preferences',
+    'recent_patient_searches',
+  ] as const;
+
+  /**
+   * Copia in memoria dei dati grezzi correnti, presa **prima** di un'operazione
+   * distruttiva. Serve a rimettere tutto com'era se l'import fallisce a metà.
+   */
+  private async readRawSnapshot(): Promise<Map<string, string | null>> {
+    const snapshot = new Map<string, string | null>();
+    for (const key of LocalStorageFallbackService.MANAGED_KEYS) {
+      const fullKey = this.getStorageKey(key);
+      const value = isSqliteAvailable()
+        ? await window.electronAPI!.kvGet(fullKey)
+        : localStorage.getItem(fullKey);
+      snapshot.set(fullKey, value);
+    }
+    return snapshot;
+  }
+
+  /** Riscrive i dati grezzi salvati da `readRawSnapshot`. */
+  private async restoreRawSnapshot(snapshot: Map<string, string | null>): Promise<void> {
+    for (const [fullKey, value] of snapshot) {
+      if (value === null) {
+        if (isSqliteAvailable()) await window.electronAPI!.kvRemove(fullKey);
+        else localStorage.removeItem(fullKey);
+      } else if (isSqliteAvailable()) {
+        await window.electronAPI!.kvSet(fullKey, value);
+      } else {
+        localStorage.setItem(fullKey, value);
+      }
+    }
+  }
+
   /** Unisce le cronologie in ingresso con quelle presenti, senza duplicati e senza cancellare nulla. */
   private async mergeVisitRevisions(incoming?: VisitRevision[]): Promise<void> {
     if (!incoming || incoming.length === 0) return;
@@ -714,49 +763,19 @@ class LocalStorageFallbackService implements StorageService {
 
   async importData(data: AppData, mode: BackupImportMode = 'replace'): Promise<void> {
     if (mode === 'replace') {
-      // clearAllData preserva la cronologia esistente; uniamo poi quella del backup.
-      await this.clearAllData();
-      await this.mergeVisitRevisions(data.visitRevisions);
-
-      if (data.patients && data.patients.length > 0) {
-        await this.saveToStorage('patients', data.patients);
-      }
-
-      if (data.visits && data.visits.length > 0) {
-        await this.saveToStorage('visits', data.visits);
-      }
-
-      if (data.richiesteEsami && data.richiesteEsami.length > 0) {
-        await this.saveToStorage('richieste_esami', data.richiesteEsami);
-      }
-
-      if (data.certificatiPaziente && data.certificatiPaziente.length > 0) {
-        await this.saveToStorage('certificati_paziente', data.certificatiPaziente);
-      }
-
-      if (data.ricettePaziente && data.ricettePaziente.length > 0) {
-        await this.saveToStorage('ricette_paziente', data.ricettePaziente);
-      }
-
-      if (data.doctor) {
-        const fullKey = this.getStorageKey('doctor');
-        const value = JSON.stringify(data.doctor);
-        if (useSqlite()) {
-          await window.electronAPI!.kvSet(fullKey, value);
-        } else {
-          localStorage.setItem(fullKey, value);
-        }
-      }
-
-      if (data.documents && data.documents.length > 0) {
-        await this.saveToStorage('documents', data.documents);
-      }
-
-      if (data.templates && data.templates.length > 0) {
-        await this.saveToStorage('templates', data.templates);
+      // La sostituzione totale cancella l'archivio prima di riscriverlo: senza una
+      // copia in memoria, un errore a metà strada lascerebbe il medico senza dati.
+      const rollback = await this.readRawSnapshot();
+      try {
+        await this.replaceAllData(data);
+      } catch (error) {
+        console.error('Import fallito: ripristino dei dati precedenti.', error);
+        await this.restoreRawSnapshot(rollback);
+        throw error;
       }
       return;
     }
+
 
     // Modalità merge: mantiene i dati attuali e aggiunge solo quelli non presenti.
     const [currentPatients, currentVisits, currentRichiesteEsami, currentCertificati, currentRicette, currentDocuments, currentTemplates, currentDoctor] = await Promise.all([
@@ -902,7 +921,7 @@ class LocalStorageFallbackService implements StorageService {
       if (!currentDoctor) {
         const fullKey = this.getStorageKey('doctor');
         const value = JSON.stringify(incomingDoctor);
-        if (useSqlite()) {
+        if (isSqliteAvailable()) {
           await window.electronAPI!.kvSet(fullKey, value);
         } else {
           localStorage.setItem(fullKey, value);
@@ -951,7 +970,7 @@ class LocalStorageFallbackService implements StorageService {
 
         const fullKey = this.getStorageKey('doctor');
         const value = JSON.stringify(mergedDoctor);
-        if (useSqlite()) {
+        if (isSqliteAvailable()) {
           await window.electronAPI!.kvSet(fullKey, value);
         } else {
           localStorage.setItem(fullKey, value);
@@ -960,11 +979,57 @@ class LocalStorageFallbackService implements StorageService {
     }
   }
 
+  /** Sostituzione totale dell'archivio con il contenuto del backup. */
+  private async replaceAllData(data: AppData): Promise<void> {
+    // clearAllData preserva la cronologia esistente; uniamo poi quella del backup.
+    await this.clearAllData();
+    await this.mergeVisitRevisions(data.visitRevisions);
+
+    if (data.patients && data.patients.length > 0) {
+      await this.saveToStorage('patients', data.patients);
+    }
+
+    if (data.visits && data.visits.length > 0) {
+      await this.saveToStorage('visits', data.visits);
+    }
+
+    if (data.richiesteEsami && data.richiesteEsami.length > 0) {
+      await this.saveToStorage('richieste_esami', data.richiesteEsami);
+    }
+
+    if (data.certificatiPaziente && data.certificatiPaziente.length > 0) {
+      await this.saveToStorage('certificati_paziente', data.certificatiPaziente);
+    }
+
+    if (data.ricettePaziente && data.ricettePaziente.length > 0) {
+      await this.saveToStorage('ricette_paziente', data.ricettePaziente);
+    }
+
+    if (data.doctor) {
+      const fullKey = this.getStorageKey('doctor');
+      const value = JSON.stringify(data.doctor);
+      if (isSqliteAvailable()) {
+        await window.electronAPI!.kvSet(fullKey, value);
+      } else {
+        localStorage.setItem(fullKey, value);
+      }
+    }
+
+    if (data.documents && data.documents.length > 0) {
+      await this.saveToStorage('documents', data.documents);
+    }
+
+    if (data.templates && data.templates.length > 0) {
+      await this.saveToStorage('templates', data.templates);
+    }
+  }
+
+
   async clearAllData(): Promise<void> {
     // La cronologia delle modifiche non va mai cancellata, nemmeno col reset totale.
     const preservedRevisions = await this.getFromStorage<VisitRevision>('visit_revisions');
 
-    if (useSqlite()) {
+    if (isSqliteAvailable()) {
       await window.electronAPI!.kvClearAppDottori();
     } else {
       localStorage.removeItem(this.getStorageKey('patients'));

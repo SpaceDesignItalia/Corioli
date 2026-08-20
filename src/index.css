@@ -1,3 +1,7 @@
+/* Icone Tabler dal pacchetto locale: l'app deve funzionare senza rete.
+   Prima arrivavano da cdn.jsdelivr.net e offline sparivano. */
+@import "@tabler/icons-webfont/dist/tabler-icons.min.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

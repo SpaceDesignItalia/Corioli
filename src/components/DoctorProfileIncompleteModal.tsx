@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
-  Modal,
   ModalBody,
   ModalContent,
   ModalFooter,
@@ -14,6 +13,7 @@ import {
   isDoctorProfileComplete,
 } from "../utils/doctorProfile";
 import type { Doctor } from "../types/Storage";
+import { AppModal } from "./AppModal";
 
 type DoctorProfileLike = Pick<
   Doctor,
@@ -39,7 +39,7 @@ export function DoctorProfileIncompleteModal({
   };
 
   return (
-    <Modal
+    <AppModal
       isOpen={isOpen}
       onClose={onClose}
       placement="center"
@@ -88,7 +88,7 @@ export function DoctorProfileIncompleteModal({
           </Button>
         </ModalFooter>
       </ModalContent>
-    </Modal>
+    </AppModal>
   );
 }
 

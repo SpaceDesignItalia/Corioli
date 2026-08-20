@@ -57,7 +57,7 @@ const MAX_RECENT_PATIENT_SEARCHES = 6;
 
 const ROWS_PER_PAGE = 24;
 
-function isNonEmpty(value?: string | null): boolean {
+function isNonEmpty(value?: string | null): value is string {
   const v = (value ?? "").trim();
   if (!v) return false;
   if (v === "—" || v === "-") return false;
@@ -137,7 +137,6 @@ export default function Dashboard() {
   const [patients, setPatients] = useState<PatientData[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [doctorName, setDoctorName] = useState<string | null>(null);
   const [toast, setToast] = useState<{ open: boolean; message: string }>({
     open: false,
     message: "",
@@ -212,11 +211,9 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchDoctorData = async () => {
       try {
-        const doctor = await DoctorService.initializeDefaultDoctor();
-        setDoctorName(`${doctor.nome} ${doctor.cognome}`);
+        await DoctorService.initializeDefaultDoctor();
       } catch (error) {
         console.error("Error fetching doctor data:", error);
-        setDoctorName("Dottore Default");
       }
     };
 
@@ -540,7 +537,7 @@ export default function Dashboard() {
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Data di nascita:</span>
                         <span>
-                          {new Date(patient.birthday!).toLocaleDateString(
+                          {new Date(patient.birthday).toLocaleDateString(
                             "it-IT",
                           )}
                           {calculateAge(patient.birthday) != null

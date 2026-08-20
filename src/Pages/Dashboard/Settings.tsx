@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -19,14 +19,12 @@ import {
   TableBody,
   TableRow,
   TableCell,
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
   useDisclosure,
   Progress,
-  Spinner,
   Tooltip,
 } from "@nextui-org/react";
 import {
@@ -43,6 +41,7 @@ import {
   Edit,
   Shield,
   ExternalLink,
+  Download,
   Circle,
   CheckCircle2,
   HelpCircle,
@@ -85,6 +84,7 @@ import {
   MAX_ANAMNESI_SEZIONI,
   genAnamnesiCustomKey,
 } from "../../utils/anamnesiStrutturata";
+import { AppModal } from "../../components/AppModal";
 
 type SettingsNoticeScope = "profilo" | "ambulatori" | "modelli" | "duplicati";
 
@@ -196,7 +196,7 @@ const SettingsScreen = () => {
   // Template State
   const [templates, setTemplates] = useState<MedicalTemplate[]>([]);
   const [selectedCategory, setSelectedCategory] =
-    useState<string>("ginecologia");
+    useState<MedicalTemplate["category"]>("ginecologia");
   const {
     isOpen: isTemplateModalOpen,
     onOpen: onTemplateModalOpen,
@@ -226,7 +226,6 @@ const SettingsScreen = () => {
   const [patientCount, setPatientCount] = useState(0);
   const [visitCount, setVisitCount] = useState(0);
   const [docCount, setDocCount] = useState(0);
-  const [dataSize, setDataSize] = useState(0);
   const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
 
   const [ambulatori, setAmbulatori] = useState<any[]>([]);
@@ -320,9 +319,6 @@ const SettingsScreen = () => {
 
   const [appVersion, setAppVersion] = useState<string>("");
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" && navigator.onLine);
-  const handleNotificationsToggle = () => {
-    setNotificationsEnabled(!notificationsEnabled);
-  };
 
 
   // Carica dati iniziali
@@ -356,9 +352,6 @@ const SettingsScreen = () => {
         setPatientCount(patients.length);
         setVisitCount(visits.length);
         setDocCount(docs.length);
-        // Calcolo dimensione approssimativa
-        const dataStr = JSON.stringify({ patients, visits, docs });
-        setDataSize(dataStr.length);
       } catch {
         // ignore
       }
@@ -414,7 +407,7 @@ const SettingsScreen = () => {
       label: "",
       text: "",
       category: selectedCategory,
-      section: (sectionByCategory[selectedCategory] ?? "prestazione") as any,
+      section: sectionByCategory[selectedCategory] ?? "prestazione",
     });
     onTemplateModalOpen();
   };
@@ -1409,15 +1402,6 @@ const SettingsScreen = () => {
     }
   };
 
-  const formatBytes = (bytes: number, decimals = 2) => {
-    if (!+bytes) return "0 Bytes";
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-  };
-
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       {/* Header */}
@@ -1822,8 +1806,8 @@ const SettingsScreen = () => {
                 </h2>
               </div>
             </CardHeader>
-            <CardBody className="flex flex-col justify-between space-y-6">
-              <div className="space-y-5">
+            <CardBody className="flex flex-col space-y-4">
+              <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="p-3 bg-primary-50 rounded-lg border border-primary-100">
                     <p className="text-xs text-primary-600 font-semibold uppercase tracking-wider">
@@ -1873,20 +1857,31 @@ const SettingsScreen = () => {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-default-200 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
-                  <Shield className="w-4 h-4 text-primary" />
-                  Privacy e diritti
+              <div className="rounded-lg border border-default-200 p-4 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                    <Shield className="w-4 h-4 text-primary shrink-0" />
+                    Privacy e diritti
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="bordered"
+                    startContent={<Download className="w-3.5 h-3.5" />}
+                    onPress={() => void ExportService.exportDataAccessPackage()}
+                  >
+                    Esporta dati (JSON)
+                  </Button>
                 </div>
                 <p className="text-xs text-default-500">
-                  Richieste privacy:{" "}
+                  Esporta il pacchetto per il diritto di accesso. Richieste
+                  privacy:{" "}
                   <a
                     href={`mailto:${PRIVACY_CONTACT_EMAIL}`}
                     className="text-primary font-medium hover:underline"
                   >
                     {PRIVACY_CONTACT_EMAIL}
-                  </a>
-                  .{" "}
+                  </a>{" "}
+                  &middot;{" "}
                   <a
                     href={PRIVACY_POLICY_URL}
                     target="_blank"
@@ -1896,14 +1891,6 @@ const SettingsScreen = () => {
                     Informativa <ExternalLink className="w-3 h-3" />
                   </a>
                 </p>
-                <Button
-                  size="sm"
-                  variant="bordered"
-                  className="w-full"
-                  onPress={() => void ExportService.exportDataAccessPackage()}
-                >
-                  Esporta pacchetto diritto di accesso (JSON)
-                </Button>
               </div>
 
               <div className="space-y-3 mt-auto">
@@ -2319,7 +2306,9 @@ const SettingsScreen = () => {
           <Tabs
             aria-label="Categorie Template"
             selectedKey={selectedCategory}
-            onSelectionChange={(key) => setSelectedCategory(key as string)}
+            onSelectionChange={(key) =>
+              setSelectedCategory(key as MedicalTemplate["category"])
+            }
           >
             <Tab key="ginecologia" title="Ginecologia" />
             <Tab key="ostetricia" title="Ostetricia" />
@@ -2465,7 +2454,7 @@ const SettingsScreen = () => {
         </CardBody>
       </Card>
 
-      <Modal
+      <AppModal
         isOpen={mergeConflictOpen}
         onClose={() => {
           setMergeConflictOpen(false);
@@ -2553,7 +2542,7 @@ const SettingsScreen = () => {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       <TemplateEditorModal
         isOpen={isTemplateModalOpen}
@@ -2564,7 +2553,7 @@ const SettingsScreen = () => {
         anamnesiConfig={preferences.anamnesiConfig}
       />
 
-      <Modal
+      <AppModal
         isOpen={isAnamnesiConfigModalOpen}
         onClose={() => setIsAnamnesiConfigModalOpen(false)}
         size="4xl"
@@ -2711,7 +2700,7 @@ const SettingsScreen = () => {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       <ConfirmDangerModal
         isOpen={isDeleteTemplateOpen}
@@ -2730,7 +2719,7 @@ const SettingsScreen = () => {
       </ConfirmDangerModal>
 
       {/* Modifica ambulatorio */}
-      <Modal
+      <AppModal
         isOpen={isEditAmbulatorioOpen}
         onClose={() => {
           onEditAmbulatorioClose();
@@ -2844,7 +2833,7 @@ const SettingsScreen = () => {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       <ConfirmDangerModal
         isOpen={isDeleteAmbulatorioOpen}

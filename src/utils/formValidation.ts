@@ -1,4 +1,5 @@
 /** Limiti e validazione input condivisi tra i form. */
+import { todayIsoDate } from "./dateUtils";
 
 export const MAX_OBSTETRIC_COUNT = 50;
 export const MIN_HEIGHT_CM = 50;
@@ -7,9 +8,8 @@ export const MIN_WEIGHT_KG = 30;
 export const MAX_WEIGHT_KG = 200;
 export const MIN_BIRTH_YEAR = 1900;
 
-export function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+/** Data odierna (fuso locale). Ri-esportata da `dateUtils` per i form che la usano. */
+export { todayIsoDate };
 
 export function clampInt(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;

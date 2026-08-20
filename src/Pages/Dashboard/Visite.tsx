@@ -9,7 +9,6 @@ import {
   Chip,
   Spinner,
   Avatar,
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -52,6 +51,7 @@ import {
   createDefaultAnamnesiConfig,
   type AnamnesiConfig,
 } from "../../utils/anamnesiStrutturata";
+import { AppModal } from "../../components/AppModal";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -540,33 +540,6 @@ export default function Visite() {
     }
   };
 
-  const renderEcografiaImages = (images?: string[]) => {
-    if (!images || images.length === 0) return null;
-    return (
-      <Card shadow="sm">
-        <CardBody className="space-y-3">
-          <p className="text-xs uppercase tracking-wide text-gray-500">Immagini ecografia</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {images.map((image, index) => (
-              <a
-                key={`ecografia-${index}`}
-                href={image}
-                target="_blank"
-                rel="noreferrer"
-                className="block border border-gray-200 rounded-lg overflow-hidden hover:opacity-90 transition-opacity"
-              >
-                <img
-                  src={image}
-                  alt={`Ecografia ${index + 1}`}
-                  className="w-full h-28 object-cover"
-                />
-              </a>
-            ))}
-          </div>
-        </CardBody>
-      </Card>
-    );
-  };
 
   if (loading) {
     return <PageLoadingSkeleton variant="table" pathname="/visite" />;
@@ -596,7 +569,7 @@ export default function Visite() {
       <Card className="corioli-card">
         <CardHeader className="corioli-card-header flex justify-between items-center gap-2">
           <div className="dashboard-column-header-title min-w-0">
-            <FileText className="text-blue-600 shrink-0" size={16} />
+            <FileText className="text-brand-700 shrink-0" size={16} />
             <h3 className="text-base font-semibold text-gray-900 truncate">
               Storico visite
             </h3>
@@ -722,7 +695,8 @@ export default function Visite() {
                       <p className="font-medium text-gray-900 group-hover:text-[var(--brand-cta)] transition-colors truncate text-sm">
                         {visit.patientName}
                       </p>
-                      <p className="text-xs text-default-500 truncate flex items-center gap-1.5 flex-wrap mt-0.5">
+                      {/* div, non p: contiene una Chip (che rende un div) ed è usato come contenitore flex */}
+                      <div className="text-xs text-default-500 truncate flex items-center gap-1.5 flex-wrap mt-0.5">
                         <Chip
                           size="sm"
                           variant="flat"
@@ -737,7 +711,7 @@ export default function Visite() {
                             "it-IT",
                           )}
                         </span>
-                      </p>
+                      </div>
                       {visit.patientCf && (
                         <p className="text-xs text-default-400 font-mono truncate mt-0.5">
                           <CodiceFiscaleValue value={visit.patientCf} />
@@ -859,7 +833,7 @@ export default function Visite() {
         </CardBody>
       </Card>
 
-      <Modal
+      <AppModal
         isOpen={isOpen}
         onClose={onClose}
         size={previewFullscreen ? "full" : "5xl"}
@@ -1032,9 +1006,9 @@ export default function Visite() {
             </>
           )}
         </ModalContent>
-      </Modal>
+      </AppModal>
 
-      <Modal isOpen={isIncludeImagesModalOpen} onClose={() => handleIncludeImagesChoice(false)} size="md">
+      <AppModal isOpen={isIncludeImagesModalOpen} onClose={() => handleIncludeImagesChoice(false)} size="md">
         <ModalContent>
           <ModalHeader>Includere immagini ecografia?</ModalHeader>
           <ModalBody>
@@ -1051,9 +1025,9 @@ export default function Visite() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         isOpen={isIncludeFetalGrowthChartModalOpen}
         onClose={() => {
           setPendingPrintVisit(null);
@@ -1078,7 +1052,7 @@ export default function Visite() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       <ConfirmDangerModal
         isOpen={isDeleteVisitOpen}

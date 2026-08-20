@@ -47,6 +47,10 @@ export function parseGestationalWeeks(settimaneGestazione: string): number | nul
     const weeks = parseInt(match[1], 10);
     const days = parseInt(match[2], 10);
     if (days >= 0 && days <= 6 && weeks >= 0) return weeks + days / 7;
+    // Giorni fuori range (es. "32+7"): valore ambiguo. Va rifiutato, non
+    // interpretato: il fallback numerico più sotto leggerebbe "32+7" come 32,
+    // perdendo una settimana e falsando il centile del peso stimato.
+    return null;
   }
   const n = parseFloat(s.replace(",", "."));
   if (!Number.isNaN(n) && n >= 0) return n;

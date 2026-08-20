@@ -1,5 +1,13 @@
 import { app, BrowserWindow, Menu, ipcMain, shell } from "electron";
 import { createAppLockHandlers } from "./appLock.js";
+import { cleanupPrintDir, writePrintFile } from "./printFiles.js";
+import {
+  createBackupFile,
+  listBackupFiles,
+  openDatabaseFromFile,
+  restoreBackupFile,
+  writeFileAtomicSync,
+} from "./backupFiles.js";
 import {
   checkBiometricAvailable,
   promptBiometric,
@@ -19,26 +27,84 @@ let kvReady = null;
 let mainWindowRef = null;
 let sessionUnlocked = false;
 
+function getDbPath() {
+  return path.join(app.getPath("userData"), "corioli.db");
+}
+
+function getBackupsDir() {
+  return path.join(app.getPath("userData"), "backups");
+}
+
+/** PDF di stampa: cartella dell'app, non la temp di sistema (contengono dati sanitari). */
+function getPrintDir() {
+  return path.join(app.getPath("userData"), "stampe");
+}
+
 async function getKv() {
   if (kvReady) return kvReady;
   const initSqlJs = (await import("sql.js")).default;
   const SQL = await initSqlJs();
-  const dbPath = path.join(app.getPath("userData"), "corioli.db");
-  let db;
+  const dbPath = getDbPath();
+  const bakPath = `${dbPath}.bak`;
+
+  let db = null;
+  // True se il file su disco era leggibile: se non lo era non va usato come
+  // sorgente della copia `.bak`, che altrimenti verrebbe rovinata a sua volta.
+  let openedFromValidFile = false;
+
   if (fs.existsSync(dbPath)) {
-    const buf = fs.readFileSync(dbPath);
-    db = new SQL.Database(new Uint8Array(buf));
-  } else {
-    db = new SQL.Database();
+    db = openDatabaseFromFile(SQL, dbPath);
+    openedFromValidFile = db !== null;
+
+    if (!db) {
+      // Il file danneggiato viene messo da parte, mai sovrascritto: è l'unica
+      // copia rimasta se anche il .bak dovesse mancare.
+      try {
+        fs.renameSync(dbPath, `${dbPath}.corrupted-${Date.now()}`);
+      } catch (e) {
+        console.error("Impossibile mettere da parte il DB corrotto:", e);
+      }
+      if (fs.existsSync(bakPath)) {
+        console.warn("corioli.db illeggibile: ripristino da corioli.db.bak");
+        db = openDatabaseFromFile(SQL, bakPath);
+        if (db) {
+          try {
+            fs.copyFileSync(bakPath, dbPath);
+            openedFromValidFile = true;
+          } catch (e) {
+            console.error("Ripristino da .bak non riuscito:", e);
+          }
+        }
+      }
+    }
   }
+  if (!db) db = new SQL.Database();
+
   db.run(
     "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT);",
   );
-  function persist() {
-    const data = db.export();
-    fs.writeFileSync(dbPath, Buffer.from(data));
+
+  // Copia di sicurezza del file valido con cui si è aperta la sessione: è il punto
+  // di rollback se una scrittura successiva dovesse rovinare il database.
+  let sessionBackupDone = false;
+  function ensureSessionBackup() {
+    if (sessionBackupDone) return;
+    sessionBackupDone = true;
+    if (!openedFromValidFile) return; // non sovrascrivere il .bak con un file guasto
+    try {
+      if (fs.existsSync(dbPath)) fs.copyFileSync(dbPath, bakPath);
+    } catch (e) {
+      console.error("Copia .bak non riuscita:", e);
+    }
   }
-  kvReady = { db, persist };
+
+  /** Scrittura atomica del database (tmp + fsync + rename). */
+  function persist() {
+    ensureSessionBackup();
+    writeFileAtomicSync(dbPath, Buffer.from(db.export()));
+  }
+
+  kvReady = { db, persist, dbPath };
   return kvReady;
 }
 
@@ -65,6 +131,39 @@ async function kvRemove(key) {
   const { db, persist } = await getKv();
   db.run("DELETE FROM kv_store WHERE key = ?", [key]);
   persist();
+}
+
+/* Backup automatici: la logica sui file sta in `backupFiles.js`, qui solo il
+ * collegamento con i percorsi di Electron e con lo stato del database in memoria. */
+
+async function createBackup(reason) {
+  // Lo stato corrente va scritto su disco prima di copiarlo.
+  try {
+    const { persist } = await getKv();
+    persist();
+  } catch (e) {
+    console.error("Persist prima del backup:", e);
+  }
+  return createBackupFile({
+    dbPath: getDbPath(),
+    backupsDir: getBackupsDir(),
+    reason,
+  });
+}
+
+async function restoreBackup(fileName) {
+  // Lo stato attuale viene salvato prima di essere sovrascritto.
+  await createBackup("pre-restore");
+  const result = restoreBackupFile({
+    dbPath: getDbPath(),
+    backupsDir: getBackupsDir(),
+    fileName,
+  });
+  if (!result.ok) return result;
+  // Il DB in memoria è ormai disallineato: si riparte dal file ripristinato.
+  app.relaunch();
+  app.exit(0);
+  return { ok: true };
 }
 
 async function kvClearAppDottori() {
@@ -184,24 +283,24 @@ function createWindow() {
   });
 }
 
-// Apri PDF in app predefinita (es. Chrome) per stampa
+// Apri PDF in app predefinita (es. Chrome) per stampa.
+// Il file resta finché l'app è aperta: cancellarlo a tempo lo faceva sparire
+// mentre il medico stava ancora stampando.
 ipcMain.handle("open-pdf-for-print", async (_event, pdfBase64) => {
   if (!pdfBase64 || typeof pdfBase64 !== "string") return;
-  const tempDir = app.getPath("temp");
-  const tempPath = path.join(tempDir, `Corioli_stampa_${Date.now()}.pdf`);
-  const buffer = Buffer.from(pdfBase64, "base64");
-  fs.writeFileSync(tempPath, buffer);
+  let filePath;
   try {
-    const err = await shell.openPath(tempPath);
+    filePath = writePrintFile(getPrintDir(), pdfBase64);
+  } catch (e) {
+    console.error("Errore scrittura PDF di stampa:", e);
+    return;
+  }
+  try {
+    const err = await shell.openPath(filePath);
     if (err) console.error("Errore apertura PDF:", err);
   } catch (e) {
     console.error("Errore apertura PDF:", e);
   }
-  setTimeout(() => {
-    try {
-      fs.unlinkSync(tempPath);
-    } catch (_) {}
-  }, 60000);
 });
 
 // Key-value storage API for renderer (backed by SQLite .db file)
@@ -242,6 +341,32 @@ ipcMain.handle("kv:clearAppDottori", async () => {
 });
 
 ipcMain.handle("app:version", () => app.getVersion());
+
+ipcMain.handle("backup:create", async (_event, reason) => createBackup(reason));
+
+ipcMain.handle("backup:list", async () => {
+  try {
+    return { ok: true, items: listBackupFiles(getBackupsDir()) };
+  } catch (e) {
+    console.error("Errore backup:list", e);
+    return { ok: false, items: [], error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle("backup:restore", async (_event, fileName) =>
+  restoreBackup(fileName),
+);
+
+ipcMain.handle("backup:openFolder", async () => {
+  const dir = getBackupsDir();
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const err = await shell.openPath(dir);
+    return err ? { ok: false, error: err } : { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
 
 const biometricBridge = {
   checkAvailable: () => checkBiometricAvailable(),
@@ -298,7 +423,13 @@ ipcMain.handle("shell:openExternal", async (_event, url) => {
 });
 
 app.whenReady().then(() => {
+  // PDF rimasti da una sessione precedente (crash o chiusura forzata)
+  cleanupPrintDir(getPrintDir());
   createWindow();
+});
+
+app.on("before-quit", () => {
+  cleanupPrintDir(getPrintDir());
 });
 
 app.on("window-all-closed", () => {

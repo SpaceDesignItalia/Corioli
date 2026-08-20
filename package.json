@@ -1,7 +1,7 @@
 {
   "name": "appdottori",
   "private": true,
-  "version": "1.3.1",
+  "version": "1.3.2",
   "type": "module",
   "description": "Gestione pazienti e visite - Corioli",
   "author": "Corioli",
@@ -9,7 +9,7 @@
   "homepage": "./",
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
-    "build": "vite build",
+    "build": "tsc --noEmit && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "electron": "electron .",
@@ -19,33 +19,27 @@
     "dist:appx": "npm run build && electron-builder --win appx --publish=never",
     "icons:appx": "python scripts/gen-appx-icons.py",
     "icons:appx:check": "python -c \"from pathlib import Path; d=Path('build/appx'); [print(f.name) for f in sorted(d.iterdir())]\"",
-    "dist:all": "npm run build && electron-builder --mac --win appx --publish=never"
+    "dist:all": "npm run build && electron-builder --mac --win appx --publish=never",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@date-io/date-fns": "^3.0.0",
-    "@date-io/dayjs": "^3.0.0",
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
     "@mui/icons-material": "^5.15.19",
     "@mui/material": "^5.15.19",
-    "@mui/x-date-pickers": "^7.14.0",
     "@nextui-org/react": "^2.6.11",
+    "@tabler/icons-webfont": "3.23.0",
+    "axios": "1.13.5",
     "codice-fiscale-ts": "^1.3.3",
     "date-fns": "^3.6.0",
     "dayjs": "^1.11.13",
-    "dompurify": "^3.1.6",
-    "framer-motion": "^11.2.10",
+    "framer-motion": "^11.18.2",
     "jspdf": "^4.2.0",
     "lucide-react": "^0.429.0",
-    "moment": "^2.30.1",
-    "moment-timezone": "^0.5.45",
-    "notistack": "^3.0.1",
-    "quill": "^2.0.2",
     "react": "^18.2.0",
-    "react-big-calendar": "^1.13.0",
     "react-dom": "^18.2.0",
-    "react-icons": "^5.3.0",
-    "react-quill": "^0.0.2",
     "react-router-dom": "^6.23.1",
     "sql.js": "^1.14.0"
   },
@@ -67,6 +61,7 @@
     "tailwindcss": "^3.4.3",
     "typescript": "^5.2.2",
     "vite": "^7.3.1",
+    "vitest": "3.2.4",
     "wait-on": "^9.0.1"
   },
   "build": {
@@ -79,6 +74,12 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "!electron/__tests__/**",
+      "package.json",
+      "!node_modules/**/*",
+      "node_modules/sql.js/package.json",
+      "node_modules/sql.js/dist/sql-wasm.js",
+      "node_modules/sql.js/dist/sql-wasm.wasm",
       "node_modules/win-hello/**/*"
     ],
     "asarUnpack": [

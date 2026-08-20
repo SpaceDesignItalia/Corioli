@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   Button,
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -19,6 +18,7 @@ import {
 import RecoveryCodePanel from "./RecoveryCodePanel";
 import PinDigitInput from "./PinDigitInput";
 import { useAppLock } from "../../contexts/AppLockContext";
+import { AppModal } from "../../components/AppModal";
 
 const PIN_LENGTH = 4;
 const BIOMETRIC_LABEL = "Riconoscimento biometrico";
@@ -187,7 +187,7 @@ export default function AppLockSettingsCard() {
       ) : null}
 
       {/* Modal conferma biometria */}
-      <Modal
+      <AppModal
         isOpen={bioPinModal}
         onOpenChange={(o) => { if (!o) { setBioPinModal(false); setBioPin(""); setBioError(null); } }}
         placement="center"
@@ -219,10 +219,10 @@ export default function AppLockSettingsCard() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* Modal azioni PIN */}
-      <Modal isOpen={pinModal !== null} onOpenChange={(o) => !o && closeModal()} placement="center">
+      <AppModal isOpen={pinModal !== null} onOpenChange={(o) => !o && closeModal()} placement="center">
         <ModalContent>
           <ModalHeader>
             {pinModal === "reveal" ? "Codice di recupero"
@@ -269,7 +269,7 @@ export default function AppLockSettingsCard() {
             </ModalFooter>
           ) : null}
         </ModalContent>
-      </Modal>
+      </AppModal>
     </>
   );
 }

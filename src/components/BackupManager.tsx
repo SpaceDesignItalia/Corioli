@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Button,
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -53,9 +52,11 @@ import {
 import { CsvImportService, CsvImportProgress } from '../services/CsvImportService';
 import { CodiceFiscaleValue } from './CodiceFiscaleValue';
 import { ConfirmDangerModal } from './ConfirmDangerModal';
+import { AppModal } from "./AppModal";
+import AutoBackupPanel from "./AutoBackupPanel";
 
 const BackupManager: React.FC = () => {
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const { isOpen, onOpen, onOpenChange, onClose: closeManager } = useDisclosure();
   const {
     isOpen: isResetModalOpen,
     onOpen: onResetModalOpen,
@@ -102,63 +103,6 @@ const BackupManager: React.FC = () => {
       loadData();
     }
   }, [isOpen, selectedTab]);
-
-  // Forza sblocco scroll e click quando i modal si chiudono (NextUI lascia overlay che blocca i click)
-  const forceUnlock = React.useCallback(() => {
-    document.body.style.pointerEvents = '';
-    document.body.style.overflow = '';
-    document.body.style.marginTop = '';
-    const html = document.documentElement;
-    html.style.overflow = '';
-    html.style.paddingRight = '';
-    // Ogni figlio di body che non è la root app è un portale (es. modal). Disabilitiamo l'intero portale
-    // così i click passano attraverso anche sul pulsante "Gestione Dati Completa" che apre questo modal.
-    const appRoot = document.getElementById('root') ?? document.getElementById('__next');
-    document.body.querySelectorAll(':scope > *').forEach((child) => {
-      if (appRoot && child === appRoot) return;
-      if (!(child instanceof HTMLElement)) return;
-      child.style.pointerEvents = 'none';
-      child.style.visibility = 'hidden';
-      child.querySelectorAll('*').forEach((node) => {
-        if (node instanceof HTMLElement) {
-          node.style.pointerEvents = 'none';
-          node.style.visibility = 'hidden';
-        }
-      });
-    });
-  }, []);
-
-  // Quando i modal sono chiusi: sblocca scroll/click e disabilita overlay lasciati dal portale
-  useEffect(() => {
-    if (!isOpen && !isImportModeModalOpen) {
-      forceUnlock();
-      const delays = [0, 100, 250, 500, 1000, 2000];
-      const timers = delays.map((ms) =>
-        setTimeout(forceUnlock, ms)
-      );
-      return () => timers.forEach((t) => clearTimeout(t));
-    }
-  }, [isOpen, isImportModeModalOpen, forceUnlock]);
-
-  // Quando il modal si riapre: ripristina il portale così il modal è di nuovo cliccabile
-  useEffect(() => {
-    if (isOpen) {
-      const appRoot = document.getElementById('root') ?? document.getElementById('__next');
-      document.body.querySelectorAll(':scope > *').forEach((child) => {
-        if (appRoot && child === appRoot) return;
-        if (child instanceof HTMLElement) {
-          child.style.pointerEvents = '';
-          child.style.visibility = '';
-          child.querySelectorAll('*').forEach((node) => {
-            if (node instanceof HTMLElement) {
-              node.style.pointerEvents = '';
-              node.style.visibility = '';
-            }
-          });
-        }
-      });
-    }
-  }, [isOpen]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -346,7 +290,14 @@ const BackupManager: React.FC = () => {
       setTimeout(() => window.location.reload(), 2000);
     } catch (error) {
       console.error('Errore durante l\'import:', error);
-      setMessage({ text: 'Errore import: File non valido o corrotto.', type: 'error' });
+      // Il messaggio della validazione dice *cosa* non va nel file: va mostrato al medico.
+      const detail = error instanceof Error ? error.message : '';
+      setMessage({
+        text: detail
+          ? `Import annullato: ${detail} I dati attuali non sono stati modificati.`
+          : 'Errore import: file non valido o corrotto. I dati attuali non sono stati modificati.',
+        type: 'error',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -667,7 +618,7 @@ const BackupManager: React.FC = () => {
   };
 
   const renderEditModal = () => (
-    <Modal isOpen={!!editingItem} onClose={() => setEditingItem(null)}>
+    <AppModal isOpen={!!editingItem} onClose={() => setEditingItem(null)}>
       <ModalContent>
         <ModalHeader>Modifica {selectedTab === 'patients' ? 'Paziente' : selectedTab === 'visits' ? 'Visita' : 'Documento'}</ModalHeader>
         <ModalBody>
@@ -699,7 +650,7 @@ const BackupManager: React.FC = () => {
           <Button color="primary" onPress={handleSaveEdit} isLoading={isSaving} startContent={<Save size={18} />}>Salva</Button>
         </ModalFooter>
       </ModalContent>
-    </Modal>
+    </AppModal>
   );
 
   return (
@@ -708,7 +659,7 @@ const BackupManager: React.FC = () => {
         Gestione Dati Completa
       </Button>
 
-      <Modal
+      <AppModal
         isOpen={isOpen}
         onOpenChange={onOpenChange}
         size="5xl"
@@ -717,7 +668,7 @@ const BackupManager: React.FC = () => {
         shouldBlockScroll={false}
       >
         <ModalContent>
-          {(onClose) => (
+          {() => (
             <>
               <ModalHeader className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
@@ -828,6 +779,10 @@ const BackupManager: React.FC = () => {
                     </div>
                   }>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
+                      <div className="md:col-span-2">
+                        <AutoBackupPanel />
+                      </div>
+
                       <Card className="bg-primary-50">
                         <CardBody className="gap-4">
                           <div className="flex items-center gap-3 text-primary">
@@ -1075,8 +1030,7 @@ const BackupManager: React.FC = () => {
                   color="danger"
                   variant="light"
                   onPress={() => {
-                    onOpenChange(false);
-                    onClose?.();
+                    closeManager();
                   }}
                 >
                   Chiudi
@@ -1085,8 +1039,8 @@ const BackupManager: React.FC = () => {
             </>
           )}
         </ModalContent>
-      </Modal>
-      <Modal isOpen={isImportModeModalOpen} onOpenChange={setIsImportModeModalOpen} shouldBlockScroll={false}>
+      </AppModal>
+      <AppModal isOpen={isImportModeModalOpen} onOpenChange={setIsImportModeModalOpen} shouldBlockScroll={false}>
         <ModalContent>
           <ModalHeader>Scegli modalità import backup</ModalHeader>
           <ModalBody>
@@ -1136,7 +1090,7 @@ const BackupManager: React.FC = () => {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
       {renderEditModal()}
 
       <ConfirmDangerModal

@@ -19,15 +19,10 @@ import {
   LifeBuoy,
   Search,
   Paperclip,
-  Mic,
-  Square,
   FileText,
-  Image as ImageIcon,
-  FileSpreadsheet,
 } from "lucide-react";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { PageHeader } from "../../components/PageHeader";
-import { VoiceWaveform, extractWaveformFromBlob, generatePlaceholderWaveform } from "../../components/chat/VoiceWaveform";
 import { VoiceMessagePlayer } from "../../components/chat/VoiceMessagePlayer";
 import { DoctorService } from "../../services/OfflineServices";
 import axios from "axios";
@@ -67,23 +62,6 @@ interface ChatMessage {
 }
 
 const ACCEPTED_FILES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime";
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function getFileIcon(mimeType: string) {
-  if (mimeType.startsWith("image/")) return ImageIcon;
-  if (
-    mimeType.includes("spreadsheet") ||
-    mimeType.includes("excel") ||
-    mimeType.includes("csv")
-  )
-    return FileSpreadsheet;
-  return FileText;
-}
 
 /** Schema: dove finisce ogni categoria di modello. */
 function ModelliMapSchema() {
@@ -194,22 +172,10 @@ export default function HelpAndFeedback() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [recordingWaveform, setRecordingWaveform] = useState<number[]>(() =>
-    generatePlaceholderWaveform(),
-  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const recordingSecondsRef = useRef(0);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const levelAnimRef = useRef<number | null>(null);
-  const recordingCancelledRef = useRef(false);
   const messagesRef = useRef<ChatMessage[]>([]);
   messagesRef.current = messages;
 
@@ -364,7 +330,6 @@ export default function HelpAndFeedback() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRecording) return;
     void sendUserMessage(
       inputValue,
       pendingAttachments.length ? pendingAttachments : undefined,
@@ -411,124 +376,6 @@ export default function HelpAndFeedback() {
       next.splice(index, 1);
       return next;
     });
-  };
-
-  const formatRecordingTime = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
-  const stopRecordingTimer = () => {
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  };
-
-  const stopLevelAnimation = () => {
-    if (levelAnimRef.current != null) {
-      cancelAnimationFrame(levelAnimRef.current);
-      levelAnimRef.current = null;
-    }
-    if (audioContextRef.current) {
-      void audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-  };
-
-  const startLevelAnimation = (stream: MediaStream) => {
-    const ctx = new AudioContext();
-    audioContextRef.current = ctx;
-    const source = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 64;
-    analyser.smoothingTimeConstant = 0.75;
-    source.connect(analyser);
-
-    const barCount = 28;
-    const tick = () => {
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(data);
-      const step = Math.max(1, Math.floor(data.length / barCount));
-      const bars = Array.from({ length: barCount }, (_, i) => {
-        const v = data[i * step] / 255;
-        return Math.min(1, Math.max(0.12, v * 1.4));
-      });
-      setRecordingWaveform(bars);
-      levelAnimRef.current = requestAnimationFrame(tick);
-    };
-    levelAnimRef.current = requestAnimationFrame(tick);
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (ev) => {
-        if (ev.data.size > 0) audioChunksRef.current.push(ev.data);
-      };
-
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        stopRecordingTimer();
-        stopLevelAnimation();
-
-        const cancelled = recordingCancelledRef.current;
-        recordingCancelledRef.current = false;
-
-        setIsRecording(false);
-        setRecordingSeconds(0);
-        recordingSecondsRef.current = 0;
-        setRecordingWaveform(generatePlaceholderWaveform());
-
-        if (cancelled) {
-          audioChunksRef.current = [];
-          return;
-        }
-
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const duration = recordingSecondsRef.current;
-
-        if (blob.size === 0) return;
-
-        void (async () => {
-          const waveform = await extractWaveformFromBlob(blob);
-          const url = URL.createObjectURL(blob);
-          const attachment: ChatAttachment = {
-            type: "audio",
-            name: `Audio ${new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`,
-            url,
-            mimeType: blob.type,
-            size: blob.size,
-            durationSec: duration,
-            waveform,
-          };
-          sendUserMessage(undefined, [attachment]);
-        })();
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setIsRecording(true);
-      setRecordingSeconds(0);
-      recordingSecondsRef.current = 0;
-      startLevelAnimation(stream);
-      recordingTimerRef.current = setInterval(() => {
-        recordingSecondsRef.current += 1;
-        setRecordingSeconds(recordingSecondsRef.current);
-      }, 1000);
-    } catch {
-      alert("Impossibile accedere al microfono. Verifica i permessi del browser.");
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
   };
 
   const faqGroups: {
@@ -793,7 +640,6 @@ export default function HelpAndFeedback() {
 
   const canSend =
     !isSubmitting &&
-    !isRecording &&
     !chatLoading &&
     Boolean(doctor) &&
     (Boolean(inputValue.trim()) || pendingAttachments.length > 0);
@@ -1017,9 +863,7 @@ export default function HelpAndFeedback() {
                     onChange={handleFileSelect}
                   />
 
-                  {!isRecording ? (
-                    <>
-                      <Tooltip content="Allega immagine o video">
+                  <Tooltip content="Allega immagine o video">
                         <Button
                           isIconOnly
                           type="button"
@@ -1047,61 +891,17 @@ export default function HelpAndFeedback() {
                         }}
                         disabled={isSubmitting}
                       />
-                    </>
-                  ) : (
-                    <div className="flex flex-1 min-w-0 items-center gap-3 px-3 py-2.5 bg-brand-50 border border-brand-200 rounded-xl">
-                      <Tooltip content="Invia messaggio vocale">
-                        <Button
-                          isIconOnly
-                          type="button"
-                          color="primary"
-                          radius="full"
-                          className="flex-shrink-0 corioli-cta min-w-9 w-9 h-9"
-                          onPress={stopRecording}
-                        >
-                          <Send size={16} className="ml-0.5" />
-                        </Button>
-                      </Tooltip>
-                      <VoiceWaveform
-                        bars={recordingWaveform}
-                        live
-                        className="flex-1 justify-center"
-                      />
-                      <span className="text-sm font-medium tabular-nums text-brand-800 shrink-0 min-w-[36px] text-right">
-                        {formatRecordingTime(recordingSeconds)}
-                      </span>
-                      <Tooltip content="Annulla">
-                        <Button
-                          isIconOnly
-                          type="button"
-                          variant="light"
-                          radius="lg"
-                          className="flex-shrink-0 text-default-500"
-                          onPress={() => {
-                            recordingCancelledRef.current = true;
-                            if (mediaRecorderRef.current?.state === "recording") {
-                              mediaRecorderRef.current.stop();
-                            }
-                          }}
-                        >
-                          <Square size={14} />
-                        </Button>
-                      </Tooltip>
-                    </div>
-                  )}
 
-                  {!isRecording && (
-                    <Button
-                      isIconOnly
-                      type="submit"
-                      color="primary"
-                      radius="lg"
-                      isDisabled={!canSend}
-                      className="flex-shrink-0 corioli-cta"
-                    >
-                      <Send size={18} className="ml-0.5" />
-                    </Button>
-                  )}
+                  <Button
+                    isIconOnly
+                    type="submit"
+                    color="primary"
+                    radius="lg"
+                    isDisabled={!canSend}
+                    className="flex-shrink-0 corioli-cta"
+                  >
+                    <Send size={18} className="ml-0.5" />
+                  </Button>
                 </form>
                 <p className="text-[10px] text-center text-gray-400 mt-2">
                   Immagini fino a {MAX_IMAGE_MB} MB · video fino a {MAX_VIDEO_MB} MB

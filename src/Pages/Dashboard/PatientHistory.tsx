@@ -1,10 +1,8 @@
-import { useState, useEffect, type ComponentType } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
-  CardHeader,
   CardBody,
   Button,
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -37,7 +35,6 @@ import {
   DownloadIcon,
   UserIcon,
   FileTextIcon,
-  CalendarIcon,
   ChevronDown,
   ChevronUp,
   Award,
@@ -68,12 +65,7 @@ import {
   RicettaPaziente,
   MedicalTemplate,
 } from "../../types/Storage";
-import { calcolaStimePesoFetale } from "../../utils/fetalWeightUtils";
-import {
-  parseGestationalWeeks,
-  getCentileForWeight,
-  getCentileLabel,
-} from "../../utils/fetalGrowthCentiles";
+import type { LucideIcon } from "lucide-react";
 import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 import {
   formatAnamnesiStrutturataText,
@@ -101,9 +93,7 @@ import {
   todayIsoDate,
   validateBirthDate,
 } from "../../utils/formValidation";
-
-const SIEOG_NOTE =
-  "Ecografia Office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di ciò si informa la persona assistita.";
+import { AppModal } from "../../components/AppModal";
 
 function formatPdfDate(dateString: string): string {
   if (!dateString) return "N/D";
@@ -154,7 +144,7 @@ function PatientDocEmptyState({
   title,
   hint,
 }: {
-  icon: ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+  icon: LucideIcon;
   title: string;
   hint: string;
 }) {
@@ -224,9 +214,8 @@ export default function PatientHistory() {
   const [nuovaRichiestaNome, setNuovaRichiestaNome] = useState("");
   const [nuovaRichiestaNote, setNuovaRichiestaNote] = useState("");
   const [nuovaRichiestaData, setNuovaRichiestaData] = useState(() =>
-    new Date().toISOString().slice(0, 10),
+    todayIsoDate(),
   );
-  const [modelloEsameSelezionato, setModelloEsameSelezionato] = useState("");
   const [savingEsame, setSavingEsame] = useState(false);
   const [isIncludeImagesModalOpen, setIsIncludeImagesModalOpen] =
     useState(false);
@@ -273,7 +262,7 @@ export default function PatientHistory() {
     useState<CertificatoPaziente | null>(null);
   const [certTipo, setCertTipo] = useState<CertificatoPaziente["tipo"]>("assenza_lavoro");
   const [certData, setCertData] = useState(() =>
-    new Date().toISOString().slice(0, 10),
+    todayIsoDate(),
   );
   const [certDescrizione, setCertDescrizione] = useState("");
   const [savingCertificato, setSavingCertificato] = useState(false);
@@ -294,7 +283,7 @@ export default function PatientHistory() {
   const [ricettaPreviewPdfLoading, setRicettaPreviewPdfLoading] = useState(false);
   const [ricettaPreviewFullscreen, setRicettaPreviewFullscreen] = useState(false);
   const [editingRicetta, setEditingRicetta] = useState<RicettaPaziente | null>(null);
-  const [ricettaData, setRicettaData] = useState(() => new Date().toISOString().slice(0, 10));
+  const [ricettaData, setRicettaData] = useState(() => todayIsoDate());
   const [ricettaTesto, setRicettaTesto] = useState("");
   const [savingRicetta, setSavingRicetta] = useState(false);
   const [rightColumnTab, setRightColumnTab] = useState<"ricette" | "esami" | "certificati">("ricette");
@@ -650,10 +639,9 @@ export default function PatientHistory() {
   const handleOpenNuovaRichiestaEsame = () => {
     if (!ensureDoctorProfileComplete(doctor)) return;
     setEditingRichiestaEsame(null);
-    setModelloEsameSelezionato("");
     setNuovaRichiestaNome("");
     setNuovaRichiestaNote("");
-    setNuovaRichiestaData(new Date().toISOString().slice(0, 10));
+    setNuovaRichiestaData(todayIsoDate());
     onEsameOpen();
   };
 
@@ -664,7 +652,6 @@ export default function PatientHistory() {
 
   const handleOpenEditRichiestaEsame = (r: RichiestaEsameComplementare) => {
     setEditingRichiestaEsame(r);
-    setModelloEsameSelezionato("");
     setNuovaRichiestaNome(r.nome);
     setNuovaRichiestaNote(r.note ?? "");
     setNuovaRichiestaData(r.dataRichiesta);
@@ -681,13 +668,6 @@ export default function PatientHistory() {
 
   const handleCloseEsameModal = () => {
     onEsameClose();
-    setEditingRichiestaEsame(null);
-  };
-
-  const handleSelectModelloEsame = (modelloId: string) => {
-    setNuovaRichiestaNome("");
-    setNuovaRichiestaNote("");
-    setModelloEsameSelezionato("");
     setEditingRichiestaEsame(null);
   };
 
@@ -925,7 +905,7 @@ export default function PatientHistory() {
     if (!ensureDoctorProfileComplete(doctor)) return;
     setEditingCertificato(null);
     setCertTipo("assenza_lavoro");
-    setCertData(new Date().toISOString().slice(0, 10));
+    setCertData(todayIsoDate());
     setCertDescrizione("");
     onCertificatoOpen();
   };
@@ -1038,7 +1018,7 @@ export default function PatientHistory() {
   };
 
   const resetRicettaForm = () => {
-    setRicettaData(new Date().toISOString().slice(0, 10));
+    setRicettaData(todayIsoDate());
     setRicettaTesto("");
   };
 
@@ -1358,7 +1338,7 @@ export default function PatientHistory() {
     return `${patient.nome[0]}${patient.cognome[0]}`.toUpperCase();
   };
 
-  const getGenderColor = (gender: string) => {
+  const getGenderColor = (_gender: string): "primary" => {
     return "primary";
   };
 
@@ -1485,36 +1465,6 @@ export default function PatientHistory() {
       return visit.ostetricia?.noteOstetriche || visit.conclusioniDiagnostiche;
     }
     return visit.conclusioniDiagnostiche;
-  };
-
-  const renderEcografiaGallery = (images?: string[]) => {
-    if (!images || images.length === 0) return null;
-    return (
-      <div className="mx-4 mt-3">
-        <div className="bg-[#f0f0f0] px-2 py-1 font-bold text-[10px] uppercase">
-          Immagini Ecografia
-        </div>
-        <div className="px-2 py-2 border-x border-b border-gray-300">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {images.map((image, index) => (
-              <a
-                key={`ecografia-${index}`}
-                href={image}
-                target="_blank"
-                rel="noreferrer"
-                className="block border border-gray-200 rounded-md overflow-hidden hover:opacity-90 transition-opacity"
-              >
-                <img
-                  src={image}
-                  alt={`Ecografia ${index + 1}`}
-                  className="w-full h-28 object-cover"
-                />
-              </a>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
   };
 
   const handleGeneratePdfFromPreview = async (visit: Visit) => {
@@ -1685,7 +1635,6 @@ export default function PatientHistory() {
               includeFetalGrowthChart: includeFetalGrowthChart ?? false,
               fetalGrowthDataPoints,
             });
-      console.log("blob", blob);
       if (!blob) {
         showToast("Impossibile generare il PDF per la stampa.", "error");
         return;
@@ -2397,7 +2346,7 @@ export default function PatientHistory() {
       </div>
 
       {/* Visit Details Modal - Anteprima Referto */}
-      <Modal
+      <AppModal
         isOpen={isOpen}
         onClose={onClose}
         size={previewFullscreen ? "full" : "5xl"}
@@ -2653,10 +2602,10 @@ export default function PatientHistory() {
             </>
           )}
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* ── Edit Patient Modal ── */}
-      <Modal
+      <AppModal
         isOpen={isEditOpen}
         onClose={onEditClose}
         size="2xl"
@@ -2888,10 +2837,10 @@ export default function PatientHistory() {
             </div>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* Modal Anteprima esame = PDF in iframe (come Anteprima Referto) */}
-      <Modal
+      <AppModal
         isOpen={isEsamePreviewOpen}
         onClose={() => {
           onEsamePreviewClose();
@@ -2946,10 +2895,10 @@ export default function PatientHistory() {
             </>
           )}
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* Modal Anteprima certificato = PDF in iframe (come Anteprima Referto) */}
-      <Modal
+      <AppModal
         isOpen={isCertificatoPreviewOpen}
         onClose={() => {
           handleCloseCertificatoPreview();
@@ -2994,10 +2943,10 @@ export default function PatientHistory() {
             </>
           )}
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* Modal Creazione/Modifica Richiesta Esame */}
-      <Modal isOpen={isEsameOpen} onClose={handleCloseEsameModal} size="2xl">
+      <AppModal isOpen={isEsameOpen} onClose={handleCloseEsameModal} size="2xl">
         <ModalContent>
           <ModalHeader className="flex items-center gap-2 pb-2">
             <FlaskConical size={22} className="text-primary-700" />
@@ -3029,7 +2978,6 @@ export default function PatientHistory() {
                       if (t) {
                         setNuovaRichiestaNome(t.text);
                         setNuovaRichiestaNote(t.note || "");
-                        setModelloEsameSelezionato(t.id);
                       }
                     }}
                     className="max-h-[300px] overflow-y-auto"
@@ -3116,10 +3064,10 @@ export default function PatientHistory() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* Modal Nuovo/Modifica Certificato */}
-      <Modal isOpen={isCertificatoOpen} onClose={handleCloseCertificatoModal} size="2xl">
+      <AppModal isOpen={isCertificatoOpen} onClose={handleCloseCertificatoModal} size="2xl">
         <ModalContent>
           <ModalHeader className="flex items-center gap-2 pb-2">
             <Award size={22} className="text-warning-600" />
@@ -3225,10 +3173,10 @@ export default function PatientHistory() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* Modal Anteprima ricetta = PDF in iframe */}
-      <Modal
+      <AppModal
         isOpen={isRicettaPreviewOpen}
         onClose={() => {
           handleCloseRicettaPreview();
@@ -3273,10 +3221,10 @@ export default function PatientHistory() {
             </>
           )}
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {/* Modal Nuovo/Modifica Ricetta */}
-      <Modal isOpen={isRicettaOpen} onClose={handleCloseRicettaModal} size="2xl" scrollBehavior="inside">
+      <AppModal isOpen={isRicettaOpen} onClose={handleCloseRicettaModal} size="2xl" scrollBehavior="inside">
         <ModalContent>
           <ModalHeader className="flex items-center gap-2 pb-2">
             <Pill size={22} className="text-primary-700" />
@@ -3368,9 +3316,9 @@ export default function PatientHistory() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         isOpen={isIncludeImagesModalOpen}
         onClose={() => handleIncludeImagesChoice(false)}
         size="md"
@@ -3399,9 +3347,9 @@ export default function PatientHistory() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         isOpen={isIncludeFetalGrowthChartModalOpen}
         onClose={() => {
           setPendingPrintVisit(null);
@@ -3432,7 +3380,7 @@ export default function PatientHistory() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {doctorProfileIncompleteModal}
 

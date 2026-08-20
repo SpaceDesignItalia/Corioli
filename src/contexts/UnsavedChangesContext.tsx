@@ -11,13 +11,13 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
   Button,
-  Modal,
   ModalBody,
   ModalContent,
   ModalFooter,
   ModalHeader,
 } from "@nextui-org/react";
 import { AlertTriangle } from "lucide-react";
+import { AppModal } from "../components/AppModal";
 
 type UnsavedChangesContextValue = {
   isDirty: boolean;
@@ -139,7 +139,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   return (
     <UnsavedChangesContext.Provider value={value}>
       {children}
-      <Modal
+      <AppModal
         isOpen={modalOpen}
         onClose={cancelLeave}
         placement="center"
@@ -177,7 +177,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
     </UnsavedChangesContext.Provider>
   );
 }

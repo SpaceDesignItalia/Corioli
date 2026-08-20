@@ -11,7 +11,6 @@ import {
   Switch,
   Select,
   SelectItem,
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -119,6 +118,7 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useDoctorProfileIncompleteModal } from "../../components/DoctorProfileIncompleteModal";
 import { getMissingDoctorProfileFields, isDoctorProfileComplete } from "../../utils/doctorProfile";
+import { AppModal } from "../../components/AppModal";
 
 function getAltezzaCmForBmi(patient: Patient | null): number | null {
   if (patient?.altezza == null || patient.altezza <= 0) return null;
@@ -298,7 +298,7 @@ const TemplateSelector = ({
 };
 
 const createDefaultVisitData = () => ({
-  dataVisita: new Date().toISOString().slice(0, 10),
+  dataVisita: todayIsoDate(),
   tipo: "ginecologica",
   descrizioneClinica: "",
   anamnesi: "",
@@ -365,7 +365,9 @@ const createDefaultOstetriciaData = () => ({
   esameObiettivo: "",
   crlMm: undefined as number | undefined,
   ecografiaImmagini: [] as string[],
-  biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 },
+  biometriaFetale: { bpdMm: 0, hcMm: 0, acMm: 0, flMm: 0 } as NonNullable<
+    NonNullable<Visit["ostetricia"]>["biometriaFetale"]
+  >,
   flussimetriaOmbelicale: undefined as
     | {
         pi?: number;
@@ -580,7 +582,6 @@ export default function AddVisit() {
       try {
         const templates = await TemplateService.getAllTemplates();
         setAllTemplates(templates);
-        console.log(templates);
       } catch (e) {
         console.error("Errore caricamento template", e);
       }
@@ -4050,7 +4051,7 @@ export default function AddVisit() {
         </div>
       )}
 
-      <Modal
+      <AppModal
         isOpen={isIncludeImagesModalOpen}
         onClose={() => resolveIncludeEcografiaImages(false)}
         size="md"
@@ -4079,9 +4080,9 @@ export default function AddVisit() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         isOpen={isFlattenAnamnesiModalOpen}
         onClose={() => resolveFlattenAnamnesi(null)}
         size="md"
@@ -4142,9 +4143,9 @@ export default function AddVisit() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         isOpen={isIncludeFetalGrowthChartModalOpen}
         onClose={() => resolveIncludeFetalGrowthChart(false)}
         size="md"
@@ -4172,7 +4173,7 @@ export default function AddVisit() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       {doctorProfileIncompleteModal}
     </div>

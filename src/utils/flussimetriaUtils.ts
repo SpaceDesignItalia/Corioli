@@ -66,6 +66,10 @@ function interpolateRef(
  */
 export function getUmbilicalPiPercentile(pi: number, gaWeeks: number): number | null {
   if (!Number.isFinite(pi) || !Number.isFinite(gaWeeks)) return null;
+  // Un PI nullo o negativo non esiste: viene da un campo vuoto o da un refuso.
+  // Senza questo controllo il referto stamperebbe "<5°", che si legge come un
+  // dato patologico invece che come un dato mancante.
+  if (pi <= 0) return null;
   const ref = interpolateRef(gaWeeks, UA_PI_REF);
   if (!ref) return null;
   const [p5, p50, p95] = ref;
@@ -78,6 +82,8 @@ export function getUmbilicalPiPercentile(pi: number, gaWeeks: number): number | 
  */
 export function getUmbilicalRiPercentile(ri: number, gaWeeks: number): number | null {
   if (!Number.isFinite(ri) || !Number.isFinite(gaWeeks)) return null;
+  // Come per il PI: 0 o negativo significa "non misurato", non "resistenza nulla".
+  if (ri <= 0) return null;
   const ref = interpolateRef(gaWeeks, UA_RI_REF);
   if (!ref) return null;
   const [p5, p50, p95] = ref;

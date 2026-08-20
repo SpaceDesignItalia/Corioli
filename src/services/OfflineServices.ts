@@ -1,5 +1,8 @@
 import { storageService } from './StorageServiceFallback';
-import { Patient, Visit, VisitRevision, Doctor, Document, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
+import { todayIsoDate } from '../utils/dateUtils';
+import { validateBackupData } from '../utils/backupValidation';
+import { createBackupFile } from './BackupFileService';
+import { Patient, Visit, VisitRevision, Doctor, Document, AppData, BackupImportMode, RichiestaEsameComplementare, CertificatoPaziente, RicettaPaziente } from '../types/Storage';
 
 // Servizio per gestire i pazienti offline
 export class PatientService {
@@ -15,18 +18,9 @@ export class PatientService {
     return await storageService.getPatientByCF(cf);
   }
 
-  static async addPatient(patientData: {
-    codiceFiscale?: string;
-    codiceFiscaleGenerato?: boolean;
-    nome: string;
-    cognome: string;
-    dataNascita: string;
-    luogoNascita: string;
-    sesso: 'M' | 'F';
-    indirizzo?: string;
-    telefono?: string;
-    email?: string;
-  }): Promise<Patient> {
+  static async addPatient(
+    patientData: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<Patient> {
     return await storageService.addPatient(patientData);
   }
 
@@ -64,15 +58,13 @@ export class VisitService {
     return await storageService.getVisitById(id);
   }
 
-  static async addVisit(visitData: {
-    patientId: string;
-    dataVisita: string;
-    descrizioneClinica: string;
-    anamnesi: string;
-    esamiObiettivo: string;
-    conclusioniDiagnostiche: string;
-    terapie: string;
-  }): Promise<Visit> {
+  /**
+   * Il tipo deriva da `Visit`: una firma scritta a mano perdeva silenziosamente
+   * `tipo`, `ginecologia`, `ostetricia` e `anamnesiStrutturata`.
+   */
+  static async addVisit(
+    visitData: Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<Visit> {
     return await storageService.addVisit(visitData);
   }
 
@@ -283,18 +275,33 @@ export class BackupService {
     return new Blob([jsonString], { type: 'application/json' });
   }
 
+  /**
+   * Importa un backup JSON.
+   *
+   * Ordine obbligato: prima si valida il file, poi si crea una copia di sicurezza
+   * del database, e solo allora si tocca l'archivio. In modalità "replace" lo
+   * storage esegue comunque un rollback in memoria se la scrittura fallisce.
+   */
   static async importData(file: File, mode: BackupImportMode = 'replace'): Promise<void> {
+    let parsed: unknown;
     try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      if (!data.patients && !data.visits && !data.documents) {
-        throw new Error("Formato file non valido: mancano dati essenziali.");
-      }
-      await storageService.importData(data, mode);
-    } catch (error) {
-      console.error("Errore parsing backup:", error);
-      throw error;
+      parsed = JSON.parse(await file.text());
+    } catch {
+      throw new Error('Il file non è un JSON leggibile: potrebbe essere danneggiato o incompleto.');
     }
+
+    const validation = validateBackupData(parsed);
+    if (!validation.ok) {
+      throw new Error(validation.errors.join(' '));
+    }
+
+    // Punto di ritorno prima di modificare l'archivio.
+    const backup = await createBackupFile('pre-import');
+    if (backup && !backup.ok) {
+      console.warn('Backup pre-import non riuscito:', backup.error);
+    }
+
+    await storageService.importData(parsed as AppData, mode);
   }
 
   static async downloadBackup(): Promise<void> {
@@ -302,7 +309,7 @@ export class BackupService {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `backup-corioli-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `backup-corioli-${todayIsoDate()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

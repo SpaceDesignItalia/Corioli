@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getAppVersion: () => ipcRenderer.invoke('app:version'),
 
+  // Backup automatici (copie del file SQLite in userData/backups)
+  backupCreate: (reason) => ipcRenderer.invoke('backup:create', reason),
+  backupList: () => ipcRenderer.invoke('backup:list'),
+  backupRestore: (fileName) => ipcRenderer.invoke('backup:restore', fileName),
+  backupOpenFolder: () => ipcRenderer.invoke('backup:openFolder'),
+
   appLockStatus: () => ipcRenderer.invoke('appLock:status'),
   appLockSetup: (pin) => ipcRenderer.invoke('appLock:setup', pin),
   appLockVerifyPin: (pin) => ipcRenderer.invoke('appLock:verifyPin', pin),

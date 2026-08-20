@@ -21,7 +21,7 @@ export function getMissingDoctorProfileFields(
 ): string[] {
   if (!doctor) return REQUIRED_PROFILE_FIELDS.map((f) => f.label);
   return REQUIRED_PROFILE_FIELDS.filter(({ key }) => {
-    const value = doctor[key];
+    const value = doctor[key as keyof DoctorProfileLike];
     return !String(value ?? "").trim();
   }).map((f) => f.label);
 }

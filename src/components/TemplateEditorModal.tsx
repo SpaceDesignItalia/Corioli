@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -24,6 +23,7 @@ import type {
   AnamnesiConfig,
   AnamnesiVisitType,
 } from "../utils/anamnesiStrutturata";
+import { AppModal } from "./AppModal";
 
 type TemplateCategory = MedicalTemplate["category"];
 type TemplateSection = MedicalTemplate["section"];
@@ -638,7 +638,7 @@ export function TemplateEditorModal({
   };
 
   return (
-    <Modal
+    <AppModal
       isOpen={isOpen}
       onClose={onClose}
       size="2xl"
@@ -841,6 +841,6 @@ export function TemplateEditorModal({
           </Button>
         </ModalFooter>
       </ModalContent>
-    </Modal>
+    </AppModal>
   );
 }

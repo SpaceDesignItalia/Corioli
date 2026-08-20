@@ -1,4 +1,4 @@
-import { Textarea, type TextareaProps } from "@nextui-org/react";
+import { Textarea, type TextAreaProps } from "@nextui-org/react";
 import { useCallback, useEffect, useRef } from "react";
 
 const REFERTO_TEXTAREA_CLASSES = {
@@ -25,7 +25,7 @@ export function RefertoTextarea({
   className,
   onValueChange,
   ...props
-}: TextareaProps) {
+}: TextAreaProps) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const getTextarea = useCallback(

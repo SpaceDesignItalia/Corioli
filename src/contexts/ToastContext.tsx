@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, ReactNode } from "react";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import { brandSuccessAlertSx } from "../utils/muiBrand";
 
-type ToastSeverity = "success" | "error" | "info";
+type ToastSeverity = "success" | "error" | "info" | "warning";
 
 interface ToastContextValue {
   showToast: (message: string, severity?: ToastSeverity) => void;

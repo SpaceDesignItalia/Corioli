@@ -1,6 +1,7 @@
 import { PatientService, VisitService, DoctorService } from './OfflineServices';
 import { Patient, Visit, Doctor } from '../types/Storage';
 import jsPDF from 'jspdf';
+import { todayIsoDate } from "../utils/dateUtils";
 
 export interface ExportData {
   doctor: Doctor | null;
@@ -58,7 +59,7 @@ export class ExportService {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `corioli_accesso_dati_${new Date().toISOString().split("T")[0]}.json`;
+      a.download = `corioli_accesso_dati_${todayIsoDate()}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -95,7 +96,7 @@ export class ExportService {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `export_completo_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `export_completo_${todayIsoDate()}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -146,7 +147,7 @@ export class ExportService {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `pazienti_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `pazienti_${todayIsoDate()}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -197,7 +198,7 @@ export class ExportService {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `visite_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `visite_${todayIsoDate()}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -218,8 +219,8 @@ export class ExportService {
       ]);
 
       const doc = new jsPDF();
-      const primaryColor = [41, 128, 185];
-      const secondaryColor = [52, 73, 94];
+      const primaryColor: [number, number, number] = [41, 128, 185];
+      const secondaryColor: [number, number, number] = [52, 73, 94];
 
       // Header
       doc.setFillColor(...primaryColor);
@@ -317,7 +318,7 @@ export class ExportService {
         doc.text(`Pagina ${i} di ${pageCount}`, 105, 290, { align: "center" });
       }
 
-      doc.save(`report_completo_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`report_completo_${todayIsoDate()}.pdf`);
     } catch (error) {
       console.error('Errore nell\'export PDF:', error);
       throw error;

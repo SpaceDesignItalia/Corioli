@@ -41,6 +41,7 @@ import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { PregnancyListRow } from "../../components/PregnancyListRow";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
+import { toLocalIsoDate } from "../../utils/dateUtils";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -181,7 +182,7 @@ const buildDashboardSubtitle = (
       : `Hai registrato ${n} visite oggi`;
   }
 
-  const todayKey = today.toISOString().slice(0, 10);
+  const todayKey = toLocalIsoDate(today);
   let isFirstOpenToday = false;
   try {
     const lastOpen = localStorage.getItem("corioli_home_last_open");
@@ -645,7 +646,8 @@ export default function Home() {
                         <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors truncate text-sm">
                           {group.patientName}
                         </p>
-                        <p className="text-xs text-gray-500 truncate flex items-center gap-1 flex-wrap">
+                        {/* div, non p: contiene una Chip (che rende un div) ed è usato come contenitore flex */}
+                        <div className="text-xs text-gray-500 truncate flex items-center gap-1 flex-wrap">
                           {group.mixedTypes ? (
                             <span>{group.count} visite</span>
                           ) : (
@@ -660,7 +662,7 @@ export default function Home() {
                           )}
                           <span className="text-gray-400">·</span>
                           <span>{group.dateLabel}</span>
-                        </p>
+                        </div>
                       </div>
                     </div>
                     <ArrowRight

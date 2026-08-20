@@ -7,7 +7,6 @@ import {
   CardHeader,
   Chip,
   Input,
-  Modal,
   ModalBody,
   ModalContent,
   ModalFooter,
@@ -30,9 +29,10 @@ import { Breadcrumb } from "../../components/Breadcrumb";
 import { PageHeader } from "../../components/PageHeader";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { DocumentsGridSkeleton } from "../../components/AppStartupSkeleton";
-import { useToast } from "../../contexts/ToastContext";
 import { Document, Patient } from "../../types/Storage";
 import { DocumentService, PatientService } from "../../services/OfflineServices";
+import { todayIsoDate } from "../../utils/dateUtils";
+import { AppModal } from "../../components/AppModal";
 
 const formatFileSize = (bytes: number): string => {
   if (!bytes) return "0 B";
@@ -93,7 +93,6 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
 export default function PatientFiles() {
   const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -207,7 +206,7 @@ export default function PatientFiles() {
         fileSize: selectedFile.size,
         mimeType: selectedFile.type,
         category: "altro",
-        uploadDate: new Date().toISOString().slice(0, 10),
+        uploadDate: todayIsoDate(),
         fileData,
       });
       setSuccess("Documento caricato con successo.");
@@ -518,7 +517,7 @@ export default function PatientFiles() {
         </>
       )}
 
-      <Modal
+      <AppModal
         isOpen={isPreviewOpen}
         onClose={closePreview}
         size="5xl"
@@ -585,9 +584,9 @@ export default function PatientFiles() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
-      <Modal isOpen={isUploadOpen} onClose={onUploadClose} size="2xl">
+      <AppModal isOpen={isUploadOpen} onClose={onUploadClose} size="2xl">
         <ModalContent>
           <ModalHeader>
             <h2 className="text-xl font-bold">Carica Nuovo Documento</h2>
@@ -663,7 +662,7 @@ export default function PatientFiles() {
             </Button>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
 
       <ConfirmDangerModal
         isOpen={isDeleteOpen}

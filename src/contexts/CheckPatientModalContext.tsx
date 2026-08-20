@@ -12,7 +12,6 @@ import { useNavigate } from "react-router-dom";
 import {
   Button,
   Input,
-  Modal,
   ModalBody,
   ModalContent,
   ModalFooter,
@@ -23,6 +22,7 @@ import { PatientService } from "../services/OfflineServices";
 import type { Patient } from "../types/Storage";
 import { CodiceFiscaleValue } from "../components/CodiceFiscaleValue";
 import { isValidCodiceFiscaleFormat } from "../utils/codiceFiscale";
+import { AppModal } from "../components/AppModal";
 
 type CheckPatientModalContextValue = {
   openCheckPatientModal: () => void;
@@ -187,7 +187,7 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
   return (
     <CheckPatientModalContext.Provider value={value}>
       {children}
-      <Modal
+      <AppModal
         isOpen={isOpen}
         onClose={closeCheckPatientModal}
         placement="center"
@@ -311,7 +311,7 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
             </div>
           </ModalFooter>
         </ModalContent>
-      </Modal>
+      </AppModal>
     </CheckPatientModalContext.Provider>
   );
 }

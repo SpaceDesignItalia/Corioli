@@ -1,6 +1,12 @@
+/**
+ * Ritaglio dell'immagine di firma/timbro per i PDF.
+ *
+ * NON ancora collegato: il caricamento in Impostazioni → Profilo Dottore salva
+ * l'immagine così com'è. Il componente è tenuto di proposito, da agganciare in
+ * futuro al flusso di caricamento firma — non è codice morto da eliminare.
+ */
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
-  Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
@@ -14,6 +20,7 @@ import {
   SIGNATURE_STAMP_EXPORT_WIDTH,
   SIGNATURE_STAMP_EXPORT_HEIGHT,
 } from "../utils/signatureStamp";
+import { AppModal } from "./AppModal";
 
 type Props = {
   isOpen: boolean;
@@ -149,7 +156,7 @@ export function SignatureStampCropModal({
   const geo = getCropGeometry();
 
   return (
-    <Modal
+    <AppModal
       isOpen={isOpen}
       onClose={onClose}
       size="2xl"
@@ -261,6 +268,6 @@ export function SignatureStampCropModal({
           </Button>
         </ModalFooter>
       </ModalContent>
-    </Modal>
+    </AppModal>
   );
 }

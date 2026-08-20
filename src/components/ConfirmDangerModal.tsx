@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import {
   Button,
-  Modal,
   ModalBody,
   ModalContent,
   ModalFooter,
   ModalHeader,
 } from "@nextui-org/react";
 import { Trash2 } from "lucide-react";
+import { AppModal } from "./AppModal";
 
 type ConfirmDangerModalProps = {
   isOpen: boolean;
@@ -31,7 +31,7 @@ export function ConfirmDangerModal({
   isLoading = false,
 }: ConfirmDangerModalProps) {
   return (
-    <Modal
+    <AppModal
       isOpen={isOpen}
       onClose={() => {
         if (isLoading) return;
@@ -66,6 +66,6 @@ export function ConfirmDangerModal({
           </Button>
         </ModalFooter>
       </ModalContent>
-    </Modal>
+    </AppModal>
   );
 }
