@@ -4,12 +4,16 @@ import path from "path";
 /**
  * File PDF generati per la stampa.
  *
- * Non stanno più in `%TEMP%`: sono referti, ricette e certificati con dati
- * sanitari, e la cartella temporanea di sistema è condivisa e raramente svuotata.
- * Vivono in una sottocartella dell'app, ripulita all'avvio e alla chiusura.
+ * Vivono in una sottocartella dedicata dentro la temp dell'utente
+ * (`%TEMP%\Corioli\stampe`), ripulita all'avvio e alla chiusura: sono referti,
+ * ricette e certificati con dati sanitari e non devono restare in giro.
  *
- * Non vengono più cancellati a tempo: il vecchio `setTimeout` a 60 secondi
- * faceva sparire il file mentre il medico stava ancora scegliendo la stampante.
+ * Non possono stare in `userData`: nel pacchetto MSIX del Microsoft Store quelle
+ * scritture finiscono nel container e il visualizzatore PDF esterno non le trova
+ * (ERR_FILE_NOT_FOUND). Vedi `getPrintDir` in main.js.
+ *
+ * Non vengono cancellati a tempo: il vecchio `setTimeout` a 60 secondi faceva
+ * sparire il file mentre il medico stava ancora scegliendo la stampante.
  */
 
 const PRINT_FILE_PREFIX = "Corioli_stampa_";

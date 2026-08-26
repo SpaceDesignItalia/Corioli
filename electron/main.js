@@ -35,8 +35,25 @@ function getBackupsDir() {
   return path.join(app.getPath("userData"), "backups");
 }
 
-/** PDF di stampa: cartella dell'app, non la temp di sistema (contengono dati sanitari). */
+/**
+ * PDF di stampa: sottocartella dedicata dentro la temp dell'utente.
+ *
+ * NON deve stare in `userData`: nel pacchetto MSIX del Microsoft Store le
+ * scritture in `%APPDATA%\Corioli` vengono dirottate dentro il container
+ * (`%LOCALAPPDATA%\Packages\Corioli.Corioli_*\LocalCache\Roaming\Corioli`).
+ * L'app vede il percorso virtuale, il visualizzatore PDF esterno aperto da
+ * `shell.openPath` vede quello reale — che non esiste: ERR_FILE_NOT_FOUND.
+ * In sviluppo il problema non si vede perché l'app non è pacchettizzata.
+ *
+ * La temp non è dirottata, quindi il percorso è lo stesso per app e visualizzatore.
+ * I file vengono ripuliti all'avvio e alla chiusura (vedi cleanupPrintDir).
+ */
 function getPrintDir() {
+  return path.join(app.getPath("temp"), "Corioli", "stampe");
+}
+
+/** Vecchia cartella di stampa (versioni <= 1.3.2): va solo ripulita. */
+function getLegacyPrintDir() {
   return path.join(app.getPath("userData"), "stampe");
 }
 
@@ -425,6 +442,8 @@ ipcMain.handle("shell:openExternal", async (_event, url) => {
 app.whenReady().then(() => {
   // PDF rimasti da una sessione precedente (crash o chiusura forzata)
   cleanupPrintDir(getPrintDir());
+  // e quelli lasciati dalla vecchia cartella di stampa in userData
+  cleanupPrintDir(getLegacyPrintDir());
   createWindow();
 });
 
