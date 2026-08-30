@@ -263,7 +263,12 @@ const TemplateSelector = ({
   return (
     <Dropdown
       classNames={{
-        content: "max-h-[min(20rem,60vh)] overflow-y-auto",
+        // `justify-start` non è decorativo: lo slot `content` di NextUI è un
+        // flex column con `justify-center`, e in un contenitore scrollabile
+        // centrato l'eccedenza sopra il primo elemento è irraggiungibile
+        // (scrollTop non va sotto zero): con molti modelli metà lista restava
+        // invisibile pur essendoci la scrollbar.
+        content: "max-h-[min(20rem,60vh)] overflow-y-auto justify-start",
       }}
     >
       <DropdownTrigger>
