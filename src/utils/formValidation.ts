@@ -7,6 +7,9 @@ export const MAX_HEIGHT_CM = 250;
 export const MIN_WEIGHT_KG = 30;
 export const MAX_WEIGHT_KG = 200;
 export const MIN_BIRTH_YEAR = 1900;
+/** Limiti di sicurezza per i valori di laboratorio dell'HOMA-IR. */
+export const MAX_GLICEMIA_MG_DL = 800;
+export const MAX_INSULINEMIA_UU_ML = 500;
 
 /** Data odierna (fuso locale). Ri-esportata da `dateUtils` per i form che la usano. */
 export { todayIsoDate };
@@ -51,9 +54,14 @@ export function clampWeightKg(value: number): number {
   return Math.min(MAX_WEIGHT_KG, Math.max(MIN_WEIGHT_KG, Math.round(value * 10) / 10));
 }
 
+/** Consente cifre e un separatore decimale mentre si digita un numero. */
+export function isValidDecimalInputDraft(s: string): boolean {
+  return s === "" || /^\d*[.,]?\d*$/.test(s);
+}
+
 /** Consente cifre e un separatore decimale mentre si digita. */
 export function isValidWeightInputDraft(s: string): boolean {
-  return s === "" || /^\d*[.,]?\d*$/.test(s);
+  return isValidDecimalInputDraft(s);
 }
 
 /** Parsing live: non arrotonda né limita il range (evita salti a 30 kg al primo tasto). */
@@ -73,6 +81,27 @@ export function parseWeightFieldBlur(s: string): number {
   const n = parseFloat(t);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return clampWeightKg(n);
+}
+
+/**
+ * Parsing live di un valore di laboratorio: nessun clamp mentre si digita,
+ * così il campo non salta a un estremo al primo tasto.
+ */
+export function parseLabValueLive(s: string): number | "incomplete" {
+  const t = s.trim().replace(",", ".");
+  if (t === "" || t === "." || t.endsWith(".")) return "incomplete";
+  const n = parseFloat(t);
+  if (!Number.isFinite(n)) return "incomplete";
+  return n;
+}
+
+/** Valore al blur: vuoto o non valido → 0, altrimenti arrotondato e limitato a `max`. */
+export function parseLabValueBlur(s: string, max: number): number {
+  const t = s.trim().replace(",", ".");
+  if (t === "" || t === ".") return 0;
+  const n = parseFloat(t);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(max, Math.round(n * 100) / 100);
 }
 
 export function parseOptionalHeight(raw: string): number | undefined {

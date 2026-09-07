@@ -159,6 +159,10 @@ export interface Visit {
     ivg?: number;
     /** Peso corporeo (kg) — usato per il calcolo del BMI */
     pesoCorporeo?: number;
+    /** Glicemia a digiuno (mg/dL) — usata per il calcolo dell'HOMA-IR */
+    glicemiaDigiuno?: number;
+    /** Insulinemia a digiuno (microU/mL) — usata per il calcolo dell'HOMA-IR */
+    insulinemiaDigiuno?: number;
     /** Menarca (eta o note) */
     menarca?: string;
     /** Stadio di Tanner (femmina) */

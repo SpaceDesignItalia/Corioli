@@ -69,6 +69,11 @@ import {
   parseOptionalHeight,
   parseWeightFieldBlur,
   parseWeightFieldLive,
+  parseLabValueBlur,
+  parseLabValueLive,
+  isValidDecimalInputDraft,
+  MAX_GLICEMIA_MG_DL,
+  MAX_INSULINEMIA_UU_ML,
   ginecologiaAnamnesiErrors,
   ostetriciaAnamnesiErrors,
   todayIsoDate,
@@ -89,6 +94,15 @@ import {
   formatCentileLabel,
 } from "../../utils/fetalGrowthCentiles";
 import { getBiometryPercentile } from "../../utils/biometryCentiles";
+import {
+  bmiBand,
+  computeBmi,
+  computeHomaIr,
+  formatBmi,
+  formatHomaIr,
+  homaIrBand,
+  type MetabolicBand,
+} from "../../utils/metabolicIndices";
 import {
   getUmbilicalPiPercentile,
   getUmbilicalRiPercentile,
@@ -125,9 +139,35 @@ function getAltezzaCmForBmi(patient: Patient | null): number | null {
   return parseOptionalHeight(String(patient.altezza)) ?? null;
 }
 
-function computeBmi(weightKg: number, heightCm: number): string {
-  const h = heightCm / 100;
-  return (weightKg / (h * h)).toFixed(1);
+/**
+ * Chip colorato con valore e fascia di un indice metabolico (BMI, HOMA-IR).
+ * Il colore è quello della fascia, così la classificazione si legge a colpo
+ * d'occhio senza dover ricordare le soglie.
+ */
+function MetabolicChip({
+  sigla,
+  valore,
+  band,
+  title,
+}: {
+  sigla: string;
+  valore: string;
+  band: MetabolicBand;
+  title: string;
+}) {
+  return (
+    <div
+      className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 text-center animate-appearance-in ${band.chipClass}`}
+      title={title}
+    >
+      <span className="text-xs font-semibold whitespace-nowrap">
+        {sigla} {valore}
+      </span>
+      <span className="text-[10px] font-medium leading-tight opacity-90">
+        {band.label}
+      </span>
+    </div>
+  );
 }
 
 /** Barra grafica percentile (5°–95°): linea con rombo alla posizione del percentile */
@@ -312,6 +352,12 @@ const createDefaultVisitData = () => ({
   terapie: "",
 });
 
+/** Massimo consentito per i due valori di laboratorio dell'HOMA-IR. */
+const HOMA_FIELD_MAX = {
+  glicemiaDigiuno: MAX_GLICEMIA_MG_DL,
+  insulinemiaDigiuno: MAX_INSULINEMIA_UU_ML,
+} as const;
+
 const createDefaultGinecologiaData = () => ({
   gravidanze: 0,
   parti: 0,
@@ -321,6 +367,8 @@ const createDefaultGinecologiaData = () => ({
   abortiSpontanei: 0,
   ivg: 0,
   pesoCorporeo: 0,
+  glicemiaDigiuno: 0,
+  insulinemiaDigiuno: 0,
   menarca: "",
   stadioTannerFemmina: "",
   ultimaMestruazione: "",
@@ -563,6 +611,11 @@ export default function AddVisit() {
   const [pesoCorporeoDraft, setPesoCorporeoDraft] = useState<string | null>(
     null,
   );
+  /** Testo libero dei valori HOMA-IR (ginecologia) mentre il campo ha focus. */
+  const [homaDraft, setHomaDraft] = useState<{
+    glicemia: string | null;
+    insulinemia: string | null;
+  }>({ glicemia: null, insulinemia: null });
 
   useEffect(() => {
     const loadData = async () => {
@@ -1012,13 +1065,30 @@ export default function AddVisit() {
         visitData.tipo === "ostetrica"
           ? computeFlussimetriaCalcoliSnapshot(ostetriciaForSave)
           : null;
-      const ginecologiaForSave =
-        pesoCorporeoDraft !== null
+      // I campi numerici della ginecologia possono essere ancora "in bozza"
+      // (focus nel campo, blur mai avvenuto): li normalizziamo prima di salvare.
+      const ginecologiaForSave = {
+        ...ginecologiaData,
+        ...(pesoCorporeoDraft !== null
+          ? { pesoCorporeo: parseWeightFieldBlur(pesoCorporeoDraft) }
+          : {}),
+        ...(homaDraft.glicemia !== null
           ? {
-              ...ginecologiaData,
-              pesoCorporeo: parseWeightFieldBlur(pesoCorporeoDraft),
+              glicemiaDigiuno: parseLabValueBlur(
+                homaDraft.glicemia,
+                MAX_GLICEMIA_MG_DL,
+              ),
             }
-          : ginecologiaData;
+          : {}),
+        ...(homaDraft.insulinemia !== null
+          ? {
+              insulinemiaDigiuno: parseLabValueBlur(
+                homaDraft.insulinemia,
+                MAX_INSULINEMIA_UU_ML,
+              ),
+            }
+          : {}),
+      };
 
       // Modalità strutturata: salva i sotto-campi (puliti) e lascia intatta
       // `prestazione` (per non perdere dati se si torna alla modalità singola).
@@ -1705,6 +1775,32 @@ export default function AddVisit() {
     setGinecologiaData((prev) => ({
       ...prev,
       pesoCorporeo: parseWeightFieldBlur(raw),
+    }));
+  };
+
+  const liveGinecologiaLabValue = (
+    field: keyof typeof HOMA_FIELD_MAX,
+    raw: string,
+  ) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    const live = parseLabValueLive(raw);
+    if (live === "incomplete") {
+      if (raw === "" || raw === ".") {
+        setGinecologiaData((prev) => ({ ...prev, [field]: 0 }));
+      }
+      return;
+    }
+    setGinecologiaData((prev) => ({ ...prev, [field]: live }));
+  };
+
+  const commitGinecologiaLabValue = (
+    field: keyof typeof HOMA_FIELD_MAX,
+    raw: string,
+  ) => {
+    if (initialLoadDone.current) setHasUnsavedChanges(true);
+    setGinecologiaData((prev) => ({
+      ...prev,
+      [field]: parseLabValueBlur(raw, HOMA_FIELD_MAX[field]),
     }));
   };
 
@@ -2476,31 +2572,137 @@ export default function AddVisit() {
                         classNames={{ label: "pb-1" }}
                       />
 
-                      {/* Indicatore BMI (compatto e discreto) — stesso stile dell'ostetrica */}
-                      {ginecologiaData.pesoCorporeo > 0 &&
-                        (() => {
-                          const altezzaCm = getAltezzaCmForBmi(patient);
-                          const bmi =
-                            altezzaCm != null
-                              ? computeBmi(
-                                  ginecologiaData.pesoCorporeo,
-                                  altezzaCm,
-                                )
-                              : null;
-                          if (bmi == null) return null;
+                      {/* Indicatore BMI: valore, fascia OMS e colore della fascia */}
+                      {(() => {
+                        const bmi = computeBmi(
+                          ginecologiaData.pesoCorporeo,
+                          getAltezzaCmForBmi(patient),
+                        );
+                        if (bmi == null) return null;
+                        return (
+                          <div className="flex flex-col items-center justify-end pb-1 px-1.5">
+                            <MetabolicChip
+                              sigla="BMI"
+                              valore={formatBmi(bmi)}
+                              band={bmiBand(bmi)}
+                              title="Indice di massa corporea (classificazione OMS)"
+                            />
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <Divider className="my-2" />
+
+                    {/* HOMA-IR: indice di insulino-resistenza (utile nella PCOS) */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        HOMA-IR (a digiuno)
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input
+                          label="Glicemia (mg/dL)"
+                          type="text"
+                          inputMode="decimal"
+                          size="sm"
+                          variant="bordered"
+                          labelPlacement="outside"
+                          placeholder="Es. 88"
+                          value={
+                            homaDraft.glicemia ??
+                            ((ginecologiaData.glicemiaDigiuno ?? 0) === 0
+                              ? ""
+                              : String(ginecologiaData.glicemiaDigiuno))
+                          }
+                          onFocus={() => {
+                            setHomaDraft((d) => ({
+                              ...d,
+                              glicemia:
+                                (ginecologiaData.glicemiaDigiuno ?? 0) > 0
+                                  ? String(ginecologiaData.glicemiaDigiuno)
+                                  : "",
+                            }));
+                          }}
+                          onBlur={() => {
+                            if (homaDraft.glicemia !== null) {
+                              commitGinecologiaLabValue(
+                                "glicemiaDigiuno",
+                                homaDraft.glicemia,
+                              );
+                            }
+                            setHomaDraft((d) => ({ ...d, glicemia: null }));
+                          }}
+                          onValueChange={(v) => {
+                            if (!isValidDecimalInputDraft(v)) return;
+                            setHomaDraft((d) => ({ ...d, glicemia: v }));
+                            liveGinecologiaLabValue("glicemiaDigiuno", v);
+                          }}
+                          classNames={{ label: "pb-1" }}
+                        />
+                        <Input
+                          label="Insulinemia (µU/mL)"
+                          type="text"
+                          inputMode="decimal"
+                          size="sm"
+                          variant="bordered"
+                          labelPlacement="outside"
+                          placeholder="Es. 9.5"
+                          value={
+                            homaDraft.insulinemia ??
+                            ((ginecologiaData.insulinemiaDigiuno ?? 0) === 0
+                              ? ""
+                              : String(ginecologiaData.insulinemiaDigiuno))
+                          }
+                          onFocus={() => {
+                            setHomaDraft((d) => ({
+                              ...d,
+                              insulinemia:
+                                (ginecologiaData.insulinemiaDigiuno ?? 0) > 0
+                                  ? String(ginecologiaData.insulinemiaDigiuno)
+                                  : "",
+                            }));
+                          }}
+                          onBlur={() => {
+                            if (homaDraft.insulinemia !== null) {
+                              commitGinecologiaLabValue(
+                                "insulinemiaDigiuno",
+                                homaDraft.insulinemia,
+                              );
+                            }
+                            setHomaDraft((d) => ({ ...d, insulinemia: null }));
+                          }}
+                          onValueChange={(v) => {
+                            if (!isValidDecimalInputDraft(v)) return;
+                            setHomaDraft((d) => ({ ...d, insulinemia: v }));
+                            liveGinecologiaLabValue("insulinemiaDigiuno", v);
+                          }}
+                          classNames={{ label: "pb-1" }}
+                        />
+                      </div>
+                      {(() => {
+                        const homa = computeHomaIr(
+                          ginecologiaData.glicemiaDigiuno,
+                          ginecologiaData.insulinemiaDigiuno,
+                        );
+                        if (homa == null) {
                           return (
-                            <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
-                              <div
-                                className="flex flex-col items-center gap-0 rounded-md border px-2 py-1 text-primary-600 bg-primary-50/80 border-primary-200"
-                                title="Indice di massa corporea"
-                              >
-                                <div className="flex items-center gap-1 text-xs font-semibold">
-                                  <span>BMI {bmi}</span>
-                                </div>
-                              </div>
-                            </div>
+                            <p className="text-[11px] text-default-400">
+                              Inserisci entrambi i valori per calcolare
+                              l&apos;HOMA-IR.
+                            </p>
                           );
-                        })()}
+                        }
+                        return (
+                          <div className="flex justify-center">
+                            <MetabolicChip
+                              sigla="HOMA-IR"
+                              valore={formatHomaIr(homa)}
+                              band={homaIrBand(homa)}
+                              title="glicemia x insulinemia / 405 - soglie orientative: <2 normale, 2-2.5 borderline, 2.5-5 insulino-resistenza, >5 marcata"
+                            />
+                          </div>
+                        );
+                      })()}
                     </div>
                   </CardBody>
                 </Card>
@@ -3124,27 +3326,21 @@ export default function AddVisit() {
                         classNames={{ label: "pb-1" }}
                       />
 
-                      {/* Indicatore aumento peso + BMI (compatto e discreto) */}
+                      {/* Indicatore aumento peso + BMI pre-gravidanza (compatto) */}
                       {ostetriciaData.pesoPreGravidanza > 0 &&
                         ostetriciaData.pesoAttuale > 0 && (
-                          <div className="flex flex-col items-center justify-end pb-1 px-1.5 animate-appearance-in">
+                          <div className="flex flex-col items-center justify-end gap-1 pb-1 px-1.5 animate-appearance-in">
                             {(() => {
                               const diff =
                                 ostetriciaData.pesoAttuale -
                                 ostetriciaData.pesoPreGravidanza;
                               const isNegative = diff < 0;
+                              // Il colore di questo chip segnala il verso della
+                              // variazione di peso, non la fascia BMI: quella ha
+                              // il suo chip colorato qui sotto.
                               const colorClass = isNegative
                                 ? "corioli-text-brand bg-brand-50/80 border-brand-200"
                                 : "text-primary-600 bg-primary-50/80 border-primary-200";
-                              const altezzaCm = getAltezzaCmForBmi(patient);
-                              const bmiPartenza =
-                                altezzaCm != null &&
-                                ostetriciaData.pesoPreGravidanza > 0
-                                  ? computeBmi(
-                                      ostetriciaData.pesoPreGravidanza,
-                                      altezzaCm,
-                                    )
-                                  : null;
                               return (
                                 <div
                                   className={`flex flex-col items-center gap-0 rounded-md border px-2 py-1 ${colorClass}`}
@@ -3161,12 +3357,22 @@ export default function AddVisit() {
                                       {Math.abs(diff).toFixed(1)} kg
                                     </span>
                                   </div>
-                                  {bmiPartenza != null && (
-                                    <div className="text-[10px] font-medium opacity-85 leading-tight">
-                                      <span>BMI iniziale {bmiPartenza}</span>
-                                    </div>
-                                  )}
                                 </div>
+                              );
+                            })()}
+                            {(() => {
+                              const bmiPartenza = computeBmi(
+                                ostetriciaData.pesoPreGravidanza,
+                                getAltezzaCmForBmi(patient),
+                              );
+                              if (bmiPartenza == null) return null;
+                              return (
+                                <MetabolicChip
+                                  sigla="BMI iniziale"
+                                  valore={formatBmi(bmiPartenza)}
+                                  band={bmiBand(bmiPartenza)}
+                                  title="BMI pre-gravidanza (classificazione OMS)"
+                                />
                               );
                             })()}
                           </div>

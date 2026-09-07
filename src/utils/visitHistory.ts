@@ -45,6 +45,8 @@ const GINECOLOGIA_LABELS: Record<string, string> = {
   abortiSpontanei: "Aborti spontanei",
   ivg: "IVG",
   pesoCorporeo: "Peso corporeo",
+  glicemiaDigiuno: "Glicemia a digiuno",
+  insulinemiaDigiuno: "Insulinemia a digiuno",
   menarca: "Menarca",
   stadioTannerFemmina: "Stadio di Tanner",
   ultimaMestruazione: "Ultima mestruazione",

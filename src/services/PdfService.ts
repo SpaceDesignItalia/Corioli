@@ -36,6 +36,12 @@ import {
   parseAnamnesiConfig,
 } from "../utils/anamnesiStrutturata";
 import { getRicettaTesto } from "../utils/ricettaTemplate";
+import {
+  computeBmi,
+  computeHomaIr,
+  formatBmiWithBand,
+  formatHomaIrWithBand,
+} from "../utils/metabolicIndices";
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 const ML = 15;
@@ -1022,12 +1028,13 @@ export class PdfService {
     // Peso corporeo + BMI: mostrati nel blocco paziente (sotto "Sesso"), non in tabella.
     const patAltezza = patient?.altezza ?? 0;
     const pesoCorporeo = Number(gyn.pesoCorporeo) || 0;
-    const bmiGyn = patAltezza > 0 && pesoCorporeo > 0
-      ? (pesoCorporeo / Math.pow(patAltezza / 100, 2)).toFixed(1) : "-";
+    // Il referto e' in bianco e nero: della fascia BMI resta l'etichetta.
+    const bmiGyn = computeBmi(pesoCorporeo, patAltezza);
+    const homaIr = computeHomaIr(gyn.glicemiaDigiuno, gyn.insulinemiaDigiuno);
     const extraRight = !isPed && pesoCorporeo > 0
       ? [
           { label: "Peso", value: `${pesoCorporeo} kg` },
-          ...(bmiGyn !== "-" ? [{ label: "BMI", value: bmiGyn }] : []),
+          ...(bmiGyn != null ? [{ label: "BMI", value: formatBmiWithBand(bmiGyn) }] : []),
         ]
       : [];
     y = this.drawPatientBlock(doc, patient, visit.dataVisita, y, "Data visita", { extraRight });
@@ -1053,6 +1060,16 @@ export class PdfService {
             { label: "Aborti (A)", value: abortiV },
           ],
         },
+        ...(homaIr != null
+          ? [{
+              header: "Assetto Metabolico (a digiuno)",
+              items: [
+                { label: "Glicemia", value: `${gyn.glicemiaDigiuno} mg/dL` },
+                { label: "Insulinemia", value: `${gyn.insulinemiaDigiuno} microU/mL` },
+                { label: "HOMA-IR", value: formatHomaIrWithBand(homaIr) },
+              ],
+            }]
+          : []),
       ]);
     } else {
       y = this.drawInquadramentoGrid(doc, y, "Inquadramento Ginecologico", [

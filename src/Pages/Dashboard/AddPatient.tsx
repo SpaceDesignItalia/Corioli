@@ -42,8 +42,10 @@ import {
   validateBirthDate,
 } from "../../utils/formValidation";
 import {
+  CF_LENGTH,
+  codiceFiscaleError,
   decodeCfToPatientFields,
-  isValidCodiceFiscaleFormat,
+  isValidCodiceFiscale,
 } from "../../utils/codiceFiscale";
 import type { Patient } from "../../types/Storage";
 
@@ -72,6 +74,15 @@ function StepHeader({ step, title }: { step: number; title: string }) {
       <h3 className="text-lg font-medium text-gray-900">{title}</h3>
     </div>
   );
+}
+
+/** ISO locale (YYYY-MM-DD) dal valore del DatePicker; "" se il campo è vuoto. */
+function calendarDateToIso(date: unknown): string {
+  if (!date) return "";
+  const raw = String(date);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const parsed = dayjs(raw);
+  return parsed.isValid() ? parsed.format("YYYY-MM-DD") : "";
 }
 
 /** Invio (senza Maiusc): passa al campo successivo senza inviare il form. */
@@ -141,6 +152,8 @@ export default function AddPatient() {
   const [cfAutofilledFields, setCfAutofilledFields] =
     useState<Record<CfAutofillField, boolean>>(EMPTY_CF_AUTOFILL);
   const [clinicalDataOpen, setClinicalDataOpen] = useState(false);
+  const [cfTouched, setCfTouched] = useState(false);
+  const errorCardRef = useRef<HTMLDivElement | null>(null);
   const registerDataCfRef = useRef(registerData.cf);
   registerDataCfRef.current = registerData.cf;
   const refCf = useRef<HTMLInputElement | null>(null);
@@ -271,21 +284,31 @@ export default function AddPatient() {
     if (error) setError(null);
   };
 
+  /** Mostra l'errore in cima al form e ci porta la pagina. */
+  const failWith = (message: string) => {
+    setError(message);
+    requestAnimationFrame(() =>
+      errorCardRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      }),
+    );
+  };
+
+  /**
+   * Il DatePicker è controllato: deve accettare anche i valori intermedi che
+   * si formano mentre si digita (es. anno "0001" prima di arrivare a "1980"),
+   * altrimenti il campo torna al valore precedente e la data non si può più
+   * cambiare. La validazione è mostrata sotto al campo e ricontrollata al salvataggio.
+   */
   const handleDateChange = (date: any) => {
     if (initialLoadDone.current) setHasUnsavedChanges(true);
     clearCfAutofillFlag("birthday");
-    if (date) {
-      const formattedDate = dayjs(date.toString()).format("YYYY-MM-DD");
-      const birthErr = validateBirthDate(formattedDate);
-      if (birthErr) {
-        setError(birthErr);
-        return;
-      }
-      setRegisterData((prevData) => ({
-        ...prevData,
-        birthday: formattedDate,
-      }));
-    }
+    if (error) setError(null);
+    setRegisterData((prevData) => ({
+      ...prevData,
+      birthday: calendarDateToIso(date),
+    }));
   };
 
   const validateEmail = (email: string) => {
@@ -297,7 +320,7 @@ export default function AddPatient() {
     if (isEditMode) return;
 
     const cf = registerData.cf.trim().toUpperCase();
-    if (!isValidCodiceFiscaleFormat(cf)) {
+    if (!isValidCodiceFiscale(cf)) {
       lastDecodedCfRef.current = null;
       setCfAutofilledFields(EMPTY_CF_AUTOFILL);
       return;
@@ -350,7 +373,7 @@ export default function AddPatient() {
 
   useEffect(() => {
     const normalized = registerData.cf.trim().toUpperCase();
-    if (!isValidCodiceFiscaleFormat(normalized)) {
+    if (!isValidCodiceFiscale(normalized)) {
       setCfDuplicatePatient(null);
       setCfDuplicateChecking(false);
       return;
@@ -364,7 +387,7 @@ export default function AddPatient() {
         const p = await PatientService.getPatientByCF(queried);
         if (cancelled) return;
         const latest = registerDataCfRef.current.trim().toUpperCase();
-        if (latest !== queried || !isValidCodiceFiscaleFormat(latest)) {
+        if (latest !== queried || !isValidCodiceFiscale(latest)) {
           setCfDuplicatePatient(null);
           return;
         }
@@ -391,37 +414,40 @@ export default function AddPatient() {
     setError(null);
 
     const cfNorm = registerData.cf.trim().toUpperCase();
+    const cfErr = codiceFiscaleError(registerData.cf);
+    if (cfErr) {
+      setCfTouched(true);
+      failWith(cfErr);
+      refCf.current?.focus();
+      return;
+    }
+
     if (
       cfNorm &&
-      isValidCodiceFiscaleFormat(cfNorm) &&
       cfDuplicatePatient &&
       (cfDuplicatePatient.codiceFiscale?.trim().toUpperCase() ?? "") === cfNorm
     ) {
-      setError(
+      failWith(
         "Questo codice fiscale è già assegnato a un altro paziente. Usa «Apri scheda paziente» sopra il campo oppure correggi il CF.",
       );
       return;
     }
 
-    if (registerData.cf.trim() && !isValidCodiceFiscaleFormat(registerData.cf)) {
-      setError("Codice fiscale non valido (formato: 16 caratteri)");
-      return;
-    }
     if (registerData.email.trim() && !validateEmail(registerData.email)) {
-      setError("Email non valida");
+      failWith("Email non valida");
       return;
     }
     if (registerData.birthday) {
       const birthErr = validateBirthDate(registerData.birthday);
       if (birthErr) {
-        setError(birthErr);
+        failWith(birthErr);
         return;
       }
     }
     if (registerData.height.trim()) {
       const h = parseOptionalHeight(registerData.height);
       if (h == null) {
-        setError(`Altezza non valida (${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM} cm)`);
+        failWith(`Altezza non valida (${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM} cm)`);
         return;
       }
     }
@@ -478,16 +504,24 @@ export default function AddPatient() {
   }, [hasUnsavedChanges]);
 
   const cfNormalized = registerData.cf.trim().toUpperCase();
-  const cfHasInput = registerData.cf.trim().length > 0;
-  const isCfValid = isValidCodiceFiscaleFormat(cfNormalized);
-  const isSubmitDisabled =
-    isLoading ||
-    (!isEditMode &&
-      cfHasInput &&
-      (!isCfValid ||
-        (!!cfDuplicatePatient &&
-          (cfDuplicatePatient.codiceFiscale?.trim().toUpperCase() ?? "") ===
-            cfNormalized)));
+  const isCfValid = isValidCodiceFiscale(cfNormalized);
+  const cfError = codiceFiscaleError(registerData.cf);
+  // Mentre si digita non si segnala nulla: l'errore compare quando il campo è
+  // completo (16 caratteri), quando si esce dal campo o al salvataggio.
+  const showCfError =
+    !!cfError && (cfTouched || cfNormalized.length >= CF_LENGTH);
+  const birthdayError = validateBirthDate(registerData.birthday);
+  // `null` (non `undefined`) tiene il DatePicker sempre controllato: così il
+  // campo resta modificabile anche quando la data arriva dal codice fiscale.
+  const birthdayValue = (() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(registerData.birthday)) return null;
+    try {
+      return parseDate(registerData.birthday);
+    } catch {
+      return null;
+    }
+  })();
+
 
   if (isLoading && isEditMode && !patientId) {
     return (
@@ -511,13 +545,17 @@ export default function AddPatient() {
           <h2 className="text-xl font-semibold">Informazioni Paziente</h2>
         </CardHeader>
         <CardBody className="gap-6 p-6">
-          {error && (
-            <Card className="border-l-4 border-l-danger">
-              <CardBody className="py-3">
-                <p className="text-danger text-sm">{error}</p>
-              </CardBody>
-            </Card>
-          )}
+          <div ref={errorCardRef} className={error ? undefined : "hidden"}>
+            {error && (
+              <Card className="border-l-4 border-l-danger">
+                <CardBody className="py-3">
+                  <p className="text-danger text-sm" role="alert">
+                    {error}
+                  </p>
+                </CardBody>
+              </Card>
+            )}
+          </div>
 
           {(() => {
             const items = [
@@ -528,7 +566,14 @@ export default function AddPatient() {
             return <Breadcrumb items={items} />;
           })()}
 
-          <form onSubmit={handleRegistration} className="space-y-6">
+          {/*
+            `noValidate`: i campi HeroUI marcati `isInvalid` impostano una
+            custom validity sull'input nativo. Senza questo attributo il
+            browser blocca il submit prima che parta `handleRegistration`, e
+            il click su "Salva" non produce alcun effetto visibile. La
+            validazione la facciamo tutta noi, con messaggi in italiano.
+          */}
+          <form onSubmit={handleRegistration} className="space-y-6" noValidate>
             {hasUnsavedChanges && (
               <Chip size="sm" color="warning" variant="flat">Modifiche non salvate</Chip>
             )}
@@ -581,23 +626,14 @@ export default function AddPatient() {
                   placeholder="RSSMRA80A01H501U"
                   value={registerData.cf}
                   onChange={handleChange}
+                  onBlur={() => setCfTouched(true)}
                   onKeyDown={(e) =>
                     handleEnterAdvance(e, () => refFirstName.current?.focus())
                   }
                   variant="bordered"
-                  maxLength={16}
-                  isInvalid={
-                    cfHasInput &&
-                    registerData.cf.trim().length === 16 &&
-                    !isCfValid
-                  }
-                  errorMessage={
-                    cfHasInput &&
-                    registerData.cf.trim().length === 16 &&
-                    !isCfValid
-                      ? "Codice fiscale non valido (16 caratteri)"
-                      : undefined
-                  }
+                  maxLength={CF_LENGTH}
+                  isInvalid={showCfError}
+                  errorMessage={showCfError ? cfError : undefined}
                   classNames={{
                     label: "text-gray-700 font-medium",
                     input: "uppercase font-mono tracking-wide",
@@ -682,15 +718,13 @@ export default function AddPatient() {
                       }}
                       maxValue={parseDate(todayIsoDate())}
                       minValue={parseDate(`${MIN_BIRTH_YEAR}-01-01`)}
-                      value={
-                        registerData.birthday &&
-                        /^\d{4}-\d{2}-\d{2}$/.test(registerData.birthday)
-                          ? parseDate(registerData.birthday)
-                          : undefined
-                      }
+                      value={birthdayValue}
+                      isInvalid={!!birthdayError}
+                      errorMessage={birthdayError ?? undefined}
                       classNames={baseLabelClassNames}
                     />
-                    {registerData.birthday &&
+                    {!birthdayError &&
+                      registerData.birthday &&
                       calculateAge(registerData.birthday) != null && (
                         <p className="text-sm text-default-500 mt-1">
                           Età: {calculateAge(registerData.birthday)} anni
@@ -943,7 +977,7 @@ export default function AddPatient() {
                 color="primary"
                 className="corioli-cta w-full sm:w-auto sm:min-w-[220px] shadow-md shadow-primary/20"
                 isLoading={isLoading}
-                isDisabled={isSubmitDisabled}
+                isDisabled={isLoading}
               >
                 {isLoading
                   ? "Salvando..."
