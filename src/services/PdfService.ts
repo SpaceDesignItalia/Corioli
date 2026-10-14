@@ -190,19 +190,22 @@ export class PdfService {
   /**
    * Griglia "Inquadramento" in stile referto: titolo di sezione + N colonne,
    * ciascuna con sotto-intestazione su barra grigia e righe "Etichetta: valore".
-   * Le righe con valore vuoto/zero ("-", "0", ...) vengono nascoste; se non resta
-   * alcun dato la sezione non viene disegnata. Condivisa tra referto ostetrico e
-   * ginecologico per garantire coerenza visiva.
+   * Le righe con valore vuoto/zero ("-", "0", ...) vengono nascoste, e con esse le
+   * colonne rimaste senza righe (le altre si allargano a occupare lo spazio); se
+   * non resta alcun dato la sezione non viene disegnata. Condivisa tra referto
+   * ostetrico e ginecologico per garantire coerenza visiva.
    */
   private static drawInquadramentoGrid(
     doc: jsPDF, y: number, title: string,
     columns: { header: string; items: { label: string; value: string }[] }[],
   ): number {
-    const cols = columns.map((c) => ({
-      header: c.header,
-      items: c.items.filter((it) => !isInquadramentoValueEmpty(it.value)),
-    }));
-    if (!cols.some((c) => c.items.length > 0)) return y;
+    const cols = columns
+      .map((c) => ({
+        header: c.header,
+        items: c.items.filter((it) => !isInquadramentoValueEmpty(it.value)),
+      }))
+      .filter((c) => c.items.length > 0);
+    if (cols.length === 0) return y;
 
     y = this.heading(doc, y, title);
     y = this.pb(doc, y, 40);
