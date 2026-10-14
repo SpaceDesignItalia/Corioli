@@ -50,6 +50,7 @@ import {
   DocumentService
 } from '../services/OfflineServices';
 import { CsvImportService, CsvImportProgress } from '../services/CsvImportService';
+import { storageService } from '../services/StorageServiceFallback';
 import { CodiceFiscaleValue } from './CodiceFiscaleValue';
 import { ConfirmDangerModal } from './ConfirmDangerModal';
 import { AppModal } from "./AppModal";
@@ -134,24 +135,9 @@ const BackupManager: React.FC = () => {
   const confirmResetTotal = async () => {
     setIsResetting(true);
     try {
-      // La cronologia delle modifiche non va mai cancellata, nemmeno col reset totale.
-      const preservedRevisions = await VisitService.getAllRevisions();
-      const revisionsKey = "AppDottori_visit_revisions";
-
-      if (window.electronAPI?.kvClearAppDottori) {
-        await window.electronAPI.kvClearAppDottori();
-        if (preservedRevisions.length > 0 && window.electronAPI?.kvSet) {
-          await window.electronAPI.kvSet(
-            revisionsKey,
-            JSON.stringify(preservedRevisions),
-          );
-        }
-      } else {
-        localStorage.clear();
-        if (preservedRevisions.length > 0) {
-          localStorage.setItem(revisionsKey, JSON.stringify(preservedRevisions));
-        }
-      }
+      // La cronologia delle modifiche non va mai cancellata, nemmeno col reset
+      // totale: clearAllData la lascia al suo posto.
+      await storageService.clearAllData();
       window.location.reload();
     } catch (error) {
       console.error("Errore reset totale:", error);

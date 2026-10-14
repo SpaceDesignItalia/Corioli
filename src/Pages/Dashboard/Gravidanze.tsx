@@ -53,7 +53,7 @@ export default function Gravidanze() {
       setLoading(true);
       try {
         const [visits, patients] = await Promise.all([
-          VisitService.getAllVisits(),
+          VisitService.getAllVisitsWithoutImages(),
           PatientService.getAllPatients(),
         ]);
         setPregnancies(computeTrackedPregnancies(visits, patients));

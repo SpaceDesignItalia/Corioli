@@ -30,9 +30,10 @@ export const sendHeartbeat = async (
   app: "corioli" | "corioli-pediatria",
 ): Promise<HeartbeatResult> => {
   try {
+    // Servono solo i conteggi: niente caricamento dell'archivio.
     const [patients, visits, version] = await Promise.all([
-      PatientService.getAllPatients(),
-      VisitService.getAllVisits(),
+      PatientService.countPatients(),
+      VisitService.countVisits(),
       getAppVersion(),
     ]);
 
@@ -52,8 +53,8 @@ export const sendHeartbeat = async (
       version,
       activeUsers,
       offlineUsers,
-      patients: patients.length,
-      visits: visits.length,
+      patients,
+      visits,
     });
 
     return {

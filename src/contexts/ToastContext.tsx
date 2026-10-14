@@ -30,6 +30,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         autoHideDuration={5000}
         onClose={() => setOpen(false)}
         anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        // sotto la barra del titolo dell'app desktop (WindowTitleBar)
+        sx={{
+          top: {
+            xs: "calc(8px + var(--titlebar-h))",
+            sm: "calc(24px + var(--titlebar-h))",
+          },
+        }}
       >
         <Alert
           onClose={() => setOpen(false)}

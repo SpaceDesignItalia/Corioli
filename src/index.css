@@ -20,6 +20,9 @@
     --cf-autofill-bg: #e1f5ee;
     --cf-autofill-border: #5dcaa5;
     --cf-autofill-text: #0f6e56;
+    /* Altezza della barra del titolo dell'app desktop su Windows (WindowTitleBar):
+       la fissa electron/main.js. Nel browser e su macOS vale 0. */
+    --titlebar-h: env(titlebar-area-height, 0px);
   }
 
   html {
@@ -43,6 +46,31 @@
 @layer components {
   .corioli-card {
     @apply rounded-xl border border-default-200 bg-white shadow-sm;
+  }
+
+  /* ── Barra del titolo (app desktop) ──────────────────────────────── */
+
+  .app-titlebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    /* anche sotto lo spazio della scrollbar: la linea arriva al bordo della finestra */
+    width: 100vw;
+    /* sopra modali, schermata di blocco e menu contestuale */
+    z-index: 10000;
+    /* 1px più dei pulsanti nativi, che coprono un pixel in più con lo zoom di
+       Windows (es. 150%): così la linea sotto resta continua. 0 fuori da Electron. */
+    height: calc(var(--titlebar-h) + min(1px, var(--titlebar-h)));
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 14px;
+    /* stesso colore di titleBarOverlay in electron/main.js */
+    background: #ffffff;
+    box-shadow: 0 1px 0 #e2e8f0;
+    user-select: none;
+    -webkit-app-region: drag;
   }
 
   /* ── Onboarding / App Lock shell ─────────────────────────────────── */

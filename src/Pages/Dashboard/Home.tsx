@@ -251,7 +251,7 @@ export default function Home() {
         const [doctor, patients, visits] = await Promise.all([
           DoctorService.initializeDefaultDoctor(),
           patientsPromise,
-          VisitService.getAllVisits(),
+          VisitService.getAllVisitsWithoutImages(),
         ]);
 
         setDoctorName(doctor.cognome);

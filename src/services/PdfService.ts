@@ -917,9 +917,13 @@ export class PdfService {
     }
     if (vis?.showDoctorPhoneInPdf !== false && doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
     if (vis?.showDoctorEmailInPdf !== false && doctor?.email) parts.push(san(doctor.email));
-    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); this.tc(doc, K140);
-    doc.text(parts.join("   |   "), 105, FOOT_Y + 5, { align: "center" });
-    doc.setFontSize(6);
+    const info = parts.join("   |   ");
+    // 8 pt; si riduce solo se un indirizzo molto lungo uscirebbe dai margini.
+    let size = 8;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(size); this.tc(doc, K140);
+    while (size > 6 && doc.getTextWidth(info) > PW) doc.setFontSize(size -= 0.25);
+    doc.text(info, 105, FOOT_Y + 4.5, { align: "center" });
+    doc.setFontSize(7);
     doc.textWithLink("Creato con corioli.it", ML, PAGE_H - 6, { url: "https://corioli.it" });
   }
 

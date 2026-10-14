@@ -16,7 +16,8 @@ export default function DesktopShell({ children, navbar }: DesktopShellProps) {
     <UnsavedChangesProvider>
       <CheckPatientModalProvider>
         <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-slate-50">
-          <header className={`sticky top-0 z-50 pt-6 ${SHELL_CLASS}`}>
+          {/* pt: spazio sopra la navbar + barra del titolo dell'app desktop (WindowTitleBar) */}
+          <header className={`sticky top-0 z-50 pt-[calc(1.5rem_+_var(--titlebar-h))] ${SHELL_CLASS}`}>
             {navbar ?? <AppNavbar />}
           </header>
 

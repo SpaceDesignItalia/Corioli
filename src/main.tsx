@@ -7,6 +7,7 @@ import { initializeAppData } from "./services/seed";
 import { ToastProvider } from "./contexts/ToastContext";
 import { AppLockProvider } from "./contexts/AppLockContext";
 import { configureClientApiAuth } from "./utils/configureClientApi";
+import WindowTitleBar from "./components/WindowTitleBar";
 
 configureClientApiAuth();
 
@@ -16,6 +17,7 @@ void initializeAppData();
 const root = ReactDOM.createRoot(document.getElementById("root")!);
 root.render(
   <NextUIProvider>
+    <WindowTitleBar />
     <Router
       future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
     >

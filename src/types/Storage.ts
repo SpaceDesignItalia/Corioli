@@ -360,6 +360,7 @@ export type BackupImportMode = 'replace' | 'merge';
 export interface StorageService {
   // Pazienti
   getPatients(): Promise<Patient[]>;
+  countPatients(): Promise<number>;
   getPatientById(id: string): Promise<Patient | null>;
   getPatientByCF(cf: string): Promise<Patient | null>;
   addPatient(patient: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Patient>;
@@ -368,6 +369,9 @@ export interface StorageService {
 
   // Visite
   getVisits(): Promise<Visit[]>;
+  /** Visite senza immagini ecografiche: solo per elenchi, non da salvare. */
+  getVisitsWithoutImages(): Promise<Visit[]>;
+  countVisits(): Promise<number>;
   getVisitsByPatientId(patientId: string): Promise<Visit[]>;
   getVisitById(id: string): Promise<Visit | null>;
   addVisit(visit: Omit<Visit, 'id' | 'createdAt' | 'updatedAt'>): Promise<Visit>;
@@ -378,6 +382,7 @@ export interface StorageService {
   getVisitRevisions(): Promise<VisitRevision[]>;
 
   // Richieste esami complementari (entità separata dalla visita)
+  getAllRichiesteEsami(): Promise<RichiestaEsameComplementare[]>;
   getRichiesteEsamiByPatientId(patientId: string): Promise<RichiestaEsameComplementare[]>;
   getRichiestaEsameById(id: string): Promise<RichiestaEsameComplementare | null>;
   addRichiestaEsame(data: Omit<RichiestaEsameComplementare, 'id' | 'createdAt' | 'updatedAt'>): Promise<RichiestaEsameComplementare>;
@@ -404,6 +409,8 @@ export interface StorageService {
 
   // Documenti
   getDocuments(): Promise<Document[]>;
+  countDocuments(): Promise<number>;
+  getDocumentsByPatientId(patientId: string): Promise<Document[]>;
   getDocumentById(id: string): Promise<Document | null>;
   addDocument(document: Omit<Document, 'id' | 'createdAt' | 'updatedAt'>): Promise<Document>;
   updateDocument(id: string, document: Partial<Document>): Promise<Document>;

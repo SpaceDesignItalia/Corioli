@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ESEMPIO DIMOSTRATIVO generato da Corioli (prototipo, non ancora validato con gli schematron
+  ufficiali né con il Gateway FSE 2.0). Dati di paziente, medico e struttura interamente fittizi.
+  Standard: HL7 Italia CDA R2 - Referto di Specialistica Ambulatoriale (RSA) v1.1.
+  Codici STS11, reparto e OID documenti: segnaposto da sostituire con quelli reali della struttura.
+-->
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <realmCode code="IT"/>
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_MT000040UV02"/>
+  <templateId root="2.16.840.1.113883.2.9.10.1.9.1" extension="1.1"/>
+  <id root="2.16.840.1.113883.2.9.2.90.4.4" extension="vis-demo-001.1" assigningAuthorityName="Poliambulatorio Demo"/>
+  <code code="11488-4" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Nota di consulto"/>
+  <title>Referto di visita ginecologica</title>
+  <effectiveTime value="20260928113000+0200"/>
+  <confidentialityCode code="N" codeSystem="2.16.840.1.113883.5.25" codeSystemName="HL7 Confidentiality"/>
+  <languageCode code="it-IT"/>
+  <setId root="2.16.840.1.113883.2.9.2.90.4.4" extension="vis-demo-001" assigningAuthorityName="Poliambulatorio Demo"/>
+  <versionNumber value="1"/>
+  <recordTarget>
+    <patientRole>
+      <id root="2.16.840.1.113883.2.9.4.3.2" extension="NREGLI94C55D612G" assigningAuthorityName="MEF"/>
+      <patient>
+        <name><given>Giulia</given><family>Neri</family></name>
+        <administrativeGenderCode code="F" codeSystem="2.16.840.1.113883.5.1"/>
+        <birthTime value="19940315"/>
+      </patient>
+    </patientRole>
+  </recordTarget>
+  <author>
+    <time value="20260928113000+0200"/>
+    <assignedAuthor>
+      <id root="2.16.840.1.113883.2.9.4.3.2" extension="CNTLRA80A41D612V" assigningAuthorityName="MEF"/>
+      <assignedPerson><name><given>Laura</given><family>Conti</family></name></assignedPerson>
+    </assignedAuthor>
+  </author>
+  <custodian>
+    <assignedCustodian>
+      <representedCustodianOrganization>
+        <id root="2.16.840.1.113883.2.9.4.1.3" extension="999999" assigningAuthorityName="Ministero della Salute"/>
+        <name>Poliambulatorio Demo</name>
+      </representedCustodianOrganization>
+    </assignedCustodian>
+  </custodian>
+  <legalAuthenticator>
+    <time value="20260928113000+0200"/>
+    <signatureCode code="S"/>
+    <assignedEntity>
+      <id root="2.16.840.1.113883.2.9.4.3.2" extension="CNTLRA80A41D612V" assigningAuthorityName="MEF"/>
+      <assignedPerson><name><given>Laura</given><family>Conti</family></name></assignedPerson>
+    </assignedEntity>
+  </legalAuthenticator>
+  <componentOf>
+    <encompassingEncounter>
+      <effectiveTime value="20260928"/>
+      <location>
+        <healthCareFacility>
+          <id root="2.16.840.1.113883.2.9.4.1.6" extension="99999937"/>
+          <serviceProviderOrganization>
+            <id root="2.16.840.1.113883.2.9.4.1.3" extension="999999" assigningAuthorityName="Ministero della Salute"/>
+            <name>Poliambulatorio Demo</name>
+          </serviceProviderOrganization>
+        </healthCareFacility>
+      </location>
+    </encompassingEncounter>
+  </componentOf>
+  <component>
+    <structuredBody>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.3.1937.777.63.10.1041"/>
+          <code code="29299-5" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Motivo della visita"/>
+          <title>Quesito diagnostico</title>
+          <text>
+            <paragraph>Cicli mestruali irregolari da circa un anno e acne lieve. Richiede inquadramento diagnostico.</paragraph>
+          </text>
+          <entry>
+            <observation classCode="OBS" moodCode="EVN">
+              <code code="29298-7" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC"/>
+              <value xsi:type="CD" code="626.1" codeSystem="2.16.840.1.113883.6.103" codeSystemName="ICD-9-CM" displayName="Mestruazioni scarse o infrequenti"/>
+            </observation>
+          </entry>
+        </section>
+      </component>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.3.1937.777.63.10.1040"/>
+          <code code="11329-0" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Storia Generale"/>
+          <title>Storia clinica</title>
+          <text>
+            <paragraph><content styleCode="Bold">Ultima mestruazione:</content> 05/08/2026</paragraph>
+            <paragraph><content styleCode="Bold">Storia ostetrica:</content> Gravidanze 0, parti 0, aborti 0</paragraph>
+            <paragraph><content styleCode="Bold">Anamnesi familiare:</content> Madre con diabete mellito tipo 2.</paragraph>
+            <paragraph><content styleCode="Bold">Anamnesi fisiologica:</content> Non fumatrice. Attività fisica saltuaria. Non utilizza contraccezione ormonale.</paragraph>
+            <paragraph><content styleCode="Bold">Anamnesi patologica:</content> Nulla di rilevante.</paragraph>
+            <paragraph><content styleCode="Bold">Anamnesi ginecologica:</content> Menarca a 12 anni. Cicli irregolari da circa un anno (intervallo 40-60 giorni). Ultimo Pap test 2025 negativo.</paragraph>
+            <paragraph><content styleCode="Bold">Anamnesi farmacologica:</content> Nessuna terapia in atto.</paragraph>
+            <paragraph><content styleCode="Bold">Anamnesi allergica:</content> Nessuna allergia nota.</paragraph>
+          </text>
+        </section>
+      </component>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.2.9.10.1.9.3.6"/>
+          <code code="29545-1" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Osservazioni fisiche"/>
+          <title>Esame obiettivo</title>
+          <text>
+            <paragraph><content styleCode="Bold">Peso:</content> 72 kg</paragraph>
+            <paragraph><content styleCode="Bold">BMI:</content> 26.4 (Sovrappeso)</paragraph>
+          </text>
+        </section>
+      </component>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.3.1937.777.63.10.1064"/>
+          <code code="62387-6" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Interventi"/>
+          <title>Prestazioni</title>
+          <text>
+            <paragraph>89.26 VISITA GINECOLOGICA</paragraph>
+            <paragraph>88.79.7 ECOGRAFIA TRANSVAGINALE</paragraph>
+          </text>
+          <entry typeCode="COMP">
+            <act classCode="ACT" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.3.1937.777.63.10.1065"/>
+              <code code="89.26" codeSystem="2.16.840.1.113883.2.9.6.1.11" codeSystemName="Catalogo Nazionale Prestazioni" displayName="VISITA GINECOLOGICA"/>
+              <effectiveTime value="20260928"/>
+            </act>
+          </entry>
+          <entry typeCode="COMP">
+            <act classCode="ACT" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.3.1937.777.63.10.1065"/>
+              <code code="88.79.7" codeSystem="2.16.840.1.113883.2.9.6.1.11" codeSystemName="Catalogo Nazionale Prestazioni" displayName="ECOGRAFIA TRANSVAGINALE"/>
+              <effectiveTime value="20260928"/>
+            </act>
+          </entry>
+        </section>
+      </component>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.2.9.10.1.9.3.9"/>
+          <code code="47045-0" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Referto"/>
+          <title>Referto</title>
+          <text>
+            <paragraph><content styleCode="Bold">Visita / Ecografia office:</content> Genitali esterni normoconformati. Speculum: collo roseo, secrezioni fisiologiche.</paragraph>
+            <paragraph>Ecografia transvaginale: utero anteverso di dimensioni regolari, endometrio lineare di 6 mm. Ovaie aumentate di volume (dx 12 ml, sx 11 ml) con oltre 20 follicoli per ovaio di 2-9 mm a disposizione periferica. Non versamento nel Douglas.</paragraph>
+            <paragraph><content styleCode="Bold">Assetto metabolico (a digiuno):</content> glicemia 92 mg/dL, insulinemia 16 microU/mL, HOMA-IR 3.63 (Insulino-resistenza)</paragraph>
+            <paragraph>Ecografia office di supporto alla visita clinica. Non sostituisce le ecografie di screening previste dalle Linee Guida SIEOG, e di ciò si informa la persona assistita.</paragraph>
+          </text>
+        </section>
+      </component>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.2.9.10.1.9.3.10"/>
+          <code code="29548-5" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Diagnosi"/>
+          <title>Diagnosi</title>
+          <text>
+            <paragraph>Sindrome dell'ovaio policistico (ICD-9-CM 256.4)</paragraph>
+          </text>
+          <entry>
+            <observation classCode="OBS" moodCode="EVN">
+              <code code="29308-4" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Diagnosi"/>
+              <statusCode code="completed"/>
+              <value xsi:type="CD" code="256.4" codeSystem="2.16.840.1.113883.6.103" codeSystemName="ICD-9-CM" displayName="Sindrome dell'ovaio policistico"/>
+            </observation>
+          </entry>
+        </section>
+      </component>
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.2.9.10.1.9.3.11"/>
+          <code code="55110-1" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Conclusioni"/>
+          <title>Conclusioni e terapia</title>
+          <text>
+            <paragraph>Quadro clinico-ecografico compatibile con sindrome dell'ovaio policistico (criteri di Rotterdam: oligo-anovulazione e morfologia ovarica policistica), associato a insulino-resistenza.</paragraph>
+            <paragraph>Si consigliano dosaggi ormonali in fase follicolare precoce (LH, FSH, testosterone totale, SHBG, 17-OH progesterone, AMH, TSH, prolattina) e curva da carico orale di glucosio.</paragraph>
+            <paragraph>Modifiche dello stile di vita con obiettivo di riduzione ponderale del 5-10%. Controllo con gli esiti degli esami.</paragraph>
+          </text>
+        </section>
+      </component>
+    </structuredBody>
+  </component>
+</ClinicalDocument>
