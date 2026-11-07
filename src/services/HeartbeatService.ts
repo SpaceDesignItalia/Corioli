@@ -1,6 +1,6 @@
 import axios from "axios";
 import { Doctor } from "../types/Storage";
-import { PatientService, VisitService } from "./OfflineServices";
+import { conteggiArchivioReale } from "./StorageServiceFallback";
 
 interface HeartbeatResult {
   blocked: boolean | null;
@@ -30,10 +30,10 @@ export const sendHeartbeat = async (
   app: "corioli" | "corioli-pediatria",
 ): Promise<HeartbeatResult> => {
   try {
-    // Servono solo i conteggi: niente caricamento dell'archivio.
-    const [patients, visits, version] = await Promise.all([
-      PatientService.countPatients(),
-      VisitService.countVisits(),
+    // Servono solo i conteggi, e dall'archivio vero anche a guida aperta: le
+    // pazienti inventate della prova non vanno contate.
+    const [{ pazienti: patients, visite: visits }, version] = await Promise.all([
+      conteggiArchivioReale(),
       getAppVersion(),
     ]);
 

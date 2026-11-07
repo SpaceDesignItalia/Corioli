@@ -512,7 +512,8 @@ export default function Documents() {
                 value={uploadData.description}
                 onValueChange={(value) => setUploadData(prev => ({ ...prev, description: value }))}
                 variant="bordered"
-                maxRows={3}
+                minRows={2}
+                maxRows={4}
               />
 
               <Select

@@ -2,6 +2,7 @@ import { StorageService, Patient, Visit, VisitRevision, Doctor, Document, AppDat
 import { MedicalTemplates } from '../data/medicalTemplates';
 import { computeVisitChanges } from '../utils/visitHistory';
 import { BACKUP_SCHEMA_VERSION } from '../utils/backupValidation';
+import { CHIAVE_MODELLI_STAMPA, normalizzaArchivio, unisciArchivi } from '../utils/modelliStampa';
 
 /** Collezioni salvate una riga per record (vedi electron/recordStore.js). */
 type RecordCollection =
@@ -73,6 +74,84 @@ function isSqliteAvailable(): boolean {
   return typeof window !== 'undefined' && !!window.electronAPI?.kvGet;
 }
 
+/**
+ * Dove stanno fisicamente le chiavi dei dati piccoli (profilo, modelli,
+ * preferenze, bozze): il database locale (tabella chiave/valore) in Electron,
+ * localStorage nel browser e nei test. I record clinici stanno invece in un
+ * `RecordBackend`, uno per record.
+ */
+interface ArchivioChiavi {
+  leggi(chiave: string): Promise<string | null>;
+  scrivi(chiave: string, valore: string): Promise<void>;
+  togli(chiave: string): Promise<void>;
+}
+
+const chiaviReali: ArchivioChiavi = {
+  async leggi(chiave) {
+    return isSqliteAvailable()
+      ? await window.electronAPI!.kvGet(chiave)
+      : localStorage.getItem(chiave);
+  },
+  async scrivi(chiave, valore) {
+    if (isSqliteAvailable()) await window.electronAPI!.kvSet(chiave, valore);
+    else localStorage.setItem(chiave, valore);
+  },
+  async togli(chiave) {
+    if (isSqliteAvailable()) await window.electronAPI!.kvRemove(chiave);
+    else localStorage.removeItem(chiave);
+  },
+};
+
+/**
+ * Le chiavi dell'archivio clinico: pazienti, visite e tutto quello che ne
+ * dipende. Sono quelle che l'archivio di prova della guida tiene in memoria.
+ */
+const CHIAVI_CLINICHE = new Set(
+  [
+    'patients',
+    'visits',
+    'visit_revisions',
+    'richieste_esami',
+    'certificati_paziente',
+    'ricette_paziente',
+    'documents',
+    'recent_patient_searches',
+  ].map((k) => `AppDottori_${k}`),
+);
+/** Bozze delle visite: una per visita o per paziente, quindi a prefisso. */
+const PREFISSI_CLINICI = ['AppDottori_bozza_visita_'];
+
+function chiaveClinica(chiave: string): boolean {
+  return CHIAVI_CLINICHE.has(chiave) || PREFISSI_CLINICI.some((p) => chiave.startsWith(p));
+}
+
+const NON_NELLA_PROVA =
+  'Non disponibile durante la guida: esci dalla guida e riprova.';
+
+/**
+ * L'archivio della guida: le chiavi cliniche in memoria, tutto il resto
+ * (profilo, preferenze, modelli) nell'archivio vero. Quello che il medico
+ * sistema durante la guida — lo studio, i moduli, un modello nuovo — resta;
+ * i pazienti inventati e le visite scritte su di loro spariscono con la
+ * memoria, senza niente da cancellare dopo e senza passare dal database, dal
+ * backup automatico o dalla copia su file.
+ */
+function chiaviDiProva(memoria: Map<string, string>): ArchivioChiavi {
+  return {
+    async leggi(chiave) {
+      return chiaveClinica(chiave) ? (memoria.get(chiave) ?? null) : chiaviReali.leggi(chiave);
+    },
+    async scrivi(chiave, valore) {
+      if (chiaveClinica(chiave)) memoria.set(chiave, valore);
+      else await chiaviReali.scrivi(chiave, valore);
+    },
+    async togli(chiave) {
+      if (chiaveClinica(chiave)) memoria.delete(chiave);
+      else await chiaviReali.togli(chiave);
+    },
+  };
+}
+
 function generateUuid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -137,15 +216,32 @@ class ElectronRecordBackend implements RecordBackend {
   }
 }
 
+/** Chiavi lette e scritte senza attese: localStorage, o la memoria della prova. */
+interface ChiaviSincrone {
+  leggi(chiave: string): string | null;
+  scrivi(chiave: string, valore: string): void;
+  togli(chiave: string): void;
+}
+
 /**
- * Browser (sviluppo) e test: ogni collezione è un array JSON in localStorage,
- * come nelle versioni precedenti. Un gruppo di operazioni viene calcolato per
- * intero e poi scritto; se una scrittura fallisce si ripristinano i valori
- * precedenti, così anche qui vale il "tutto o niente".
+ * Browser (sviluppo), test e archivio di prova: ogni collezione è un array
+ * JSON sotto `AppDottori_<collezione>`, come nelle versioni precedenti. Un
+ * gruppo di operazioni viene calcolato per intero e poi scritto; se una
+ * scrittura fallisce si ripristinano i valori precedenti, così anche qui vale
+ * il "tutto o niente".
  */
-class LocalStorageRecordBackend implements RecordBackend {
+class ArrayRecordBackend implements RecordBackend {
   /** Chiavi kv rimosse dal reset (oltre alle collezioni). */
-  private static readonly CLEARED_KV_KEYS = ['doctor', 'templates', 'preferences', 'recent_patient_searches'];
+  private static readonly CLEARED_KV_KEYS = ['doctor', 'templates', 'preferences', 'recent_patient_searches', CHIAVE_MODELLI_STAMPA];
+
+  /**
+   * @param conChiaviKv falso nell'archivio di prova: lì profilo, modelli e
+   *   preferenze restano nell'archivio vero, e import e reset sono vietati.
+   */
+  constructor(
+    private readonly chiavi: ChiaviSincrone,
+    private readonly conChiaviKv = true,
+  ) {}
 
   private key(collection: RecordCollection): string {
     return `AppDottori_${collection}`;
@@ -153,7 +249,7 @@ class LocalStorageRecordBackend implements RecordBackend {
 
   private read<T>(collection: RecordCollection): T[] {
     try {
-      const raw = localStorage.getItem(this.key(collection));
+      const raw = this.chiavi.leggi(this.key(collection));
       const parsed = raw ? JSON.parse(raw) : [];
       return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
@@ -189,6 +285,9 @@ class LocalStorageRecordBackend implements RecordBackend {
       if (!lists.has(collection)) lists.set(collection, this.read<StoredRecord>(collection));
       return lists.get(collection)!;
     };
+    const soloArchivioVero = () => {
+      if (!this.conChiaviKv) throw new Error(NON_NELLA_PROVA);
+    };
 
     for (const op of ops) {
       switch (op.type) {
@@ -211,16 +310,19 @@ class LocalStorageRecordBackend implements RecordBackend {
           lists.set(op.collection, [...op.records]);
           break;
         case 'kvSet':
+          soloArchivioVero();
           kv.set(op.key, op.value);
           break;
         case 'kvRemove':
+          soloArchivioVero();
           kv.set(op.key, null);
           break;
         case 'clearAppData':
+          soloArchivioVero();
           for (const collection of RECORD_COLLECTIONS) {
             if (collection !== 'visit_revisions') lists.set(collection, []);
           }
-          for (const key of LocalStorageRecordBackend.CLEARED_KV_KEYS) kv.set(`AppDottori_${key}`, null);
+          for (const key of ArrayRecordBackend.CLEARED_KV_KEYS) kv.set(`AppDottori_${key}`, null);
           break;
       }
     }
@@ -229,17 +331,17 @@ class LocalStorageRecordBackend implements RecordBackend {
       ...[...lists].map(([collection, arr]): [string, string] => [this.key(collection), JSON.stringify(arr)]),
       ...kv,
     ];
-    const previous = writes.map(([key]): [string, string | null] => [key, localStorage.getItem(key)]);
+    const previous = writes.map(([key]): [string, string | null] => [key, this.chiavi.leggi(key)]);
     try {
       for (const [key, value] of writes) {
-        if (value === null) localStorage.removeItem(key);
-        else localStorage.setItem(key, value);
+        if (value === null) this.chiavi.togli(key);
+        else this.chiavi.scrivi(key, value);
       }
     } catch (error) {
       for (const [key, value] of previous) {
         try {
-          if (value === null) localStorage.removeItem(key);
-          else localStorage.setItem(key, value);
+          if (value === null) this.chiavi.togli(key);
+          else this.chiavi.scrivi(key, value);
         } catch (restoreError) {
           console.error(`Ripristino di ${key} non riuscito:`, restoreError);
         }
@@ -249,10 +351,26 @@ class LocalStorageRecordBackend implements RecordBackend {
   }
 }
 
-const electronRecords = new ElectronRecordBackend();
-const localStorageRecords = new LocalStorageRecordBackend();
+const recordElectron = new ElectronRecordBackend();
+const recordLocalStorage = new ArrayRecordBackend({
+  leggi: (chiave) => localStorage.getItem(chiave),
+  scrivi: (chiave, valore) => localStorage.setItem(chiave, valore),
+  togli: (chiave) => localStorage.removeItem(chiave),
+});
+
+/** Record dell'archivio vero: SQLite nell'app desktop, localStorage nel browser e nei test. */
+function recordReali(): RecordBackend {
+  return typeof window !== 'undefined' && window.electronAPI?.recordsBatch
+    ? recordElectron
+    : recordLocalStorage;
+}
 
 class LocalStorageFallbackService implements StorageService {
+  constructor(
+    private readonly chiavi: ArchivioChiavi,
+    private readonly scegliRecord: () => RecordBackend,
+  ) {}
+
   private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
@@ -267,21 +385,13 @@ class LocalStorageFallbackService implements StorageService {
 
   /** Record clinici: SQLite nell'app desktop, localStorage nel browser e nei test. */
   private get records(): RecordBackend {
-    return typeof window !== 'undefined' && window.electronAPI?.recordsBatch
-      ? electronRecords
-      : localStorageRecords;
+    return this.scegliRecord();
   }
 
   /** Liste piccole salvate come un unico valore kv (oggi solo i modelli). */
   private async getFromStorage<T>(key: string): Promise<T[]> {
     try {
-      const fullKey = this.getStorageKey(key);
-      let data: string | null;
-      if (isSqliteAvailable()) {
-        data = await window.electronAPI!.kvGet(fullKey);
-      } else {
-        data = localStorage.getItem(fullKey);
-      }
+      const data = await this.chiavi.leggi(this.getStorageKey(key));
       return data ? JSON.parse(data) : [];
     } catch (error) {
       console.error(`Errore nel recupero dei dati per ${key}:`, error);
@@ -291,13 +401,7 @@ class LocalStorageFallbackService implements StorageService {
 
   private async saveToStorage<T>(key: string, data: T[]): Promise<void> {
     try {
-      const fullKey = this.getStorageKey(key);
-      const value = JSON.stringify(data);
-      if (isSqliteAvailable()) {
-        await window.electronAPI!.kvSet(fullKey, value);
-      } else {
-        localStorage.setItem(fullKey, value);
-      }
+      await this.chiavi.scrivi(this.getStorageKey(key), JSON.stringify(data));
     } catch (error) {
       console.error(`Errore nel salvataggio dei dati per ${key}:`, error);
       throw error;
@@ -306,20 +410,11 @@ class LocalStorageFallbackService implements StorageService {
 
   /** Chiave/valore per preferenze e altri dati (in Electron usa il db). */
   async getPreference(key: string): Promise<string | null> {
-    const fullKey = this.getStorageKey(key);
-    if (isSqliteAvailable()) {
-      return await window.electronAPI!.kvGet(fullKey);
-    }
-    return localStorage.getItem(fullKey);
+    return await this.chiavi.leggi(this.getStorageKey(key));
   }
 
   async setPreference(key: string, value: string): Promise<void> {
-    const fullKey = this.getStorageKey(key);
-    if (isSqliteAvailable()) {
-      await window.electronAPI!.kvSet(fullKey, value);
-    } else {
-      localStorage.setItem(fullKey, value);
-    }
+    await this.chiavi.scrivi(this.getStorageKey(key), value);
   }
 
   // Pazienti
@@ -629,13 +724,7 @@ class LocalStorageFallbackService implements StorageService {
   // Dottore
   async getDoctor(): Promise<Doctor | null> {
     try {
-      const fullKey = this.getStorageKey('doctor');
-      let data: string | null;
-      if (isSqliteAvailable()) {
-        data = await window.electronAPI!.kvGet(fullKey);
-      } else {
-        data = localStorage.getItem(fullKey);
-      }
+      const data = await this.chiavi.leggi(this.getStorageKey('doctor'));
       return data ? JSON.parse(data) : null;
     } catch (error) {
       console.error('Errore nel recupero dei dati del dottore:', error);
@@ -661,13 +750,7 @@ class LocalStorageFallbackService implements StorageService {
     };
 
     try {
-      const fullKey = this.getStorageKey('doctor');
-      const value = JSON.stringify(doctor);
-      if (isSqliteAvailable()) {
-        await window.electronAPI!.kvSet(fullKey, value);
-      } else {
-        localStorage.setItem(fullKey, value);
-      }
+      await this.chiavi.scrivi(this.getStorageKey('doctor'), JSON.stringify(doctor));
     } catch (error) {
       console.error('Errore nel salvataggio dei dati del dottore:', error);
       throw error;
@@ -836,6 +919,7 @@ class LocalStorageFallbackService implements StorageService {
       this.getDocuments(),
       this.getTemplates()
     ]);
+    const modelliStampa = await this.leggiModelliStampa();
 
     return {
       schemaVersion: BACKUP_SCHEMA_VERSION,
@@ -849,6 +933,9 @@ class LocalStorageFallbackService implements StorageService {
       ricettePaziente,
       documents,
       templates,
+      // Sempre, anche vuoto: al ripristino l'assenza vuol dire "backup fatto
+      // prima dei modelli", e i modelli che ci sono restano (vedi sotto).
+      modelliStampa,
       doctor: doctor || {
         id: this.generateId(),
         nome: '',
@@ -879,6 +966,16 @@ class LocalStorageFallbackService implements StorageService {
       }
     }
     return added;
+  }
+
+  /** I modelli di stampa salvati, gia' ripuliti (vedi `ModelliStampaService`). */
+  private async leggiModelliStampa() {
+    const raw = await this.getPreference(CHIAVE_MODELLI_STAMPA);
+    try {
+      return normalizzaArchivio(raw ? JSON.parse(raw) : null);
+    } catch {
+      return normalizzaArchivio(null);
+    }
   }
 
   async importData(data: AppData, mode: BackupImportMode = 'replace'): Promise<void> {
@@ -1028,6 +1125,14 @@ class LocalStorageFallbackService implements StorageService {
       { type: 'kvSet', key: this.getStorageKey('templates'), value: JSON.stringify(mergedTemplates) },
     ];
 
+    if (data.modelliStampa) {
+      const uniti = unisciArchivi(
+        await this.leggiModelliStampa(),
+        normalizzaArchivio(data.modelliStampa),
+      );
+      ops.push({ type: 'kvSet', key: this.getStorageKey(CHIAVE_MODELLI_STAMPA), value: JSON.stringify(uniti) });
+    }
+
     if (data.doctor) {
       const incomingDoctor = data.doctor;
 
@@ -1103,6 +1208,19 @@ class LocalStorageFallbackService implements StorageService {
     if (data.templates && data.templates.length > 0) {
       ops.push({ type: 'kvSet', key: this.getStorageKey('templates'), value: JSON.stringify(data.templates) });
     }
+
+    // I modelli di stampa stanno fra le chiavi che il reset cancella. Un backup
+    // che li ha (anche vuoti) li rimette com'erano; uno fatto prima che i
+    // modelli esistessero non ne sa niente, e cancellarli vorrebbe dire
+    // perdere il logo e la carta intestata per un file che non li riguarda.
+    const modelliStampa = data.modelliStampa
+      ? normalizzaArchivio(data.modelliStampa)
+      : await this.leggiModelliStampa();
+    ops.push({
+      type: 'kvSet',
+      key: this.getStorageKey(CHIAVE_MODELLI_STAMPA),
+      value: JSON.stringify(modelliStampa),
+    });
     return ops;
   }
 
@@ -1114,5 +1232,79 @@ class LocalStorageFallbackService implements StorageService {
   }
 }
 
-// Usa sempre localStorage per semplicità in Electron
-export const storageService = new LocalStorageFallbackService();
+const archivioReale = new LocalStorageFallbackService(chiaviReali, recordReali);
+let archivioProva: LocalStorageFallbackService | null = null;
+
+/** Quello che l'archivio di prova contiene appena aperto. */
+export type ContenutoArchivioDiProva = Pick<AppData, 'patients' | 'visits'> &
+  Partial<Pick<AppData, 'ricettePaziente' | 'richiesteEsami' | 'certificatiPaziente'>>;
+
+/**
+ * Apre l'archivio di prova della guida: da qui ogni lettura e scrittura di
+ * pazienti, visite, ricette, richieste, certificati, documenti e bozze passa
+ * dalla memoria, a partire da `contenuto`. Chi apre deve anche chiudere.
+ */
+export function apriArchivioDiProva(contenuto: ContenutoArchivioDiProva): void {
+  const memoria = new Map<string, string>();
+  const metti = (chiave: string, elenco: unknown[] | undefined) =>
+    memoria.set(`AppDottori_${chiave}`, JSON.stringify(elenco ?? []));
+  metti('patients', contenuto.patients);
+  metti('visits', contenuto.visits);
+  metti('ricette_paziente', contenuto.ricettePaziente);
+  metti('richieste_esami', contenuto.richiesteEsami);
+  metti('certificati_paziente', contenuto.certificatiPaziente);
+  // I record della prova stanno nella stessa memoria, un array per collezione.
+  const recordProva = new ArrayRecordBackend(
+    {
+      leggi: (chiave) => memoria.get(chiave) ?? null,
+      scrivi: (chiave, valore) => void memoria.set(chiave, valore),
+      togli: (chiave) => void memoria.delete(chiave),
+    },
+    false,
+  );
+  archivioProva = new LocalStorageFallbackService(chiaviDiProva(memoria), () => recordProva);
+}
+
+/** Chiude l'archivio di prova: si torna a quello vero, e la memoria si butta. */
+export function chiudiArchivioDiProva(): void {
+  archivioProva = null;
+}
+
+export function archivioDiProvaAperto(): boolean {
+  return archivioProva !== null;
+}
+
+/**
+ * Quanti pazienti e visite ha l'archivio vero, anche a guida aperta: la
+ * telemetria di licenza non deve contare i pazienti inventati.
+ */
+export async function conteggiArchivioReale(): Promise<{ pazienti: number; visite: number }> {
+  const [pazienti, visite] = await Promise.all([
+    archivioReale.countPatients(),
+    archivioReale.countVisits(),
+  ]);
+  return { pazienti, visite };
+}
+
+/**
+ * Operazioni che nella prova non hanno senso: un backup esportato conterrebbe
+ * i pazienti inventati, uno importato finirebbe nella memoria e sparirebbe.
+ */
+const VIETATE_NELLA_PROVA = new Set<PropertyKey>(['exportData', 'importData', 'clearAllData']);
+
+/**
+ * L'archivio in uso: quello vero, o quello di prova finche' la guida e'
+ * aperta. Ogni operazione si lega all'archivio del momento in cui parte e ci
+ * resta fino alla fine: una scrittura cominciata nella prova non puo' finire
+ * nell'archivio vero perche' nel frattempo la guida si e' chiusa.
+ */
+export const storageService: LocalStorageFallbackService = new Proxy(archivioReale, {
+  get(reale, nome) {
+    const attivo = archivioProva ?? reale;
+    if (archivioProva && VIETATE_NELLA_PROVA.has(nome)) {
+      return () => Promise.reject(new Error(NON_NELLA_PROVA));
+    }
+    const valore = Reflect.get(attivo, nome);
+    return typeof valore === 'function' ? valore.bind(attivo) : valore;
+  },
+});

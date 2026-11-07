@@ -1,40 +1,23 @@
 /**
  * Centili di crescita fetale (peso stimato vs epoca gestazionale).
- * Riferimento tipo Hadlock / curve di crescita ecografiche.
  * Peso in grammi, età gestazionale in settimane (es. 22.43 per 22+3).
  */
 
-/** Peso (g) per centili 5, 10, 25, 50, 75, 90, 95 a ogni settimana 20-42 (Hadlock FP et al, Radiology 1991;181:129-133) */
-const CENTILE_TABLE: Record<number, [number, number, number, number, number, number, number]> = {
-  // week: [p5, p10, p25, p50, p75, p90, p95]
-  20: [249, 270, 297, 331, 368, 405, 426],
-  21: [299, 324, 357, 398, 443, 487, 513],
-  22: [354, 384, 423, 472, 526, 578, 609],
-  23: [417, 452, 499, 558, 622, 685, 721],
-  24: [488, 529, 584, 653, 729, 803, 846],
-  25: [567, 615, 679, 761, 850, 936, 986],
-  26: [655, 710, 785, 881, 985, 1085, 1143],
-  27: [751, 815, 901, 1013, 1133, 1249, 1316],
-  28: [856, 929, 1028, 1160, 1298, 1431, 1508],
-  29: [971, 1054, 1166, 1320, 1479, 1631, 1718],
-  30: [1096, 1190, 1317, 1493, 1675, 1848, 1948],
-  31: [1232, 1338, 1481, 1681, 1887, 2084, 2198],
-  32: [1378, 1496, 1655, 1882, 2115, 2338, 2465],
-  33: [1535, 1666, 1843, 2098, 2360, 2610, 2753],
-  34: [1702, 1847, 2043, 2327, 2620, 2899, 3059],
-  35: [1879, 2039, 2254, 2570, 2895, 3207, 3384],
-  36: [2066, 2242, 2476, 2826, 3185, 3531, 3727],
-  37: [2263, 2454, 2712, 3097, 3491, 3872, 4087],
-  38: [2466, 2673, 2954, 3375, 3808, 4228, 4463],
-  39: [2671, 2894, 3200, 3657, 4132, 4590, 4847],
-  40: [2880, 3120, 3450, 3944, 4462, 4957, 5238],
-  41: [3092, 3350, 3706, 4237, 4799, 5333, 5640],
-  42: [3310, 3587, 3969, 4539, 5148, 5720, 6050],
-};
-
-const CENTILE_INDEX = [5, 10, 25, 50, 75, 90, 95] as const;
+/**
+ * Hadlock FP, Harrist RB, Martinez-Poyer J, Radiology 1991;181:129-133:
+ * ln(peso) = 0.578 + 0.332·EG − 0.00354·EG², DS = 12.7% del peso atteso.
+ * Si usa l'equazione e non la tabella stampata, che non coincide con essa
+ * ("Revisiting the Hadlock 1991 population reference", AJOG). La tabella
+ * a mano usata prima si discostava fino al +9% a 40 settimane.
+ * L'equazione è pubblicata per 10–40 settimane: 41–42 sono un'estrapolazione.
+ */
+const HADLOCK_1991_SD = 0.127;
 const MIN_WEEK = 20;
 const MAX_WEEK = 42;
+
+function hadlock1991MedianWeight(gaWeeks: number): number {
+  return Math.exp(0.578 + 0.332 * gaWeeks - 0.00354 * gaWeeks * gaWeeks);
+}
 
 /**
  * Converte "22+3" o "22" in settimane decimali (22.43 o 22).
@@ -57,24 +40,28 @@ export function parseGestationalWeeks(settimaneGestazione: string): number | nul
   return null;
 }
 
-function getRow(week: number): [number, number, number, number, number, number, number] | null {
-  const w = Math.floor(week);
-  if (w < MIN_WEEK || w > MAX_WEEK) return null;
-  return CENTILE_TABLE[w] ?? null;
+const CRL_MIN_MM = 3;
+/** Oltre 84 mm Robinson non è più valida: si data con la circonferenza cranica. */
+const CRL_MAX_MM = 84;
+
+/**
+ * Epoca gestazionale in giorni compiuti dal CRL (mm).
+ * Robinson HP, Fleming JE, Br J Obstet Gynaecol 1975;82:702-710:
+ * GA_giorni = 8.052 × √CRL + 23.73. Con i giorni compiuti CRL 45–84 mm
+ * dà 11+0 – 13+6, la finestra della translucenza nucale (FMF).
+ * `null` se il CRL è fuori dal range di validità.
+ */
+export function gestationalDaysFromCrl(crlMm: number): number | null {
+  if (!Number.isFinite(crlMm) || crlMm < CRL_MIN_MM || crlMm > CRL_MAX_MM) return null;
+  return Math.floor(8.052 * Math.sqrt(crlMm) + 23.73);
 }
 
 /**
- * Interpola linearmente i valori di peso per i centili alla settimana data.
+ * Scarto massimo (giorni) tra epoca attuale e CRL entro cui non si ridata.
+ * ACOG Committee Opinion 700 (2017): 5 giorni fino a 8+6, 7 giorni da 9+0 a 13+6.
  */
-function getPercentilesAtWeek(week: number): number[] | null {
-  const w0 = Math.floor(week);
-  const w1 = w0 + 1;
-  const t = week - w0;
-  const r0 = getRow(w0);
-  const r1 = getRow(w1);
-  if (!r0) return null;
-  if (!r1 || w1 > MAX_WEEK) return r0;
-  return r0.map((v, i) => v + t * (r1[i] - v));
+export function crlRedatingThresholdDays(currentGaDays: number): number {
+  return currentGaDays < 9 * 7 ? 5 : 7;
 }
 
 /**
@@ -140,27 +127,8 @@ export function getGrowthCategory(centile: number): "SGA" | "LGA" | "AGA" {
 
 export function getCentileForWeight(weightG: number, gaWeeks: number): number | null {
   if (gaWeeks < MIN_WEEK || gaWeeks > MAX_WEEK || weightG <= 0) return null;
-  const row = getPercentilesAtWeek(gaWeeks);
-  if (!row) return null;
-  // CENTILE_INDEX = [5, 10, 25, 50, 75, 90, 95]
-  // Sotto p5: estrapolazione Gaussiana con sdLeft = (p50-p5)/1.645
-  if (weightG <= row[0]) {
-    return estimateCentileRank(weightG, row[0], row[3], row[6]);
-  }
-  // Sopra p95: estrapolazione Gaussiana con sdRight = (p95-p50)/1.645
-  if (weightG >= row[6]) {
-    return estimateCentileRank(weightG, row[0], row[3], row[6]);
-  }
-  // Nell'intervallo p5-p95: interpolazione lineare diretta tra i 7 punti noti
-  for (let i = 0; i < CENTILE_INDEX.length - 1; i++) {
-    const lo = row[i];
-    const hi = row[i + 1];
-    if (weightG >= lo && weightG <= hi) {
-      const t = (weightG - lo) / (hi - lo);
-      return CENTILE_INDEX[i] + t * (CENTILE_INDEX[i + 1] - CENTILE_INDEX[i]);
-    }
-  }
-  return null;
+  const p50 = hadlock1991MedianWeight(gaWeeks);
+  return normalCDF((weightG - p50) / (HADLOCK_1991_SD * p50)) * 100;
 }
 
 /**
@@ -169,12 +137,12 @@ export function getCentileForWeight(weightG: number, gaWeeks: number): number | 
  */
 export function getWeightPercentiles(gaWeeks: number): { p5: number; p50: number; p95: number } | null {
   if (gaWeeks < MIN_WEEK || gaWeeks > MAX_WEEK) return null;
-  const row = getPercentilesAtWeek(gaWeeks);
-  if (!row) return null;
+  const p50 = hadlock1991MedianWeight(gaWeeks);
+  const delta = 1.645 * HADLOCK_1991_SD * p50;
   return {
-    p5: row[0] ?? 0,
-    p50: row[3] ?? 0,
-    p95: row[6] ?? 0,
+    p5: Math.round(p50 - delta),
+    p50: Math.round(p50),
+    p95: Math.round(p50 + delta),
   };
 }
 
@@ -189,24 +157,3 @@ export function getCentileLabel(centile: number | null): string {
 
 /** Range settimane per il grafico */
 export const FETAL_GROWTH_WEEK_RANGE = { min: MIN_WEEK, max: MAX_WEEK } as const;
-
-/**
- * Restituisce i punti delle curve centili per disegnare il grafico (es. in PDF).
- * Ogni elemento: { centile: 5|10|25|50|75|90|95, points: { week, weight }[] }.
- */
-export function getCentileCurveData(): {
-  centile: (typeof CENTILE_INDEX)[number];
-  points: { week: number; weight: number }[];
-}[] {
-  return CENTILE_INDEX.map((centile, idx) => ({
-    centile,
-    points: Array.from(
-      { length: MAX_WEEK - MIN_WEEK + 1 },
-      (_, i) => {
-        const week = MIN_WEEK + i;
-        const row = CENTILE_TABLE[week];
-        return { week, weight: row ? row[idx] : 0 };
-      },
-    ),
-  }));
-}

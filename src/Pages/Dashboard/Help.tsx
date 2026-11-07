@@ -20,9 +20,11 @@ import {
   Search,
   Paperclip,
   FileText,
+  Compass,
 } from "lucide-react";
 import { ConfirmDangerModal } from "../../components/ConfirmDangerModal";
 import { PageHeader } from "../../components/PageHeader";
+import { useGuidaPrimoAvvio } from "../../components/guida/GuidaPrimoAvvio";
 import { VoiceMessagePlayer } from "../../components/chat/VoiceMessagePlayer";
 import { DoctorService } from "../../services/OfflineServices";
 import axios from "axios";
@@ -153,6 +155,7 @@ function CreaModelloSteps() {
 }
 
 export default function HelpAndFeedback() {
+  const { apri: apriGuida } = useGuidaPrimoAvvio();
   const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [doctor, setDoctor] = useState<Doctor | null>(null);
@@ -483,12 +486,42 @@ export default function HelpAndFeedback() {
       ],
     },
     {
+      category: "Modelli di stampa",
+      items: [
+        {
+          title: "Posso cambiare l'aspetto di referti, ricette e certificati?",
+          content:
+            "Sì, da «Impostazioni > Visita e referto > Apri l'editor». Parti da uno dei modelli pronti (per esempio «Moderno») e poi cambi quello che vuoi: colori, carattere, angoli, valori fuori norma a colori. In alto scegli il documento: referto ginecologico, referto ostetrico, ricetta, certificato o richiesta. A sinistra vedi il foglio vero con una paziente inventata: tocchi una parte (intestazione, titolo, una sezione, firma, piè di pagina) e lì compare una barra per modificarla, a destra tutte le sue impostazioni. In cima alla colonna di destra vedi se il modello aperto è quello in uso, e «Usa per i referti ginecologici» (o per i referti ostetrici, le ricette…) lo mette in uso; sotto, «Modelli» per sceglierne un altro e «Personalizza» per cambiarlo. Non serve salvare: le modifiche si salvano da sole e «Annulla» torna indietro. «Applica a tutti i documenti» dà lo stesso aspetto anche all'altro referto, a ricetta, certificato e richiesta. I modelli di Corioli non si modificano: alla prima modifica ne nasce una copia tua.",
+        },
+        {
+          title: "Quali modelli pronti ci sono, e cosa cambia fra colori e bianco e nero?",
+          content:
+            "Cinque stili, ognuno a colori e in bianco e nero: «Corioli» (fasce piene e testo compatto, il foglio di sempre), «Moderno» (conclusioni in un riquadro e valori fuori norma evidenziati), «Elegante» (Times, intestazione al centro e capitoli fra due filetti, come una lettera), «Essenziale» (titolo grande a sinistra e niente fasce: consuma pochissimo inchiostro) e «Grande e chiaro» (intestazione su una banda colorata, titoli pieni e testo più grande, per i pazienti che leggono con fatica). Hanno la stessa forma nelle due versioni: in bianco e nero i colori diventano grigi, ed è la scelta giusta se la stampante dello studio è in bianco e nero. Lo stile si sceglie alla prima configurazione e vale per tutti i documenti; nell'editor lo cambi quando vuoi, anche solo per un documento, e con «Usa per tutti i documenti» lo rimetti ovunque. Su un modello tuo, «Dai a questo modello lo stile di…» ne cambia colori, carattere e forme lasciando testi, logo e firma.",
+        },
+        {
+          title: "Stampo su carta intestata: come faccio?",
+          content:
+            "Nell'editor, alla voce «Carta intestata», scegli «È già sulla carta»: Corioli non stampa l'intestazione e lascia libero lo spazio in alto e in basso. Se carichi una foto o la scansione della tua carta la vedi sotto il testo, solo nell'anteprima, e regoli i due cursori finché il testo non la tocca. Poi fai una «Stampa di prova» su un foglio vero. Se invece vuoi la carta intestata nei PDF da mandare per email, scegli «Carta digitale» e carica il PDF o l'immagine della tua carta.",
+        },
+        {
+          title: "Ho due studi: posso avere due intestazioni?",
+          content:
+            "Sì: fai un modello per ciascuno studio, scegliendo in «Carta intestata» l'ambulatorio da mostrare. Uno è «in uso» e vale per tutte le stampe; nell'anteprima di un referto o di una ricetta puoi scegliere l'altro, solo per quella stampa.",
+        },
+        {
+          title: "Come passo i miei modelli a un collega o a un altro computer?",
+          content:
+            "Nell'editor «Esporta» salva il modello aperto in un file, «Esporta tutti» li salva tutti insieme; dall'altra parte «Importa» li aggiunge senza toccare quelli che ci sono. Il file porta solo l'impaginazione, il logo e le righe scritte da chi l'ha fatto: niente profilo, niente firma e nessun dato dei pazienti. I modelli finiscono anche nel backup.",
+        },
+      ],
+    },
+    {
       category: "Impostazioni e Dati",
       items: [
         {
           title: "Come modifico l'intestazione dei referti?",
           content:
-            "Vai su 'Impostazioni > Ambulatori'. Qui puoi inserire i tuoi dati (Nome, Specializzazione) e aggiungere uno o più ambulatori (Indirizzo, Città, Contatti). L'ambulatorio impostato come 'Primario' apparirà nell'intestazione dei PDF.",
+            "Nome, specializzazione e partita IVA si scrivono in «Impostazioni > Profilo»; indirizzi e contatti in «Impostazioni > Ambulatori», dove l'ambulatorio «in uso» è quello che compare nei PDF. Come appare l'intestazione (logo, disposizione, colori, righe in più, carta intestata) si sceglie invece nell'editor dei modelli di stampa, da «Impostazioni > Visita e referto».",
         },
         {
           title: "I miei dati sono al sicuro? Dove vengono salvati?",
@@ -652,6 +685,31 @@ export default function HelpAndFeedback() {
         icon={LifeBuoy}
         iconColor="primary"
       />
+
+      {/* La guida di primo avvio si apre da sola una volta sola, ad archivio
+          vuoto: qui la si rifa' quando si vuole, anche per farla provare a una
+          collega. */}
+      <div className="guida-invito">
+        <span className="guida-elenco-icona guida-invito-icona">
+          <Compass size={24} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[16px] font-semibold text-foreground">Guida di primo avvio</p>
+          <p className="text-[14px] leading-snug text-default-600">
+            Provi l'app su pazienti inventate, con qualche mese di visite: cerchi, apri
+            la visita ostetrica, scrivi e stampi il referto. Uscendo ritrovi il tuo
+            archivio com'era.
+          </p>
+        </div>
+        <Button
+          color="primary"
+          className="guida-btn-primario shrink-0"
+          startContent={<Compass size={18} />}
+          onPress={apriGuida}
+        >
+          Avvia la guida
+        </Button>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 lg:h-[calc(100vh-220px)] lg:max-h-[720px]">
         {/* FAQ — scroll interno, non influenza l'altezza della chat */}

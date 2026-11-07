@@ -23,6 +23,7 @@ import type { Patient } from "../types/Storage";
 import { CodiceFiscaleValue } from "../components/CodiceFiscaleValue";
 import { isValidCodiceFiscaleFormat } from "../utils/codiceFiscale";
 import { AppModal } from "../components/AppModal";
+import { EVENTO_PAZIENTI_CAMBIATI } from "../utils/guidaPrimoAvvio";
 
 type CheckPatientModalContextValue = {
   openCheckPatientModal: () => void;
@@ -38,22 +39,20 @@ function patientInitials(patient: Patient): string {
   return `${c}${n}` || "?";
 }
 
+/**
+ * Le pazienti che corrispondono a quello che si scrive: per cognome (come si
+ * cerca davvero, al banco) o per codice fiscale, dalla terza lettera.
+ */
 function filterSuggestions(patients: Patient[], query: string): Patient[] {
-  if (
-    query.length < 4 ||
-    patients.some((p) => p.codiceFiscale === undefined)
-  ) {
-    return [];
-  }
+  if (query.length < 3) return [];
+  const cf = (p: Patient) => p.codiceFiscale?.toUpperCase() ?? "";
+  const cognome = (p: Patient) => (p.cognome ?? "").toUpperCase();
 
   const startsWithMatches = patients.filter(
-    (p) => p.codiceFiscale?.toUpperCase().startsWith(query) ?? false,
+    (p) => cognome(p).startsWith(query) || cf(p).startsWith(query),
   );
-
   const includesMatches = patients.filter(
-    (p) =>
-      !(p.codiceFiscale?.toUpperCase().startsWith(query) ?? false) &&
-      (p.codiceFiscale?.toUpperCase().includes(query) ?? false),
+    (p) => !startsWithMatches.includes(p) && query.length >= 4 && cf(p).includes(query),
   );
 
   return [...startsWithMatches, ...includesMatches].slice(0, 6);
@@ -79,6 +78,13 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
     setError(null);
     setIsLoading(false);
   }, []);
+
+  // L'archivio e' cambiato sotto il pannello (la guida di primo avvio che
+  // chiude il suo archivio di prova): i suggerimenti non valgono piu'.
+  useEffect(() => {
+    window.addEventListener(EVENTO_PAZIENTI_CAMBIATI, closeCheckPatientModal);
+    return () => window.removeEventListener(EVENTO_PAZIENTI_CAMBIATI, closeCheckPatientModal);
+  }, [closeCheckPatientModal]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -158,7 +164,12 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
     }
 
     if (!isValidCodiceFiscaleFormat(cf)) {
-      setError("Codice fiscale non valido (formato: RSSMRA80A01H501U)");
+      // Un cognome: si sceglie fra le pazienti trovate.
+      setError(
+        suggestions.length > 0
+          ? "Scegli la paziente fra quelle trovate, o scrivi il codice fiscale completo."
+          : "Nessuna paziente con questo cognome: scrivi il codice fiscale per registrarla.",
+      );
       return;
     }
 
@@ -190,7 +201,10 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
       <AppModal
         isOpen={isOpen}
         onClose={closeCheckPatientModal}
-        placement="center"
+        // In alto e non al centro: i risultati crescono verso il basso senza
+        // far saltare la finestra, e nella guida di primo avvio il fumetto
+        // trova posto sotto di loro invece di coprirli.
+        placement="top"
         backdrop="blur"
         size="md"
         scrollBehavior="inside"
@@ -206,11 +220,12 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
               Nuova visita
             </span>
             <span className="text-sm font-normal text-default-500">
-              Cerca il paziente per codice fiscale
+              Cerca la paziente per cognome o codice fiscale
             </span>
           </ModalHeader>
           <ModalBody>
-            <form id="check-patient-form" onSubmit={handleCheck} className="space-y-4">
+            {/* `data-guida`: la guida di primo avvio illumina la ricerca. */}
+            <form id="check-patient-form" onSubmit={handleCheck} className="space-y-4" data-guida="pannello-paziente">
               {error && (
                 <div className="rounded-lg border border-danger-200 bg-danger-50/60 px-3 py-2.5">
                   <p className="text-danger text-sm flex items-center gap-2">
@@ -222,8 +237,8 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
 
               <Input
                 autoFocus
-                label="Codice fiscale"
-                placeholder="RSSMRA80A01H501U"
+                label="Cognome o codice fiscale"
+                placeholder="ROSSI o RSSMRA80A01H501U"
                 value={cf}
                 onChange={handleChange}
                 variant="bordered"
@@ -239,7 +254,7 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
                   label: "text-gray-700 font-medium",
                   input: "uppercase font-mono tracking-wide",
                 }}
-                description="Dopo 4 caratteri compaiono i suggerimenti dall'anagrafica."
+                description="Dopo tre lettere compaiono le pazienti in archivio."
               />
 
               {suggestions.length > 0 && (
@@ -254,6 +269,7 @@ export function CheckPatientModalProvider({ children }: { children: ReactNode })
                       <button
                         key={patient.id}
                         type="button"
+                        data-paziente={patient.id}
                         className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-default-50 group"
                         onClick={() => handleSuggestionClick(patient)}
                       >

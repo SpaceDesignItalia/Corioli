@@ -64,7 +64,12 @@ import {
   CertificatoPaziente,
   RicettaPaziente,
   MedicalTemplate,
+  type DocumentoStampa,
+  type ModelloStampa,
 } from "../../types/Storage";
+import { SceltaModelloStampa } from "../../components/modelliStampa/SceltaModelloStampa";
+import { senzaMarcatori } from "../../utils/grassettoReferto";
+import { titoloMedico } from "../../utils/doctorProfile";
 import type { LucideIcon } from "lucide-react";
 import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 import {
@@ -280,6 +285,14 @@ export default function PatientHistory() {
   } = useDisclosure();
   const [selectedRicettaPreview, setSelectedRicettaPreview] = useState<RicettaPaziente | null>(null);
   const [ricettaPreviewPdfBlobUrl, setRicettaPreviewPdfBlobUrl] = useState<string | null>(null);
+  /**
+   * Il modello scelto nell'anteprima di ogni documento, solo per questa
+   * stampa: vale per l'anteprima e per Stampa e Scarica lanciati da li', e si
+   * azzera quando l'anteprima si chiude. Il modello in uso non cambia.
+   */
+  const [sceltaStampa, setSceltaStampa] = useState<Partial<Record<DocumentoStampa, ModelloStampa>>>({});
+  const scegliStampa = (documento: DocumentoStampa, modello: ModelloStampa | undefined) =>
+    setSceltaStampa((s) => (s[documento] === modello ? s : { ...s, [documento]: modello }));
   const [ricettaPreviewPdfLoading, setRicettaPreviewPdfLoading] = useState(false);
   const [ricettaPreviewFullscreen, setRicettaPreviewFullscreen] = useState(false);
   const [editingRicetta, setEditingRicetta] = useState<RicettaPaziente | null>(null);
@@ -396,6 +409,10 @@ export default function PatientHistory() {
       selectedVisit?.tipo === "ginecologica_pediatrica";
     const isObs = selectedVisit?.tipo === "ostetrica";
     if (!isOpen || !selectedVisit || !patient || (!isGyn && !isObs)) {
+      if (!isOpen) {
+        scegliStampa("referto", undefined);
+        scegliStampa("refertoOstetrico", undefined);
+      }
       setPreviewPdfBlobUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
@@ -410,9 +427,11 @@ export default function PatientHistory() {
         const blob =
           isGyn
             ? await PdfService.generateGynecologicalPDF(patient, selectedVisit, {
+                modello: sceltaStampa[PdfService.documentoDellaVisita(selectedVisit)],
                 includeEcografiaImages: true,
               })
             : await PdfService.generateObstetricPDF(patient, selectedVisit, {
+                modello: sceltaStampa[PdfService.documentoDellaVisita(selectedVisit)],
                 includeEcografiaImages: true,
                 includeFetalGrowthChart: true,
                 fetalGrowthDataPoints:
@@ -449,73 +468,12 @@ export default function PatientHistory() {
       });
       setPreviewPdfLoading(false);
     };
-  }, [isOpen, selectedVisit?.id, patient?.id, visits, fetalFormulaPref]);
-
-  // Genera il PDF di anteprima (stesso della stampa) quando si apre il modale su visita ginecologica/ostetrica
-  useEffect(() => {
-    const isGyn =
-      selectedVisit?.tipo === "ginecologica" ||
-      selectedVisit?.tipo === "ginecologica_pediatrica";
-    const isObs = selectedVisit?.tipo === "ostetrica";
-    if (!isOpen || !selectedVisit || !patient || (!isGyn && !isObs)) {
-      setPreviewPdfBlobUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      setPreviewPdfLoading(false);
-      return;
-    }
-    let revoked = false;
-    setPreviewPdfLoading(true);
-    (async () => {
-      try {
-        const blob =
-          isGyn
-            ? await PdfService.generateGynecologicalPDF(patient, selectedVisit, {
-                includeEcografiaImages: true,
-              })
-            : await PdfService.generateObstetricPDF(patient, selectedVisit, {
-                includeEcografiaImages: true,
-                includeFetalGrowthChart: true,
-                fetalGrowthDataPoints:
-                  selectedVisit.tipo === "ostetrica"
-                    ? (() => {
-                        const fino = visits.filter(
-                          (v) =>
-                            v.tipo === "ostetrica" &&
-                            new Date(v.dataVisita).getTime() <= new Date(selectedVisit.dataVisita).getTime(),
-                        );
-                        const stessaGravidanza = getVisitsOfSamePregnancy(fino, selectedVisit);
-                        return getFetalGrowthDataPointsFromVisits(stessaGravidanza, fetalFormulaPref);
-                      })()
-                    : undefined,
-              });
-        if (blob && !revoked) {
-          const url = URL.createObjectURL(blob);
-          setPreviewPdfBlobUrl(url);
-        }
-      } catch (e) {
-        console.error("Errore generazione PDF anteprima:", e);
-        if (!revoked) setPreviewPdfBlobUrl(null);
-      } finally {
-        if (!revoked) setPreviewPdfLoading(false);
-      }
-    })();
-    return () => {
-      revoked = true;
-      setPreviewPdfBlobUrl((prev) => {
-        if (prev) {
-          URL.revokeObjectURL(prev);
-        }
-        return null;
-      });
-      setPreviewPdfLoading(false);
-    };
-  }, [isOpen, selectedVisit?.id, patient?.id, visits, fetalFormulaPref]);
+  }, [isOpen, selectedVisit?.id, patient?.id, visits, fetalFormulaPref, sceltaStampa.referto, sceltaStampa.refertoOstetrico]);
 
   // Anteprima esame: genera PDF e mostra in iframe (come Anteprima Referto)
   useEffect(() => {
     if (!isEsamePreviewOpen || !selectedRichiestaEsamePreview || !patient) {
+      scegliStampa("richiestaEsame", undefined);
       setEsamePreviewPdfBlobUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
@@ -532,6 +490,7 @@ export default function PatientHistory() {
           patient,
           selectedRichiestaEsamePreview,
           doc ?? null,
+          sceltaStampa.richiestaEsame,
         );
         if (blob && !revoked) {
           const url = URL.createObjectURL(blob);
@@ -552,11 +511,12 @@ export default function PatientHistory() {
       });
       setEsamePreviewPdfLoading(false);
     };
-  }, [isEsamePreviewOpen, selectedRichiestaEsamePreview?.id, patient?.id]);
+  }, [isEsamePreviewOpen, selectedRichiestaEsamePreview?.id, patient?.id, sceltaStampa.richiestaEsame]);
 
   // Anteprima certificato: genera PDF e mostra in iframe
   useEffect(() => {
     if (!isCertificatoPreviewOpen || !selectedCertificatoPreview || !patient) {
+      scegliStampa("certificato", undefined);
       setCertificatoPreviewPdfBlobUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
@@ -573,6 +533,7 @@ export default function PatientHistory() {
           patient,
           selectedCertificatoPreview,
           doc ?? null,
+          sceltaStampa.certificato,
         );
         if (blob && !revoked) {
           const url = URL.createObjectURL(blob);
@@ -593,11 +554,12 @@ export default function PatientHistory() {
       });
       setCertificatoPreviewPdfLoading(false);
     };
-  }, [isCertificatoPreviewOpen, selectedCertificatoPreview?.id, patient?.id]);
+  }, [isCertificatoPreviewOpen, selectedCertificatoPreview?.id, patient?.id, sceltaStampa.certificato]);
 
   // Anteprima ricetta: genera PDF e mostra in iframe
   useEffect(() => {
     if (!isRicettaPreviewOpen || !selectedRicettaPreview || !patient) {
+      scegliStampa("ricetta", undefined);
       setRicettaPreviewPdfBlobUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
@@ -610,7 +572,7 @@ export default function PatientHistory() {
     (async () => {
       try {
         const doc = await DoctorService.getDoctor();
-        const blob = await PdfService.generateRicettaPDF(patient, selectedRicettaPreview, doc ?? null);
+        const blob = await PdfService.generateRicettaPDF(patient, selectedRicettaPreview, doc ?? null, sceltaStampa.ricetta);
         if (revoked) return;
         const url = URL.createObjectURL(blob);
         setRicettaPreviewPdfBlobUrl(url);
@@ -629,7 +591,7 @@ export default function PatientHistory() {
       });
       setRicettaPreviewPdfLoading(false);
     };
-  }, [isRicettaPreviewOpen, selectedRicettaPreview?.id, patient?.id]);
+  }, [isRicettaPreviewOpen, selectedRicettaPreview?.id, patient?.id, sceltaStampa.ricetta]);
 
   const handleVisitClick = (visit: Visit) => {
     setSelectedVisit(visit);
@@ -714,6 +676,7 @@ export default function PatientHistory() {
         patient,
         richiesta,
         doc ?? null,
+        sceltaStampa.richiestaEsame,
       );
       const electronAPI = (
         window as unknown as {
@@ -979,7 +942,7 @@ export default function PatientHistory() {
     setPdfLoading(true);
     try {
       const doc = await DoctorService.getDoctor();
-      const blob = await PdfService.generateCertificatoPDF(patient, cert, doc ?? null);
+      const blob = await PdfService.generateCertificatoPDF(patient, cert, doc ?? null, sceltaStampa.certificato);
       const electronAPI = (window as unknown as { electronAPI?: { openPdfForPrint: (b64: string) => Promise<unknown> } }).electronAPI;
       if (electronAPI?.openPdfForPrint) {
         const base64 = await blobToBase64(blob);
@@ -1136,6 +1099,7 @@ export default function PatientHistory() {
         patient,
         ricetta,
         doc ?? null,
+        sceltaStampa.ricetta,
       );
       downloadPdfBlob(blob, filename);
       showToast("Ricetta scaricata.");
@@ -1167,6 +1131,7 @@ export default function PatientHistory() {
         patient,
         richiesta,
         doc ?? null,
+        sceltaStampa.richiestaEsame,
       );
       downloadPdfBlob(blob, filename);
       showToast("Richiesta esame scaricata.");
@@ -1196,6 +1161,7 @@ export default function PatientHistory() {
         patient,
         cert,
         doc ?? null,
+        sceltaStampa.certificato,
       );
       downloadPdfBlob(blob, filename);
       showToast("Certificato scaricato.");
@@ -1212,7 +1178,7 @@ export default function PatientHistory() {
     setPdfLoading(true);
     try {
       const doc = await DoctorService.getDoctor();
-      const blob = await PdfService.generateRicettaPDF(patient, ricetta, doc ?? null);
+      const blob = await PdfService.generateRicettaPDF(patient, ricetta, doc ?? null, sceltaStampa.ricetta);
       const electronAPI = (window as unknown as { electronAPI?: { openPdfForPrint: (b64: string) => Promise<unknown> } }).electronAPI;
       if (electronAPI?.openPdfForPrint) {
         const base64 = await blobToBase64(blob);
@@ -1576,12 +1542,14 @@ export default function PatientHistory() {
         visit.tipo === "ginecologica_pediatrica"
       ) {
         const b = await PdfService.generateGynecologicalPDF(patient, visit, {
+          modello: sceltaStampa[PdfService.documentoDellaVisita(visit)],
           includeEcografiaImages,
         });
         if (b) blob = b;
         filename = `Ginecologia_${patient.cognome}_${visit.dataVisita}.pdf`;
       } else if (visit.tipo === "ostetrica") {
         const b = await PdfService.generateObstetricPDF(patient, visit, {
+          modello: sceltaStampa[PdfService.documentoDellaVisita(visit)],
           includeEcografiaImages,
           includeFetalGrowthChart: includeFetalGrowthChart ?? false,
           fetalGrowthDataPoints,
@@ -1628,9 +1596,11 @@ export default function PatientHistory() {
         visit.tipo === "ginecologica" ||
         visit.tipo === "ginecologica_pediatrica"
           ? await PdfService.generateGynecologicalPDF(patient, visit, {
+              modello: sceltaStampa[PdfService.documentoDellaVisita(visit)],
               includeEcografiaImages,
             })
           : await PdfService.generateObstetricPDF(patient, visit, {
+              modello: sceltaStampa[PdfService.documentoDellaVisita(visit)],
               includeEcografiaImages,
               includeFetalGrowthChart: includeFetalGrowthChart ?? false,
               fetalGrowthDataPoints,
@@ -1828,7 +1798,7 @@ export default function PatientHistory() {
                         aria-hidden
                       />
                     </span>
-                    <span className="whitespace-pre-line leading-snug">
+                    <span className="min-w-0 whitespace-pre-line break-words leading-snug">
                       Allergie: {patient.allergie}
                     </span>
                   </div>
@@ -1940,6 +1910,7 @@ export default function PatientHistory() {
               color="primary"
               className="font-medium shadow-sm"
               size="sm"
+              data-guida="nuova-visita-scheda"
               onPress={() => {
                 if (!ensureDoctorProfileComplete(doctor)) return;
                 navigate(`/add-visit?patientId=${patient.id}`);
@@ -2071,9 +2042,11 @@ export default function PatientHistory() {
                             visit.ginecologia?.conclusione ||
                             visit.ostetricia?.noteOstetriche) && (
                             <div className="text-sm text-gray-600 bg-default-50 p-2 rounded-lg border-l-3 border-default-300">
-                              {visit.conclusioniDiagnostiche ||
-                                visit.ginecologia?.conclusione ||
-                                visit.ostetricia?.noteOstetriche}
+                              {senzaMarcatori(
+                                visit.conclusioniDiagnostiche ||
+                                  visit.ginecologia?.conclusione ||
+                                  visit.ostetricia?.noteOstetriche,
+                              )}
                             </div>
                           )}
                         </div>
@@ -2120,7 +2093,7 @@ export default function PatientHistory() {
         </div>
 
         {/* COLONNA DESTRA: documenti paziente (ricette, esami, certificati) */}
-        <div className="patient-history-panel patient-history-panel--docs corioli-card lg:col-span-1 lg:self-start flex flex-col overflow-hidden">
+        <div className="patient-history-panel patient-history-panel--docs corioli-card lg:col-span-1 lg:self-start flex flex-col overflow-hidden" data-guida="scheda-documenti">
           <div className="patient-doc-panel-header">
             <div className="patient-doc-tabs" role="tablist" aria-label="Documenti paziente">
               {(
@@ -2252,7 +2225,7 @@ export default function PatientHistory() {
                       <CardBody className="p-3 min-h-[7.5rem] flex flex-col">
                         <div className="flex justify-between items-start gap-2 mb-1">
                           <div className="flex-1 min-w-0">
-                            <h4 className="right-col-card-title break-words">
+                            <h4 className="right-col-card-title break-words line-clamp-3">
                               {r.nome}
                             </h4>
                             <p className="right-col-card-date">
@@ -2363,9 +2336,16 @@ export default function PatientHistory() {
           {selectedVisit && (
             <>
               <ModalHeader className="flex flex-col gap-1">
-                <div className="flex items-center justify-between w-full">
-                  <div>
+                <div className="flex flex-wrap items-center justify-between gap-3 w-full pr-10">
+                  <div className="flex flex-wrap items-center gap-3">
                     <h2 className="text-xl font-bold">Anteprima Referto</h2>
+                    {selectedVisit.tipo !== "generale" && (
+                      <SceltaModelloStampa
+                        documento={PdfService.documentoDellaVisita(selectedVisit)}
+                        scelto={sceltaStampa[PdfService.documentoDellaVisita(selectedVisit)]}
+                        onScegli={(m) => scegliStampa(PdfService.documentoDellaVisita(selectedVisit), m)}
+                      />
+                    )}
                   </div>
                   <Chip
                     color={
@@ -2431,7 +2411,7 @@ export default function PatientHistory() {
                     <div className="text-center pt-4 pb-2">
                       <p className="text-base font-bold uppercase tracking-tight">
                         {doctor
-                          ? `Dott. ${doctor.nome} ${doctor.cognome}`
+                          ? `${titoloMedico(doctor)} ${doctor.nome} ${doctor.cognome}`
                           : "Studio Medico"}
                       </p>
                       {doctor?.specializzazione && (
@@ -2484,26 +2464,26 @@ export default function PatientHistory() {
                         {[
                           {
                             title: "ANAMNESI",
-                            content: getPreviewAnamnesi(selectedVisit),
+                            content: senzaMarcatori(getPreviewAnamnesi(selectedVisit)),
                           },
                           {
                             title: "Dati Clinici",
-                            content: getPreviewDatiClinici(selectedVisit),
+                            content: senzaMarcatori(getPreviewDatiClinici(selectedVisit)),
                           },
                           {
                             title: "ESAME OBIETTIVO",
-                            content: getPreviewEsameObiettivo(selectedVisit),
+                            content: senzaMarcatori(getPreviewEsameObiettivo(selectedVisit)),
                           },
                           {
                             title: "Conclusioni e Terapia",
-                            content: getPreviewConclusioni(selectedVisit),
+                            content: senzaMarcatori(getPreviewConclusioni(selectedVisit)),
                           },
                         ].map((sec, i) => (
                           <div key={i} className="mx-4 mt-3">
                             <div className="bg-[#f0f0f0] px-2 py-1 font-bold text-[10px] uppercase">
                               {sec.title}
                             </div>
-                            <div className="px-2 py-1.5 text-[11px] whitespace-pre-wrap border-x border-b border-gray-300">
+                            <div className="px-2 py-1.5 text-[11px] whitespace-pre-wrap break-words border-x border-b border-gray-300">
                               {sec.content?.trim() || "-"}
                             </div>
                           </div>
@@ -2864,6 +2844,13 @@ export default function PatientHistory() {
                     <FlaskConical size={22} className="text-primary-700" />
                     <h2 className="text-xl font-bold">Anteprima esame</h2>
                   </div>
+                  <div className="pr-8">
+                    <SceltaModelloStampa
+                      documento="richiestaEsame"
+                      scelto={sceltaStampa.richiestaEsame}
+                      onScegli={(m) => scegliStampa("richiestaEsame", m)}
+                    />
+                  </div>
                 </div>
               </ModalHeader>
               <ModalBody className={esamePreviewFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : undefined}>
@@ -2917,7 +2904,14 @@ export default function PatientHistory() {
                     <Award size={22} className="text-warning-600" />
                     <h2 className="text-xl font-bold">Anteprima certificato</h2>
                   </div>
-                  <Chip size="sm" variant="flat" color="warning">{getCertificatoTipoLabel(selectedCertificatoPreview.tipo)}</Chip>
+                  <div className="flex flex-wrap items-center gap-3 pr-8">
+                    <SceltaModelloStampa
+                      documento="certificato"
+                      scelto={sceltaStampa.certificato}
+                      onScegli={(m) => scegliStampa("certificato", m)}
+                    />
+                    <Chip size="sm" variant="flat" color="warning">{getCertificatoTipoLabel(selectedCertificatoPreview.tipo)}</Chip>
+                  </div>
                 </div>
               </ModalHeader>
               <ModalBody className={certificatoPreviewFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : undefined}>
@@ -2946,7 +2940,9 @@ export default function PatientHistory() {
       </AppModal>
 
       {/* Modal Creazione/Modifica Richiesta Esame */}
-      <AppModal isOpen={isEsameOpen} onClose={handleCloseEsameModal} size="2xl">
+      {/* Le modali coi testi scorrono dentro: con un esame lungo scelto dai
+          modelli il fondo, con Salva, usciva dallo schermo. */}
+      <AppModal isOpen={isEsameOpen} onClose={handleCloseEsameModal} size="2xl" scrollBehavior="inside">
         <ModalContent>
           <ModalHeader className="flex items-center gap-2 pb-2">
             <FlaskConical size={22} className="text-primary-700" />
@@ -3000,12 +2996,17 @@ export default function PatientHistory() {
                 </Dropdown>
               </div>
 
-              <Input
+              {/* Textarea e non Input: i modelli esame possono essere elenchi lunghi o su
+                  più righe, che in un Input non andrebbero a capo. Oltre maxRows compare
+                  la scrollbar. */}
+              <Textarea
                 label="Esame richiesto"
                 placeholder="Es. Emocromo, Eco Addome..."
                 value={nuovaRichiestaNome}
                 onValueChange={setNuovaRichiestaNome}
                 variant="bordered"
+                minRows={2}
+                maxRows={6}
               />
 
               <Textarea
@@ -3015,6 +3016,7 @@ export default function PatientHistory() {
                 onValueChange={setNuovaRichiestaNote}
                 variant="bordered"
                 minRows={3}
+                maxRows={10}
               />
 
               <Input
@@ -3067,7 +3069,7 @@ export default function PatientHistory() {
       </AppModal>
 
       {/* Modal Nuovo/Modifica Certificato */}
-      <AppModal isOpen={isCertificatoOpen} onClose={handleCloseCertificatoModal} size="2xl">
+      <AppModal isOpen={isCertificatoOpen} onClose={handleCloseCertificatoModal} size="2xl" scrollBehavior="inside">
         <ModalContent>
           <ModalHeader className="flex items-center gap-2 pb-2">
             <Award size={22} className="text-warning-600" />
@@ -3133,6 +3135,7 @@ export default function PatientHistory() {
               onValueChange={setCertDescrizione}
               variant="bordered"
               minRows={4}
+              maxRows={14}
             />
 
             <Input
@@ -3195,7 +3198,14 @@ export default function PatientHistory() {
                     <Pill size={22} className="corioli-text-brand" />
                     <h2 className="text-xl font-bold">Anteprima ricetta</h2>
                   </div>
-                  <Chip size="sm" variant="flat" color="primary">{getRicettaTipoLabel(selectedRicettaPreview.tipo)}</Chip>
+                  <div className="flex flex-wrap items-center gap-3 pr-8">
+                    <SceltaModelloStampa
+                      documento="ricetta"
+                      scelto={sceltaStampa.ricetta}
+                      onScegli={(m) => scegliStampa("ricetta", m)}
+                    />
+                    <Chip size="sm" variant="flat" color="primary">{getRicettaTipoLabel(selectedRicettaPreview.tipo)}</Chip>
+                  </div>
                 </div>
               </ModalHeader>
               <ModalBody className={ricettaPreviewFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : undefined}>
@@ -3275,6 +3285,9 @@ export default function PatientHistory() {
                 onValueChange={setRicettaTesto}
                 variant="bordered"
                 minRows={10}
+                // NextUI mostra la scrollbar solo se maxRows > minRows (default 8):
+                // senza questo, oltre le 8 righe il testo scorreva ma senza scrollbar.
+                maxRows={16}
               />
 
               <Input

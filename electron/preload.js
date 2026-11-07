@@ -32,6 +32,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getAppVersion: () => ipcRenderer.invoke('app:version'),
 
+  // "Grassetto" scelto nel menu del tasto destro sul referto (electron/main.js)
+  onGrassettoReferto: (callback) => {
+    const ascolta = () => callback();
+    ipcRenderer.on('referto:grassetto', ascolta);
+    return () => ipcRenderer.removeListener('referto:grassetto', ascolta);
+  },
+
   // Backup automatici (copie del file SQLite in userData/backups)
   backupCreate: (reason) => ipcRenderer.invoke('backup:create', reason),
   backupList: () => ipcRenderer.invoke('backup:list'),

@@ -37,6 +37,14 @@ const menuItems = [
   { label: "Aiuto", href: "/help" },
 ];
 
+/**
+ * La guida di primo avvio fa aprire Impostazioni da qui, per arrivare ai
+ * modelli (`components/guida/passiGuida.ts`).
+ */
+function bersaglioGuida(href: string): string | undefined {
+  return href === "/settings" ? "impostazioni" : undefined;
+}
+
 export default function AppNavbar() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -227,7 +235,7 @@ export default function AppNavbar() {
             </Link>
           );
           return (
-            <NavbarItem key={item.href} className="hidden md:flex">
+            <NavbarItem key={item.href} className="hidden md:flex" data-guida={bersaglioGuida(item.href)}>
               {item.href === "/help" && supportUnread > 0 ? (
                 <Badge content={supportUnread > 99 ? "99+" : supportUnread} color="danger" size="sm">
                   {link}

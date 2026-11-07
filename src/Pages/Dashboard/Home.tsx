@@ -42,6 +42,7 @@ import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { PregnancyListRow } from "../../components/PregnancyListRow";
 import { useCheckPatientModal } from "../../contexts/CheckPatientModalContext";
 import { toLocalIsoDate } from "../../utils/dateUtils";
+import { EVENTO_PAZIENTI_CAMBIATI } from "../../utils/guidaPrimoAvvio";
 
 interface GroupedRecentVisit {
   patientId: string;
@@ -216,7 +217,32 @@ const buildDashboardSubtitle = (
 export default function Home() {
   const navigate = useNavigate();
   const { openCheckPatientModal } = useCheckPatientModal();
+  // Il profilo cambia anche dalla guida di primo avvio, aperta sopra la pagina.
+  useEffect(() => {
+    const aggiorna = () =>
+      void DoctorService.getDoctor()
+        .then((d) => {
+          if (!d) return;
+          setDoctorName(d.cognome);
+          setTitolo(d.titolo ?? "Dott.ssa");
+        })
+        .catch(() => {});
+    window.addEventListener("appdottori-doctor-updated", aggiorna);
+    return () => window.removeEventListener("appdottori-doctor-updated", aggiorna);
+  }, []);
+
+  // Cresce quando l'archivio cambia sotto la pagina (la guida di primo avvio
+  // che apre e chiude il suo archivio di prova): i dati si rileggono.
+  const [versioneArchivio, setVersioneArchivio] = useState(0);
+  useEffect(() => {
+    const ricarica = () => setVersioneArchivio((v) => v + 1);
+    window.addEventListener(EVENTO_PAZIENTI_CAMBIATI, ricarica);
+    return () => window.removeEventListener(EVENTO_PAZIENTI_CAMBIATI, ricarica);
+  }, []);
   const [doctorName, setDoctorName] = useState<string | null>(null);
+  // Il titolo scelto nel profilo. Prima del campo il saluto era sempre
+  // "Dott.ssa": per chi non l'ha ancora scelto resta cosi'.
+  const [titolo, setTitolo] = useState<string>("Dott.ssa");
   const [stats, setStats] = useState<DashboardStats>({
     totalPatients: 0,
     totalVisits: 0,
@@ -255,6 +281,7 @@ export default function Home() {
         ]);
 
         setDoctorName(doctor.cognome);
+        setTitolo(doctor.titolo ?? "Dott.ssa");
 
         const now = new Date();
         const thisMonthStart = new Date(
@@ -341,7 +368,7 @@ export default function Home() {
       }
     };
     load();
-  }, []);
+  }, [versioneArchivio]);
 
   if (loading) {
     return <PageLoadingSkeleton variant="home" pathname="/" />;
@@ -366,6 +393,7 @@ export default function Home() {
         variant="bordered"
         startContent={<Calendar size={18} />}
         onPress={openCheckPatientModal}
+        data-guida="nuova-visita"
         className="font-medium flex-1 md:flex-none border-default-300 text-default-700 bg-white"
       >
         Nuova Visita
@@ -376,7 +404,7 @@ export default function Home() {
   return (
     <div className="corioli-page space-y-8 animate-in fade-in duration-500">
       <PageHeader
-        title={`${getGreetingMessage()}, ${doctorName ? `Dott.ssa ${doctorName}` : "Dottoressa"}`}
+        title={`${getGreetingMessage()}, ${doctorName ? `${titolo} ${doctorName}` : titolo.endsWith("ssa") ? "Dottoressa" : "Dottore"}`}
         subtitle={stats.subtitle}
         icon={LayoutDashboard}
         iconColor="primary"
@@ -690,8 +718,8 @@ export default function Home() {
           </CardBody>
         </Card>
 
-        {/* Gravidanze in corso */}
-        <Card className="corioli-card">
+        {/* Gravidanze in corso. `data-guida`: la guida di primo avvio comincia da qui. */}
+        <Card className="corioli-card" data-guida="colonna-gravidanze">
           <CardHeader className="corioli-card-header flex justify-between items-center gap-2">
             <div className="dashboard-column-header-title min-w-0">
               <i

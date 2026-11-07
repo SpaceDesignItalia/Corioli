@@ -67,6 +67,23 @@ export default {
           page: "#F8FAFC",
         },
       },
+      /**
+       * Spazio della barra del titolo (`--barra-finestra` in index.css, 0 nel
+       * browser): lo usano l'editor dei modelli di stampa e i modal a tutto
+       * schermo, come in Corioli Cardiologia.
+       */
+      spacing: {
+        barra: "var(--barra-finestra)",
+      },
+      height: {
+        finestra: "calc(100vh - var(--barra-finestra))",
+      },
+      minHeight: {
+        finestra: "calc(100vh - var(--barra-finestra))",
+      },
+      maxHeight: {
+        finestra: "calc(100vh - var(--barra-finestra))",
+      },
     },
   },
   plugins: [

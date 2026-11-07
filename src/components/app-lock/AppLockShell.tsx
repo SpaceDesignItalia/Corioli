@@ -15,7 +15,20 @@ type Props = {
   stepProgress?: { current: number; total: number };
   /** Altezza minima del corpo: tiene le card dei vari passi della stessa dimensione */
   bodyMinHeight?: number;
+  /** Card larga, per i passi che mostrano un'anteprima accanto alle scelte. */
+  larga?: boolean;
 };
+
+/**
+ * Classi scritte per intero: Tailwind tiene nel CSS solo le classi che trova
+ * nel sorgente, e `onboarding-step-pill--${state}` non ne nomina nessuna. Le
+ * pillole uscivano senza colore, cioe' invisibili.
+ */
+export const CLASSE_PILLOLA = {
+  done: "onboarding-step-pill--done",
+  active: "onboarding-step-pill--active",
+  future: "onboarding-step-pill--future",
+} as const;
 
 function ShellIcon({ icon }: { icon: AppLockShellIcon }) {
   const className = "h-7 w-7" ;
@@ -43,7 +56,7 @@ function StepPills({ current, total }: { current: number; total: number }) {
           return (
             <div
               key={i}
-              className={`onboarding-step-pill onboarding-step-pill--${state}`}
+              className={`onboarding-step-pill ${CLASSE_PILLOLA[state]}`}
             />
           );
         })}
@@ -61,9 +74,10 @@ export default function AppLockShell({
   overlay = false,
   stepProgress,
   bodyMinHeight,
+  larga = false,
 }: Props) {
   const card = (
-    <div className="onboarding-card">
+    <div className={larga ? "onboarding-card onboarding-card--larga" : "onboarding-card"}>
       <div className="p-6 sm:p-8 space-y-6">
         <div className="flex flex-col items-center text-center gap-3">
           {stepProgress ? (

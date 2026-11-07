@@ -3,7 +3,8 @@ import { LucideIcon } from "lucide-react";
 
 interface PageHeaderProps {
   title: string;
-  subtitle: string;
+  /** Solo quando dice qualcosa che il titolo non dice. */
+  subtitle?: string;
   icon: LucideIcon;
   iconColor?: "primary" | "secondary" | "success" | "warning" | "danger" | "default";
   actions?: ReactNode;
@@ -45,7 +46,7 @@ export function PageHeader({
             <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
               {title}
             </h1>
-            <p className="text-default-500 mt-1">{subtitle}</p>
+            {subtitle && <p className="text-default-500 mt-1">{subtitle}</p>}
           </div>
         </div>
         {actions && (

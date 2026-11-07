@@ -35,7 +35,10 @@ import {
 import { SearchIcon } from "../../components/navbar/SearchIcon";
 import { PatientService, VisitService, PreferenceService, DoctorService } from "../../services/OfflineServices";
 import { PdfService } from "../../services/PdfService";
-import { Visit, Patient, Doctor } from "../../types/Storage";
+import { Visit, Patient, Doctor, type ModelloStampa } from "../../types/Storage";
+import { SceltaModelloStampa } from "../../components/modelliStampa/SceltaModelloStampa";
+import { senzaMarcatori } from "../../utils/grassettoReferto";
+import { titoloMedico } from "../../utils/doctorProfile";
 import { PageHeader } from "../../components/PageHeader";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -155,6 +158,8 @@ export default function Visite() {
   const rowsPerPage = 10;
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const [previewPdfBlobUrl, setPreviewPdfBlobUrl] = useState<string | null>(null);
+  /** Il modello scelto nell'anteprima, solo per questa stampa (vedi `SceltaModelloStampa`). */
+  const [modelloStampa, setModelloStampa] = useState<ModelloStampa | undefined>();
   const [previewPdfLoading, setPreviewPdfLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [patientForPreview, setPatientForPreview] = useState<Patient | null>(null);
@@ -216,6 +221,7 @@ export default function Visite() {
     const isGyn = selectedVisit?.tipo === "ginecologica" || selectedVisit?.tipo === "ginecologica_pediatrica";
     const isObs = selectedVisit?.tipo === "ostetrica";
     if (!isOpen || !selectedVisit || !patientForPreview || (!isGyn && !isObs)) {
+      if (!isOpen) setModelloStampa(undefined);
       setPreviewPdfBlobUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
@@ -241,11 +247,15 @@ export default function Visite() {
               })()
             : undefined;
         const blob = isGyn
-          ? await PdfService.generateGynecologicalPDF(patientForPreview, selectedVisit, { includeEcografiaImages: true })
+          ? await PdfService.generateGynecologicalPDF(patientForPreview, selectedVisit, {
+              includeEcografiaImages: true,
+              modello: modelloStampa,
+            })
           : await PdfService.generateObstetricPDF(patientForPreview, selectedVisit, {
               includeEcografiaImages: true,
               includeFetalGrowthChart: true,
               fetalGrowthDataPoints,
+              modello: modelloStampa,
             });
         if (blob && !revoked) {
           const url = URL.createObjectURL(blob);
@@ -266,7 +276,7 @@ export default function Visite() {
       });
       setPreviewPdfLoading(false);
     };
-  }, [isOpen, selectedVisit?.id, patientForPreview?.id, visits, fetalFormula]);
+  }, [isOpen, selectedVisit?.id, patientForPreview?.id, visits, fetalFormula, modelloStampa]);
 
   useEffect(() => {
     const load = async () => {
@@ -402,11 +412,15 @@ export default function Visite() {
     setPdfLoading(true);
     try {
       const blob = visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica"
-        ? await PdfService.generateGynecologicalPDF(patientForPreview, visit, { includeEcografiaImages })
+        ? await PdfService.generateGynecologicalPDF(patientForPreview, visit, {
+            includeEcografiaImages,
+            modello: modelloStampa,
+          })
         : await PdfService.generateObstetricPDF(patientForPreview, visit, {
             includeEcografiaImages,
             includeFetalGrowthChart: includeFetalGrowthChart ?? false,
             fetalGrowthDataPoints,
+            modello: modelloStampa,
           });
       if (!blob) {
         showToast("Impossibile generare il PDF per la stampa.", "error");
@@ -493,11 +507,11 @@ export default function Visite() {
       let blob: Blob | null = null;
       let filename = "";
       if (visit.tipo === "ginecologica" || visit.tipo === "ginecologica_pediatrica") {
-        blob = await PdfService.generateGynecologicalPDF(patientForPreview, visit) ?? null;
+        blob = await PdfService.generateGynecologicalPDF(patientForPreview, visit, { modello: modelloStampa }) ?? null;
         filename = `Ginecologia_${patientForPreview.cognome}_${visit.dataVisita}.pdf`;
         showToast("PDF ginecologico generato.");
       } else if (visit.tipo === "ostetrica") {
-        blob = await PdfService.generateObstetricPDF(patientForPreview, visit) ?? null;
+        blob = await PdfService.generateObstetricPDF(patientForPreview, visit, { modello: modelloStampa }) ?? null;
         filename = `Ostetricia_${patientForPreview.cognome}_${visit.dataVisita}.pdf`;
         showToast("PDF ostetrico generato.");
       } else {
@@ -727,7 +741,7 @@ export default function Visite() {
                         </p>
                       )}
                       <p className="text-xs text-default-400 truncate mt-1">
-                        {getVisitDescription(visit)}
+                        {senzaMarcatori(getVisitDescription(visit))}
                       </p>
                     </div>
                   </div>
@@ -853,9 +867,16 @@ export default function Visite() {
           {selectedVisit && (
             <>
               <ModalHeader className="flex flex-col gap-1">
-                <div className="flex items-center justify-between w-full">
-                  <div>
+                <div className="flex flex-wrap items-center justify-between gap-3 w-full pr-10">
+                  <div className="flex flex-wrap items-center gap-3">
                     <h2 className="text-xl font-bold">Anteprima Referto</h2>
+                    {selectedVisit.tipo !== "generale" && (
+                      <SceltaModelloStampa
+                        documento={PdfService.documentoDellaVisita(selectedVisit)}
+                        scelto={modelloStampa}
+                        onScegli={setModelloStampa}
+                      />
+                    )}
                   </div>
                   <Chip
                     color={
@@ -900,7 +921,7 @@ export default function Visite() {
                     <div className="mx-auto w-full max-w-[210mm] bg-white border border-gray-300 shadow-sm text-[#141414] font-sans">
                       <div className="text-center pt-4 pb-2">
                         <p className="text-base font-bold uppercase tracking-tight">
-                          {doctorForPreview ? `Dott. ${doctorForPreview.nome} ${doctorForPreview.cognome}` : "Studio Medico"}
+                          {doctorForPreview ? `${titoloMedico(doctorForPreview)} ${doctorForPreview.nome} ${doctorForPreview.cognome}` : "Studio Medico"}
                         </p>
                         {doctorForPreview?.specializzazione && (
                           <p className="text-[11px] text-[#3c3c3c] uppercase mt-0.5">{doctorForPreview.specializzazione}</p>
@@ -932,14 +953,14 @@ export default function Visite() {
                         </div>
                       </div>
                       {[
-                        { title: "ANAMNESI", content: getPreviewAnamnesi(selectedVisit) },
-                        { title: "Dati Clinici", content: getPreviewDatiClinici(selectedVisit) },
-                        { title: "ESAME OBIETTIVO", content: getPreviewEsameObiettivo(selectedVisit) },
-                        { title: "Conclusioni e Terapia", content: getPreviewConclusioni(selectedVisit) },
+                        { title: "ANAMNESI", content: senzaMarcatori(getPreviewAnamnesi(selectedVisit)) },
+                        { title: "Dati Clinici", content: senzaMarcatori(getPreviewDatiClinici(selectedVisit)) },
+                        { title: "ESAME OBIETTIVO", content: senzaMarcatori(getPreviewEsameObiettivo(selectedVisit)) },
+                        { title: "Conclusioni e Terapia", content: senzaMarcatori(getPreviewConclusioni(selectedVisit)) },
                       ].map((sec, i) => (
                         <div key={i} className="mx-4 mt-3">
                           <div className="bg-[#f0f0f0] px-2 py-1 font-bold text-[10px] uppercase">{sec.title}</div>
-                          <div className="px-2 py-1.5 text-[11px] whitespace-pre-wrap border-x border-b border-gray-300">
+                          <div className="px-2 py-1.5 text-[11px] whitespace-pre-wrap break-words border-x border-b border-gray-300">
                             {sec.content?.trim() || "-"}
                           </div>
                         </div>

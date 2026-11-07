@@ -25,6 +25,15 @@ import {
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 
 import { RefertoTextarea } from "../../components/RefertoTextarea";
+import { EVENTO_REFERTO_APERTO } from "../../components/guida/passiGuida";
+import {
+  bozzaDaProporre,
+  cancellaBozzaVisita,
+  chiaveBozzaVisita,
+  leggiBozzaVisita,
+  scriviBozzaVisita,
+  type BozzaVisita,
+} from "../../utils/bozzaVisita";
 import {
   useRegisterUnsavedChanges,
   useUnsavedChanges,
@@ -87,12 +96,17 @@ import {
   calcolaStimePesoFetale,
   FORMULA_BIOMETRIA_FIELDS,
   BIOMETRIA_FIELD_LABELS,
+  BIOMETRIA_MAX_MM,
+  biometriaFuoriScala,
 } from "../../utils/fetalWeightUtils";
 import {
   parseGestationalWeeks,
   getCentileForWeight,
   formatCentileLabel,
+  gestationalDaysFromCrl,
+  crlRedatingThresholdDays,
 } from "../../utils/fetalGrowthCentiles";
+import { misureDaRifare } from "../../utils/copiaVisitaOstetrica";
 import { getBiometryPercentile } from "../../utils/biometryCentiles";
 import {
   bmiBand,
@@ -128,7 +142,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
-import { Breadcrumb } from "../../components/Breadcrumb";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
 import { useDoctorProfileIncompleteModal } from "../../components/DoctorProfileIncompleteModal";
 import { getMissingDoctorProfileFields, isDoctorProfileComplete } from "../../utils/doctorProfile";
@@ -548,6 +561,13 @@ export default function AddVisit() {
     ((value: boolean) => void) | null
   >(null);
   const initialLoadDone = useRef(false);
+  /**
+   * Visita o paziente ancora in caricamento: la bozza si cerca solo dopo,
+   * quando si sa se la visita e' in archivio e quando e' stata salvata.
+   */
+  const [caricamento, setCaricamento] = useState(true);
+  /** Bozza rimasta da una sessione chiusa senza salvare, in attesa di scelta. */
+  const [bozzaTrovata, setBozzaTrovata] = useState<BozzaVisita | null>(null);
 
   // Templates state
   const [allTemplates, setAllTemplates] = useState<MedicalTemplate[]>([]);
@@ -807,9 +827,81 @@ export default function AddVisit() {
       setTimeout(() => {
         initialLoadDone.current = true;
       }, 300);
+      setCaricamento(false);
     };
     loadData();
   }, [searchParams, visitId]);
+
+  // ── Bozza locale (vedi utils/bozzaVisita) ──────────────────────────────
+  const chiaveBozza = patient ? chiaveBozzaVisita(visitId, patient.id) : null;
+
+  // Alla riapertura: c'e' una bozza piu' recente dell'ultimo salvataggio?
+  useEffect(() => {
+    if (caricamento || !chiaveBozza) return;
+    let attivo = true;
+    void leggiBozzaVisita(chiaveBozza).then((bozza) => {
+      if (attivo && bozzaDaProporre(bozza, existingVisit?.updatedAt)) {
+        setBozzaTrovata(bozza);
+      }
+    });
+    return () => {
+      attivo = false;
+    };
+    // existingVisit arriva con lo stesso caricamento: basta riguardare quando finisce.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caricamento, chiaveBozza]);
+
+  // Scrittura a ogni pausa di battitura. Ferma finche' una bozza vecchia
+  // aspetta una risposta, se no la sovrascriverebbe prima della scelta.
+  // Le immagini dell'ecografia restano fuori: pesano anche qualche MB l'una,
+  // e riscriverle a ogni pausa rallenterebbe la scrittura del referto.
+  useEffect(() => {
+    if (!hasUnsavedChanges || !chiaveBozza || bozzaTrovata) return;
+    const timer = window.setTimeout(() => {
+      const { ecografiaImmagini: _g, ...ginecologia } = ginecologiaData;
+      const { ecografiaImmagini: _o, ...ostetricia } = ostetriciaData;
+      void scriviBozzaVisita(chiaveBozza, {
+        salvataIl: new Date().toISOString(),
+        visitData,
+        visitaData: { ginecologia, ostetricia },
+        anamnesiStrutturata,
+      });
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [hasUnsavedChanges, chiaveBozza, bozzaTrovata, visitData, ginecologiaData, ostetriciaData, anamnesiStrutturata]);
+
+  // Uscendo dalla maschera dall'interno dell'app si e' salvato o si e'
+  // confermato di non salvare: la bozza non serve piu'.
+  useEffect(() => {
+    if (!chiaveBozza) return;
+    return () => {
+      void cancellaBozzaVisita(chiaveBozza);
+    };
+  }, [chiaveBozza]);
+
+  const riprendiBozza = () => {
+    if (!bozzaTrovata) return;
+    const b = bozzaTrovata;
+    const sezioni = (b.visitaData ?? {}) as {
+      ginecologia?: Partial<typeof ginecologiaData>;
+      ostetricia?: Partial<typeof ostetriciaData>;
+    };
+    setVisitData((prev) => ({ ...prev, ...(b.visitData as Partial<typeof prev>) }));
+    // Le immagini non sono nella bozza: restano quelle che ci sono.
+    if (sezioni.ginecologia) setGinecologiaData((prev) => ({ ...prev, ...sezioni.ginecologia }));
+    if (sezioni.ostetricia) setOstetriciaData((prev) => ({ ...prev, ...sezioni.ostetricia }));
+    setAnamnesiStrutturata((prev) => ({
+      ...prev,
+      ...(b.anamnesiStrutturata as Partial<typeof prev>),
+    }));
+    setBozzaTrovata(null);
+    setHasUnsavedChanges(true);
+  };
+
+  const scartaBozza = () => {
+    if (chiaveBozza) void cancellaBozzaVisita(chiaveBozza);
+    setBozzaTrovata(null);
+  };
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -1040,6 +1132,16 @@ export default function AddVisit() {
           showToast(weightErr, "error");
           return false;
         }
+        // Anche la stampa passa di qui: un refuso nella biometria non arriva
+        // al referto con un peso fetale impossibile.
+        const biometriaErr = biometriaFuoriScala(
+          ostetriciaWithDrafts.biometriaFetale,
+        );
+        if (biometriaErr) {
+          setError(biometriaErr);
+          showToast(biometriaErr, "error");
+          return false;
+        }
         if (
           altezzaPendingInput.trim() &&
           (!patient.altezza || patient.altezza <= 0)
@@ -1147,6 +1249,7 @@ export default function AddVisit() {
         setFlussimetriaOmbelicaleDraft({ pi: null, ri: null });
         setPesoInputDraft({ pre: null, attuale: null });
       }
+      void cancellaBozzaVisita(chiaveBozzaVisita(visitId, patient.id));
       if (!options?.skipRedirect) {
         setTimeout(() => navigate(`/patient-history/${patient.id}`), 1000);
       }
@@ -1271,18 +1374,15 @@ export default function AddVisit() {
           abortiPrecSpontanei:
             previousVisit.ostetricia?.abortiPrecSpontanei ?? 0,
           ivgPrec: previousVisit.ostetricia?.ivgPrec ?? 0,
-          ecografiaImmagini: previousVisit.ostetricia?.ecografiaImmagini ?? [],
-          biometriaFetale: previousVisit.ostetricia?.biometriaFetale ?? {
-            bpdMm: 0,
-            hcMm: 0,
-            acMm: 0,
-            flMm: 0,
-          },
-          // Non copiare i parametri rilevati nella singola visita: vanno reinseriti
-          pesoAttuale: 0,
-          pressioneArteriosa: "",
-          frequenzaCardiaca: "",
+          // Epoca ricalcolata alla data di oggi; misure del feto, parametri
+          // materni e immagini sono di quel controllo e vanno rifatti.
+          ...misureDaRifare(
+            previousVisit.ostetricia?.ultimaMestruazione ?? "",
+            visitData.dataVisita,
+          ),
         }));
+        setFlussimetriaOmbelicaleDraft({ pi: null, ri: null });
+        setPesoInputDraft((d) => ({ ...d, attuale: null }));
       } else {
         setOstetriciaData((prev) => ({
           ...prev,
@@ -1625,10 +1725,13 @@ export default function AddVisit() {
       if (electronAPI?.openPdfForPrint) {
         const base64 = await blobToBase64(blob);
         await electronAPI.openPdfForPrint(base64);
+        // La guida di primo avvio aspetta il referto aperto per andare avanti.
+        window.dispatchEvent(new CustomEvent(EVENTO_REFERTO_APERTO));
         showToast("PDF aperto nell'app predefinita. Usa Stampa da lì.");
       } else {
         const pdfUrl = URL.createObjectURL(blob);
         const w = window.open(pdfUrl, "_blank");
+        window.dispatchEvent(new CustomEvent(EVENTO_REFERTO_APERTO));
         if (w) {
           setTimeout(() => URL.revokeObjectURL(pdfUrl), 5000);
         } else {
@@ -1849,69 +1952,88 @@ export default function AddVisit() {
     }
   };
 
-  /** Da CRL (mm) a età gestazionale: formula Robinson GA_days = 42 + 0.6*CRL_mm (valida per CRL ~5-84 mm). */
+  /** CRL al momento del focus: all'uscita dal campo si data solo se è cambiato. */
+  const crlAtFocus = useRef<number | undefined>(undefined);
+
   const handleCrlChange = (value: string) => {
-    const num = value.trim() === "" ? undefined : parseInt(value, 10);
+    // Il CRL si misura al decimo di mm: parseInt troncava "62.4" a 62
+    const parsed = parseFloat(value.replace(",", "."));
+    const num = Number.isFinite(parsed) ? parsed : undefined;
     if (initialLoadDone.current) setHasUnsavedChanges(true);
-    setOstetriciaData((prev) => {
-      const next = { ...prev, crlMm: num };
-      if (num == null || num < 3 || num > 100) return next;
-      const gaDays = 42 + 0.6 * num;
-      const weeks = Math.floor(gaDays / 7);
-      const days = Math.round(gaDays % 7);
-      const newSettimane = `${weeks}+${days}`;
-      const currentWeeksDec = parseGestationalWeeks(
-        prev.settimaneGestazione ?? "",
-      );
-      const currentGaDays =
-        currentWeeksDec != null ? currentWeeksDec * 7 : null;
-      const diffDays =
-        currentGaDays != null ? Math.abs(gaDays - currentGaDays) : 999;
-      if (diffDays >= 1) {
-        next.settimaneGestazione = newSettimane;
-        const visitDate = parseISO(visitData.dataVisita);
-        if (isValid(visitDate)) {
-          const edd = subDays(visitDate, gaDays);
-          const dpp = addDays(edd, 280);
-          next.dataPresunta = format(dpp, "yyyy-MM-dd");
-        }
-        // Ricalcola percentili biometria con la nuova GA
-        const newGaDec = gaDays / 7;
-        const bio = next.biometriaFetale;
-        if (bio) {
-          const pctKeyMap = {
-            bpdMm: "bpdPercentile",
-            hcMm: "hcPercentile",
-            acMm: "acPercentile",
-            flMm: "flPercentile",
-          } as const;
-          const bioUpdates: Record<string, number | undefined> = {};
-          (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach(
-            (measField) => {
-              const measVal = bio[measField];
-              if (measVal && measVal > 0) {
-                const p = getBiometryPercentile(measVal, newGaDec, measField);
-                bioUpdates[pctKeyMap[measField]] =
-                  p != null ? Math.round(p) : undefined;
-              }
-            },
-          );
-          bioUpdates["efwPercentile"] = undefined;
-          next.biometriaFetale = { ...bio, ...bioUpdates };
-        }
-        const oldSett = prev.settimaneGestazione || "—";
-        const oldDpp = prev.dataPresunta
-          ? format(parseISO(prev.dataPresunta), "dd/MM/yyyy")
-          : "—";
-        setTimeout(() => {
-          showToast(
-            `In base al CRL (${num} mm): settimane da ${oldSett} a ${newSettimane}; data presunta parto da ${oldDpp} a ${next.dataPresunta ? format(parseISO(next.dataPresunta), "dd/MM/yyyy") : "—"}.`,
-            "warning",
-          );
-        }, 0);
+    setOstetriciaData((prev) => ({ ...prev, crlMm: num }));
+  };
+
+  /**
+   * Datazione da CRL (Robinson) all'uscita dal campo, non a ogni tasto:
+   * digitando "45" il passaggio da "4" ridatava a 5+4 e falsava il confronto.
+   * Settimane e DPP cambiano solo oltre la soglia ACOG.
+   */
+  const applyCrlDating = () => {
+    const crl = ostetriciaData.crlMm;
+    if (crl == null || crl === crlAtFocus.current) return;
+    const gaDays = gestationalDaysFromCrl(crl);
+    if (gaDays == null) return;
+    const newSettimane = `${Math.floor(gaDays / 7)}+${gaDays % 7}`;
+    const currentWeeksDec = parseGestationalWeeks(
+      ostetriciaData.settimaneGestazione ?? "",
+    );
+    if (currentWeeksDec != null) {
+      const currentGaDays = Math.round(currentWeeksDec * 7);
+      const diffDays = Math.abs(gaDays - currentGaDays);
+      const soglia = crlRedatingThresholdDays(currentGaDays);
+      if (diffDays <= soglia) {
+        showToast(
+          `CRL ${crl} mm = ${newSettimane}: scarto di ${diffDays} giorni, entro la soglia di ${soglia}. Datazione invariata.`,
+          "info",
+        );
+        return;
       }
-      return next;
-    });
+    }
+    const next = { ...ostetriciaData, settimaneGestazione: newSettimane };
+    const visitDate = parseISO(visitData.dataVisita);
+    if (isValid(visitDate)) {
+      const edd = subDays(visitDate, gaDays);
+      const dpp = addDays(edd, 280);
+      next.dataPresunta = format(dpp, "yyyy-MM-dd");
+    }
+    // Ricalcola percentili biometria con la nuova GA
+    const newGaDec = gaDays / 7;
+    const bio = next.biometriaFetale;
+    if (bio) {
+      const pctKeyMap = {
+        bpdMm: "bpdPercentile",
+        hcMm: "hcPercentile",
+        acMm: "acPercentile",
+        flMm: "flPercentile",
+      } as const;
+      const bioUpdates: Record<string, number | undefined> = {};
+      (Object.keys(pctKeyMap) as Array<keyof typeof pctKeyMap>).forEach(
+        (measField) => {
+          const measVal = bio[measField];
+          if (measVal && measVal > 0) {
+            const p = getBiometryPercentile(measVal, newGaDec, measField);
+            bioUpdates[pctKeyMap[measField]] =
+              p != null ? Math.round(p) : undefined;
+          }
+        },
+      );
+      bioUpdates["efwPercentile"] = undefined;
+      next.biometriaFetale = { ...bio, ...bioUpdates };
+    }
+    setOstetriciaData((prev) => ({
+      ...prev,
+      settimaneGestazione: next.settimaneGestazione,
+      dataPresunta: next.dataPresunta,
+      biometriaFetale: next.biometriaFetale,
+    }));
+    const oldSett = ostetriciaData.settimaneGestazione || "—";
+    const oldDpp = ostetriciaData.dataPresunta
+      ? format(parseISO(ostetriciaData.dataPresunta), "dd/MM/yyyy")
+      : "—";
+    showToast(
+      `In base al CRL (${crl} mm): settimane da ${oldSett} a ${newSettimane}; data presunta parto da ${oldDpp} a ${next.dataPresunta ? format(parseISO(next.dataPresunta), "dd/MM/yyyy") : "—"}.`,
+      "warning",
+    );
   };
 
   const handleBiometriaFetaleChange = (
@@ -1923,7 +2045,7 @@ export default function AddVisit() {
     // Calcola il percentile automatico se abbiamo GA
     let autoPct: number | undefined = undefined;
     const ga = parseGestationalWeeks(ostetriciaData.settimaneGestazione ?? "");
-    if (ga != null && value > 0) {
+    if (ga != null && value > 0 && value <= BIOMETRIA_MAX_MM[field]) {
       const p = getBiometryPercentile(value, ga, field);
       if (p != null) autoPct = Math.round(p);
     }
@@ -2047,7 +2169,17 @@ export default function AddVisit() {
       acMm: 0,
       flMm: 0,
     };
-    return calcolaStimePesoFetale(b);
+    // Una misura fuori scala (il campo e' gia' in rosso) non entra nella
+    // stima: si vedrebbe un peso di decine di chili.
+    const credibile = (campo: keyof typeof BIOMETRIA_MAX_MM) =>
+      b[campo] > BIOMETRIA_MAX_MM[campo] ? 0 : b[campo];
+    return calcolaStimePesoFetale({
+      ...b,
+      bpdMm: credibile("bpdMm"),
+      hcMm: credibile("hcMm"),
+      acMm: credibile("acMm"),
+      flMm: credibile("flMm"),
+    });
   }, [
     ostetriciaData.biometriaFetale?.bpdMm,
     ostetriciaData.biometriaFetale?.hcMm,
@@ -2157,16 +2289,6 @@ export default function AddVisit() {
     );
   }
 
-  const breadcrumbItems = [
-    { label: "Dashboard", path: "/" },
-    { label: "Pazienti", path: "/pazienti" },
-    {
-      label: `${patient.nome} ${patient.cognome}`,
-      path: `/patient-history/${patient.id}`,
-    },
-    { label: isEditMode ? "Modifica" : "Nuova visita" },
-  ];
-
   const hasPreviousVisitForCurrentType =
     visitData.tipo === "ginecologica" ||
     visitData.tipo === "ginecologica_pediatrica" ||
@@ -2187,67 +2309,135 @@ export default function AddVisit() {
     isPediatricVisitEnabled || visitData.tipo === "ginecologica_pediatrica";
 
   return (
-    <div className="corioli-page space-y-6 pb-32">
-      {/* 1. Header Navigation */}
-      <Breadcrumb items={breadcrumbItems} />
-
-      {/* 2. Patient Banner & Main Info */}
-      <Card className="shadow-md border-t-4 border-primary">
-        <CardBody className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl shrink-0">
-              {patient.nome[0]}
-              {patient.cognome[0]}
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                {patient.nome} {patient.cognome}
-                {hasUnsavedChanges && (
-                  <Chip size="sm" color="warning" variant="flat">
-                    Non salvato
-                  </Chip>
-                )}
-              </h1>
-              <p className="text-sm text-gray-500 flex items-center gap-2 flex-wrap">
-                <span className="text-gray-500">
-                  <CodiceFiscaleValue
-                    value={patient.codiceFiscale}
-                    generatedFromImport={Boolean(patient.codiceFiscaleGenerato)}
-                  />
+    <div className="corioli-page space-y-6 pb-12">
+      {/* Barra della visita, come in Corioli Cardiologia: prende il posto di
+          navbar, briciole, scheda della paziente e della pillola in basso con
+          Annulla/Stampa/Salva. La pillola galleggiava sopra il referto e a
+          1366x768 copriva il fondo della biometria (la riga del peso fetale)
+          e i campi sotto il punto in cui si scriveva. Qui sta ferma in alto,
+          con su chi si sta visitando e le azioni. */}
+      <div className="sticky top-[calc(1.5rem_+_var(--titlebar-h))] z-40">
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-default-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-md"
+          data-guida="barra-visita"
+        >
+          <Button
+            isIconOnly
+            variant="light"
+            aria-label="Torna alla scheda della paziente"
+            title="Torna alla scheda della paziente"
+            onPress={handleNavigateCronologia}
+          >
+            <ArrowLeft size={20} />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-default-600">
+              {isEditMode ? "Modifica visita" : "Nuova visita"}
+              {hasUnsavedChanges && (
+                <span className="ml-1 font-medium text-warning-700">
+                  · modifiche non salvate
                 </span>
-                {calculateAge(patient.dataNascita) && (
+              )}
+            </p>
+            <h1 className="flex min-w-0 items-baseline gap-2 text-lg font-semibold text-gray-900">
+              <span className="truncate">
+                {patient.nome} {patient.cognome}
+              </span>
+              <span className="shrink-0 whitespace-nowrap text-sm font-normal text-default-600">
+                {calculateAge(patient.dataNascita) != null &&
+                  `${calculateAge(patient.dataNascita)} anni`}
+                {patient.codiceFiscale && (
                   <>
-                    <span className="hidden md:inline text-gray-300">|</span>
-                    <span className="text-gray-500">
-                      {calculateAge(patient.dataNascita)} anni
-                    </span>
+                    {calculateAge(patient.dataNascita) != null && " · "}
+                    <CodiceFiscaleValue
+                      value={patient.codiceFiscale}
+                      generatedFromImport={Boolean(patient.codiceFiscaleGenerato)}
+                    />
                   </>
                 )}
-              </p>
-            </div>
+              </span>
+            </h1>
           </div>
-
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <Input
-              type="date"
-              label="Data Visita"
-              value={visitData.dataVisita}
-              onValueChange={(value) => handleInputChange("dataVisita", value)}
-              max={todayIsoDate()}
+          <Input
+            type="date"
+            label="Data"
+            value={visitData.dataVisita}
+            onValueChange={(value) => handleInputChange("dataVisita", value)}
+            max={todayIsoDate()}
+            variant="bordered"
+            size="sm"
+            labelPlacement="outside-left"
+            className="w-auto"
+            classNames={{
+              label: "text-default-600 font-medium whitespace-nowrap",
+              input: "bg-transparent",
+              inputWrapper:
+                "border-default-300 hover:border-primary focus-within:border-primary min-w-[140px]",
+            }}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="light"
+              onPress={handleNavigateCronologia}
+              className="text-default-700"
+            >
+              Annulla
+            </Button>
+            {/* Col bordo: in grigio pieno accanto a "Salva Visita" sembrava
+                un pulsante disattivato. */}
+            <Button
+              color="primary"
               variant="bordered"
-              size="sm"
-              labelPlacement="outside-left"
-              className="w-full md:w-auto"
-              classNames={{
-                label: "text-gray-500 font-medium whitespace-nowrap pt-2",
-                input: "bg-transparent",
-                inputWrapper:
-                  "border-default-300 hover:border-primary focus-within:border-primary min-w-[140px]",
-              }}
-            />
+              onPress={handlePrintPdf}
+              data-guida="stampa-visita"
+              isLoading={pdfLoading}
+              isDisabled={loading || pdfLoading}
+              startContent={!pdfLoading ? <Printer size={18} /> : undefined}
+            >
+              {pdfLoading ? "Preparazione..." : "Stampa"}
+            </Button>
+            <Button
+              onPress={() => handleSubmit()}
+              data-guida="salva-visita"
+              color="primary"
+              className="font-semibold"
+              isLoading={loading}
+              isDisabled={loading}
+              startContent={!loading ? <Save size={18} /> : undefined}
+            >
+              {loading ? "Salvataggio..." : "Salva Visita"}
+            </Button>
           </div>
-        </CardBody>
-      </Card>
+        </div>
+      </div>
+
+      {bozzaTrovata && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning-300 bg-warning-50 px-4 py-3"
+        >
+          <p className="text-sm text-warning-900">
+            <span className="font-semibold">Visita non salvata ritrovata.</span>{" "}
+            Bozza del{" "}
+            {new Date(bozzaTrovata.salvataIl).toLocaleString("it-IT", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+            : l'app si è chiusa prima del salvataggio. Le immagini dell'ecografia non sono nella bozza.
+          </p>
+          <div className="flex gap-2">
+            <Button size="lg" variant="light" onPress={scartaBozza}>
+              Scarta
+            </Button>
+            <Button size="lg" color="warning" onPress={riprendiBozza}>
+              Riprendi la bozza
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <Card className="border-l-4 border-l-danger bg-danger-50">
@@ -2279,6 +2469,8 @@ export default function AddVisit() {
           </div>
         )}
 
+        {/* `data-guida`: la guida di primo avvio fa scegliere la visita ostetrica. */}
+        <div data-guida="schede-visita">
         <Tabs
           selectedKey={visitData.tipo}
           onSelectionChange={(key) => handleInputChange("tipo", key)}
@@ -3671,13 +3863,17 @@ export default function AddVisit() {
                       type="number"
                       label="CRL (mm)"
                       placeholder="Lunghezza vertice-sacro"
-                      description="Se non concorde con le settimane, queste e la data presunta parto vengono aggiornate"
+                      description="Robinson, fino a 84 mm. Settimane e data presunta parto si aggiornano se lo scarto supera 5 giorni (prima di 9 settimane) o 7 giorni"
                       value={
                         ostetriciaData.crlMm != null && ostetriciaData.crlMm > 0
                           ? String(ostetriciaData.crlMm)
                           : ""
                       }
                       onValueChange={handleCrlChange}
+                      onFocus={() => {
+                        crlAtFocus.current = ostetriciaData.crlMm;
+                      }}
+                      onBlur={applyCrlDating}
                       variant="bordered"
                       labelPlacement="outside"
                       min={3}
@@ -3749,7 +3945,7 @@ export default function AddVisit() {
               {/* RIGHT COLUMN: Referto Testuale */}
               <div className="w-full lg:flex-1 space-y-6">
                 {/* Biometria fetale e peso stimato */}
-                <Card className="shadow-sm border border-default-200 bg-white">
+                <Card className="shadow-sm border border-default-200 bg-white" data-guida="card-biometria">
                   <CardHeader className="pb-0 pt-4 px-4 font-semibold text-gray-700 uppercase text-xs tracking-wider">
                     Biometria fetale
                   </CardHeader>
@@ -3778,7 +3974,14 @@ export default function AddVisit() {
                           const ga = parseGestationalWeeks(
                             ostetriciaData.settimaneGestazione ?? "",
                           );
-                          if (val && val > 0 && ga != null) {
+                          // Fuori scala niente percentile: la tabella lo
+                          // dava al 10°, come fosse una misura vera.
+                          if (
+                            val &&
+                            val > 0 &&
+                            val <= BIOMETRIA_MAX_MM[field] &&
+                            ga != null
+                          ) {
                             const p = getBiometryPercentile(val, ga, field);
                             if (p != null) autoPct = Math.round(p);
                           }
@@ -3808,6 +4011,12 @@ export default function AddVisit() {
                                 )
                               }
                               min={0}
+                              max={BIOMETRIA_MAX_MM[field]}
+                              isInvalid={
+                                (ostetriciaData.biometriaFetale?.[field] ?? 0) >
+                                BIOMETRIA_MAX_MM[field]
+                              }
+                              errorMessage={`Oltre ${BIOMETRIA_MAX_MM[field]} mm: c'è una cifra in più?`}
                               classNames={{ label: "pb-1" }}
                             />
                             <div className="flex items-center gap-2 px-1 min-h-[24px]">
@@ -4120,7 +4329,7 @@ export default function AddVisit() {
                     )}
 
                     {/* Sezione 3: Esame Obiettivo */}
-                    <div className="space-y-2 relative group">
+                    <div className="space-y-2 relative group" data-guida="campo-esame-obiettivo">
                       <div className="flex justify-between items-end mb-1">
                         <label className="text-sm font-bold text-gray-700">
                           3. Visita / Ecografia Office
@@ -4188,56 +4397,8 @@ export default function AddVisit() {
             </div>
           </Tab>
         </Tabs>
-      </form>
-
-      {/* 4. Floating Action Bar (Pill) */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex justify-center w-full pointer-events-none">
-        <div className="bg-white/90 backdrop-blur-md border border-gray-200 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6 pointer-events-auto transition-all hover:shadow-xl hover:scale-[1.01]">
-          <Button
-            variant="light"
-            color="danger"
-            size="sm"
-            onPress={handleNavigateCronologia}
-            startContent={<ArrowLeft size={16} />}
-            className="text-gray-600 hover:text-danger font-medium"
-          >
-            Annulla
-          </Button>
-
-          <div className="h-6 w-px bg-gray-300" />
-
-          <div className="flex gap-3">
-            <Button
-              color="primary"
-              variant="flat"
-              size="md"
-              onPress={handlePrintPdf}
-              isLoading={loading || pdfLoading}
-              isDisabled={loading || pdfLoading}
-              startContent={<Printer size={18} />}
-              className="rounded-full"
-            >
-              {loading
-                ? "Salvataggio..."
-                : pdfLoading
-                  ? "Preparazione stampa..."
-                  : "Stampa"}
-            </Button>
-
-            <Button
-              onPress={() => handleSubmit()}
-              color="primary"
-              size="md"
-              className="px-6 font-bold shadow-lg shadow-primary/20 rounded-full"
-              isLoading={loading}
-              isDisabled={loading}
-              startContent={<Save size={18} />}
-            >
-              {loading ? "Salvando..." : "Salva Visita"}
-            </Button>
-          </div>
         </div>
-      </div>
+      </form>
 
       {fullscreenImage && (
         <div
@@ -4314,7 +4475,7 @@ export default function AddVisit() {
               sezione e poi spostarne le parti.
             </p>
             {flattenAnamnesiSource && (
-              <div className="max-h-32 overflow-auto rounded-lg border border-default-200 bg-default-50 p-2 text-xs text-gray-700 whitespace-pre-wrap select-text">
+              <div className="max-h-32 overflow-auto rounded-lg border border-default-200 bg-default-50 p-2 text-xs text-gray-700 whitespace-pre-wrap break-words select-text">
                 {flattenAnamnesiSource}
               </div>
             )}

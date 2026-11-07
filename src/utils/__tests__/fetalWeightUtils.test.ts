@@ -3,7 +3,7 @@ import { calcolaStimePesoFetale, FORMULA_BIOMETRIA_FIELDS } from "../fetalWeight
 
 /**
  * Valori di controllo calcolati dalle formule pubblicate (misure in cm):
- *  - Hadlock I   log10 BW = 1.335 − 0.0034(AC·FL) + 0.0316(BPD) + 0.0457(AC) + 0.162(FL)
+ *  - Hadlock I   log10 BW = 1.335 − 0.0034(AC·FL) + 0.0316(BPD) + 0.0457(AC) + 0.1623(FL)
  *  - Hadlock II  log10 BW = 1.326 − 0.00326(AC·FL) + 0.0107(HC) + 0.0438(AC) + 0.158(FL)
  *  - Hadlock III log10 BW = 1.304 + 0.05281(AC) + 0.1938(FL) − 0.004(AC·FL)
  *  - Hadlock IV  log10 BW = 1.3596 − 0.00386(AC·FL) + 0.0064(HC) + 0.00061(BPD·AC) + 0.0424(AC) + 0.174(FL)
@@ -21,8 +21,14 @@ function atteso(log10: number): number {
 describe("stima del peso fetale", () => {
   it("Hadlock I riproduce la formula pubblicata", () => {
     const bpd = 9, ac = 34, fl = 7;
-    const log10 = 1.335 - 0.0034 * ac * fl + 0.0316 * bpd + 0.0457 * ac + 0.162 * fl;
+    const log10 = 1.335 - 0.0034 * ac * fl + 0.0316 * bpd + 0.0457 * ac + 0.1623 * fl;
     expect(calcolaStimePesoFetale(A_TERMINE).hadlock1.pesoGrammi).toBe(atteso(log10));
+  });
+
+  it("Hadlock I usa il coefficiente pubblicato per FL (0.1623, LOINC 11735-8)", () => {
+    // Valore fisso, non ricalcolato con la stessa formula del codice: con 0.162,
+    // il coefficiente usato fino alla 1.4.1, lo stesso feto dava 3148 g.
+    expect(calcolaStimePesoFetale(A_TERMINE).hadlock1.pesoGrammi).toBe(3163);
   });
 
   it("Hadlock II riproduce la formula pubblicata", () => {

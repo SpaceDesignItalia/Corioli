@@ -15,10 +15,12 @@ const PatientList = lazy(() => import("./Pages/Dashboard/Dashboard"));
 const AboutUs = lazy(() => import("./Pages/About/About"));
 const AddPatient = lazy(() => import("./Pages/Dashboard/AddPatient"));
 import { CheckPatientOpener } from "./contexts/CheckPatientModalContext";
+import { GuidaPrimoAvvioProvider } from "./components/guida/GuidaPrimoAvvio";
 const AddVisit = lazy(() => import("./Pages/Dashboard/AddVisit"));
 const Visite = lazy(() => import("./Pages/Dashboard/Visite"));
 const Gravidanze = lazy(() => import("./Pages/Dashboard/Gravidanze"));
 const Settings = lazy(() => import("./Pages/Dashboard/Settings"));
+const ModelliStampa = lazy(() => import("./Pages/Dashboard/ModelliStampa"));
 const Help = lazy(() => import("./Pages/Dashboard/Help"));
 const PatientHistory = lazy(() => import("./Pages/Dashboard/PatientHistory"));
 const PatientFiles = lazy(() => import("./Pages/Dashboard/PatientFiles"));
@@ -77,6 +79,7 @@ const App: React.FC = () => {
           <Route
             path="/*"
             element={
+              <GuidaPrimoAvvioProvider>
               <DesktopShell>
                 <Suspense fallback={<RoutePageSkeleton />}>
                   <Routes>
@@ -91,12 +94,14 @@ const App: React.FC = () => {
                     <Route element={<Gravidanze />} path="/gravidanze" />
                     <Route element={<Documents />} path="/documents" />
                     <Route element={<Settings />} path="/settings" />
+                    <Route element={<ModelliStampa />} path="/modelli-stampa" />
                     <Route element={<PatientHistory />} path="/patient-history/:patientId" />
                     <Route element={<PatientFiles />} path="/patient-history/:patientId/files" />
                     <Route element={<Help />} path="/help" />
                   </Routes>
                 </Suspense>
               </DesktopShell>
+              </GuidaPrimoAvvioProvider>
             }
           />
         </Routes>

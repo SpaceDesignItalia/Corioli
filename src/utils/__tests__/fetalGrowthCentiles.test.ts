@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  crlRedatingThresholdDays,
   estimateCentileRank,
   formatCentileLabel,
   getCentileForWeight,
   getGrowthCategory,
+  gestationalDaysFromCrl,
   getWeightPercentiles,
   normalCDF,
   parseGestationalWeeks,
@@ -29,6 +31,35 @@ describe("epoca gestazionale", () => {
     // 7 giorni non esiste: sarebbe la settimana successiva
     expect(parseGestationalWeeks("22+7")).toBeNull();
     expect(parseGestationalWeeks("-3")).toBeNull();
+  });
+});
+
+describe("datazione da CRL (Robinson)", () => {
+  it("CRL 45–84 mm copre 11+0 – 13+6, la finestra della translucenza", () => {
+    expect(gestationalDaysFromCrl(45)).toBe(11 * 7 + 0);
+    expect(gestationalDaysFromCrl(84)).toBe(13 * 7 + 6);
+  });
+
+  it("non sottostima più di una settimana a metà range", () => {
+    // La vecchia formula lineare 42 + 0.6×CRL dava 9+6 a 45 mm e 11+1 a 60 mm
+    expect(gestationalDaysFromCrl(60)).toBe(12 * 7 + 2);
+    expect(gestationalDaysFromCrl(10)).toBe(7 * 7 + 0);
+  });
+
+  it("usa i decimali del CRL", () => {
+    expect(gestationalDaysFromCrl(62.4)).toBe(Math.floor(8.052 * Math.sqrt(62.4) + 23.73));
+  });
+
+  it("rifiuta CRL fuori dal range di validità", () => {
+    expect(gestationalDaysFromCrl(2)).toBeNull();
+    expect(gestationalDaysFromCrl(85)).toBeNull();
+    expect(gestationalDaysFromCrl(Number.NaN)).toBeNull();
+  });
+
+  it("soglia di ridatazione ACOG: 5 giorni fino a 8+6, poi 7", () => {
+    expect(crlRedatingThresholdDays(8 * 7 + 6)).toBe(5);
+    expect(crlRedatingThresholdDays(9 * 7)).toBe(7);
+    expect(crlRedatingThresholdDays(13 * 7 + 6)).toBe(7);
   });
 });
 
@@ -72,30 +103,36 @@ describe("rango centile", () => {
 });
 
 describe("centile del peso per epoca gestazionale (Hadlock 1991)", () => {
-  it("il p50 tabulato corrisponde al 50° centile", () => {
-    // 28 settimane: p50 = 1160 g
-    expect(getCentileForWeight(1160, 28)).toBeCloseTo(50, 0);
-    // 32 settimane: p50 = 1882 g
-    expect(getCentileForWeight(1882, 32)).toBeCloseTo(50, 0);
+  it("la mediana dell'equazione pubblicata è il 50° centile", () => {
+    expect(getCentileForWeight(331, 20)).toBeCloseTo(50, 0);
+    expect(getCentileForWeight(1559, 30)).toBeCloseTo(50, 0);
+    expect(getCentileForWeight(3619, 40)).toBeCloseTo(50, 0);
   });
 
-  it("p5 e p95 tabulati cadono sui centili attesi", () => {
-    expect(getCentileForWeight(856, 28)).toBeCloseTo(5, 0);
-    expect(getCentileForWeight(1508, 28)).toBeCloseTo(95, 0);
+  it("10° e 90° centile a ±1.28 DS (DS = 12.7% della mediana)", () => {
+    expect(getCentileForWeight(3030, 40)).toBeCloseTo(10, 0);
+    expect(getCentileForWeight(4208, 40)).toBeCloseTo(90, 0);
   });
 
-  it("interpola tra settimane intere", () => {
+  it("a termine non usa più la vecchia tabella (mediana 3944 g a 40 settimane)", () => {
+    expect(getCentileForWeight(3944, 40)!).toBeGreaterThan(70);
+  });
+
+  it("p5/p50/p95 per la barra del PDF", () => {
+    expect(getWeightPercentiles(40)).toEqual({ p5: 2863, p50: 3619, p95: 4375 });
+  });
+
+  it("varia in modo continuo tra settimane intere", () => {
     const a = getWeightPercentiles(28)!;
     const b = getWeightPercentiles(29)!;
     const mezzo = getWeightPercentiles(28.5)!;
-    expect(mezzo.p50).toBeCloseTo((a.p50 + b.p50) / 2, 0);
     expect(mezzo.p50).toBeGreaterThan(a.p50);
     expect(mezzo.p50).toBeLessThan(b.p50);
   });
 
   it("è monotona: più peso, centile più alto", () => {
     const basso = getCentileForWeight(1000, 28)!;
-    const medio = getCentileForWeight(1160, 28)!;
+    const medio = getCentileForWeight(1210, 28)!;
     const alto = getCentileForWeight(1400, 28)!;
     expect(basso).toBeLessThan(medio);
     expect(medio).toBeLessThan(alto);
@@ -106,11 +143,6 @@ describe("centile del peso per epoca gestazionale (Hadlock 1991)", () => {
     expect(getCentileForWeight(3000, 43)).toBeNull();
     expect(getCentileForWeight(0, 30)).toBeNull();
     expect(getCentileForWeight(-100, 30)).toBeNull();
-  });
-
-  it("agli estremi della tabella resta definita", () => {
-    expect(getCentileForWeight(331, 20)).toBeCloseTo(50, 0);
-    expect(getCentileForWeight(4539, 42)).toBeCloseTo(50, 0);
   });
 });
 

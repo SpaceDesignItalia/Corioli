@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
   CardBody,
@@ -49,6 +49,7 @@ import {
   Pill,
   ChevronUp,
   ChevronDown,
+  Printer,
 } from "lucide-react";
 import { PRIVACY_POLICY_URL, PRIVACY_CONTACT_EMAIL } from "../../constants/privacy";
 import { ExportService } from "../../services/ExportService";
@@ -67,8 +68,10 @@ import {
   DocumentService,
   PreferenceService,
 } from "../../services/OfflineServices";
-import { MedicalTemplate } from "../../types/Storage";
-import { getMissingDoctorProfileFields } from "../../utils/doctorProfile";
+import { MedicalTemplate, type TitoloMedico } from "../../types/Storage";
+import { getMissingDoctorProfileFields, TITOLI_MEDICO, titoloMedico } from "../../utils/doctorProfile";
+import { normalizzaPartitaIva, validatePartitaIva } from "../../utils/formValidation";
+import { FirmaTimbroCard } from "../../components/FirmaTimbroCard";
 import {
   AnamnesiConfig,
   AnamnesiVisitType,
@@ -141,8 +144,67 @@ function SettingsSectionNotice({
   );
 }
 
+/** Le voci dell'indice a sinistra, nell'ordine della pagina. */
+const VOCI_INDICE_IMPOSTAZIONI: { id: string; label: string }[] = [
+  { id: "impostazioni-sicurezza", label: "Sicurezza" },
+  { id: "impostazioni-profilo", label: "Profilo" },
+  { id: "impostazioni-firma", label: "Firma olografica" },
+  { id: "impostazioni-ambulatori", label: "Ambulatori" },
+  { id: "impostazioni-dati", label: "Dati e backup" },
+  { id: "impostazioni-visita", label: "Visita e referto" },
+  { id: "impostazioni-doppioni", label: "Pazienti doppi" },
+  { id: "impostazioni-modelli", label: "Modelli dei referti" },
+  { id: "impostazioni-info", label: "Informazioni" },
+];
+
 const SettingsScreen = () => {
   const navigate = useNavigate();
+  const [parametriUrl] = useSearchParams();
+
+  /**
+   * `?sezione=impostazioni-firma` porta alla sezione: ci arriva l'editor dei
+   * modelli di stampa, quando dice "carica la firma" o "completa il profilo".
+   * La pagina si costruisce mentre carica i dati, quindi si riprova per un
+   * paio di secondi finche' la sezione non c'e'.
+   */
+  useEffect(() => {
+    const sezione = parametriUrl.get("sezione");
+    if (!sezione) return;
+    let tentativi = 0;
+    const timer = window.setInterval(() => {
+      const el = document.getElementById(sezione);
+      tentativi++;
+      if (el || tentativi > 15) {
+        window.clearInterval(timer);
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 150);
+    return () => window.clearInterval(timer);
+  }, [parametriUrl]);
+
+  const mostraSicurezza =
+    isAppLockAvailable() ||
+    typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined";
+
+  /**
+   * La sezione che si sta leggendo, evidenziata nell'indice: senza, in una
+   * pagina lunga non si capiva a che punto si era.
+   */
+  const [sezioneAttiva, setSezioneAttiva] = useState<string | null>(null);
+  useEffect(() => {
+    const aggiorna = () => {
+      let attiva: string | null = null;
+      for (const v of VOCI_INDICE_IMPOSTAZIONI) {
+        const el = document.getElementById(v.id);
+        // Attiva e' la sezione che occupa la parte alta dello schermo.
+        if (el && el.getBoundingClientRect().top <= window.innerHeight * 0.4) attiva = v.id;
+      }
+      setSezioneAttiva(attiva ?? VOCI_INDICE_IMPOSTAZIONI[0].id);
+    };
+    aggiorna();
+    window.addEventListener("scroll", aggiorna, { passive: true });
+    return () => window.removeEventListener("scroll", aggiorna);
+  }, []);
   // ... state declarations ...
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [pdfTheme, setPdfTheme] = useState("light");
@@ -185,13 +247,25 @@ const SettingsScreen = () => {
     setNotice((current) => (current?.scope === scope ? null : current));
   }, []);
 
-  const [doctorInfo, setDoctorInfo] = useState({
+  const [doctorInfo, setDoctorInfo] = useState<{
+    titolo: TitoloMedico;
+    nome: string;
+    cognome: string;
+    email: string;
+    telefono: string;
+    specializzazione: string;
+    partitaIva: string;
+  }>({
+    titolo: "Dott.",
     nome: "",
     cognome: "",
     email: "",
     telefono: "",
     specializzazione: "",
+    partitaIva: "",
   });
+  /** Errore della partita IVA, mostrato uscendo dal campo o al salvataggio. */
+  const [errorePartitaIva, setErrorePartitaIva] = useState<string | null>(null);
 
   // Template State
   const [templates, setTemplates] = useState<MedicalTemplate[]>([]);
@@ -284,6 +358,9 @@ const SettingsScreen = () => {
     formulaPesoFetale: 'hadlock4', // hadlock4, shepard, hadlock3
     showDoctorPhoneInPdf: true,
     showDoctorEmailInPdf: true,
+    // Spenta, l'immagine della firma non esce sui referti (ricetta,
+    // certificato e richiesta la tengono sempre).
+    firmaSulReferto: true,
   });
   const [duplicateGroups, setDuplicateGroups] = useState<
     Array<{ key: string; patients: any[] }>
@@ -459,15 +536,16 @@ const SettingsScreen = () => {
       const doctor = await DoctorService.getDoctor();
       if (doctor) {
         setDoctorInfo({
+          titolo: titoloMedico(doctor),
           nome: doctor.nome,
           cognome: doctor.cognome,
           email: doctor.email,
           telefono: doctor.telefono || "",
           specializzazione: doctor.specializzazione || "",
+          partitaIva: doctor.partitaIva || "",
         });
         setAmbulatori(doctor.ambulatori || []);
-        const sig = (doctor as any).signatureStampImage;
-        if (sig) setSignatureStampImage(sig);
+        setSignatureStampImage(doctor.signatureStampImage || "");
       }
     } catch (error) {
       console.error("Errore nel caricamento dati dottore:", error);
@@ -1375,17 +1453,30 @@ const SettingsScreen = () => {
       setIsLoading(false);
       return;
     }
+    const erroreIva = validatePartitaIva(doctorInfo.partitaIva);
+    if (erroreIva) {
+      setErrorePartitaIva(erroreIva);
+      showNotice("profilo", "error", erroreIva, 5000);
+      setIsLoading(false);
+      return;
+    }
+    const partitaIva = normalizzaPartitaIva(doctorInfo.partitaIva);
 
     try {
       await DoctorService.updateDoctor({
+        titolo: doctorInfo.titolo,
         nome: doctorInfo.nome.trim(),
         cognome: doctorInfo.cognome.trim(),
         email: doctorInfo.email.trim(),
         telefono: doctorInfo.telefono.trim(),
         specializzazione: doctorInfo.specializzazione.trim(),
+        // Stringa vuota e non undefined: se il medico la cancella, deve
+        // sparire anche dal profilo salvato e dai referti.
+        partitaIva,
         ambulatori: ambulatori,
         signatureStampImage: signatureStampImage || undefined,
       });
+      setDoctorInfo((prev) => ({ ...prev, partitaIva }));
 
       savePreferences();
       window.dispatchEvent(new CustomEvent("appdottori-doctor-updated"));
@@ -1413,9 +1504,44 @@ const SettingsScreen = () => {
         iconColor="primary"
       />
 
+      {/* Indice a sinistra e una colonna sola, come in Corioli Cardiologia:
+          con due colonne di card affiancate le altezze non coincidevano mai,
+          e per trovare una voce bisognava scorrere tutta la pagina. */}
+      <div className="lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+        <nav
+          aria-label="Sezioni delle impostazioni"
+          className="hidden lg:block"
+        >
+          <ul className="sticky top-[calc(8rem_+_var(--barra-finestra))] space-y-0.5 text-sm">
+            {VOCI_INDICE_IMPOSTAZIONI.filter(
+              (v) => v.id !== "impostazioni-sicurezza" || mostraSicurezza,
+            ).map((v) => (
+              <li key={v.id}>
+                <a
+                  href={`#${v.id}`}
+                  onClick={(e) => {
+                    // L'app usa l'hash per le rotte: l'ancora si fa a mano.
+                    e.preventDefault();
+                    document.getElementById(v.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  aria-current={sezioneAttiva === v.id ? "location" : undefined}
+                  className={`block rounded-lg px-3 py-1.5 transition-colors hover:bg-default-100 hover:text-foreground ${
+                    sezioneAttiva === v.id
+                      ? "bg-default-100 font-medium text-foreground"
+                      : "text-default-600"
+                  }`}
+                >
+                  {v.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="min-w-0 space-y-8">
+
       {/* ── Sicurezza & Aggiornamenti ── */}
-      {(isAppLockAvailable() || typeof (window as unknown as { electronAPI?: unknown }).electronAPI !== "undefined") ? (
-        <div>
+      {mostraSicurezza ? (
+        <div id="impostazioni-sicurezza" className="scroll-mt-32">
           <p className="section-label">Sicurezza</p>
           <Card className="shadow-sm border border-default-200 overflow-hidden">
             <CardBody className="p-0">
@@ -1458,10 +1584,11 @@ const SettingsScreen = () => {
       ) : null}
 
       <div className="space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:items-stretch [&>*]:h-full [&>*]:min-h-0">
+        <div className="grid grid-cols-1 gap-8">
           {/* Profilo Dottore */}
           <Card
-            className="shadow-lg w-full"
+            id="impostazioni-profilo"
+            className="shadow-lg w-full scroll-mt-32"
             classNames={{
               base: "h-full flex flex-col min-h-0",
               body: "flex flex-1 flex-col gap-6 min-h-0",
@@ -1477,7 +1604,21 @@ const SettingsScreen = () => {
             </CardHeader>
             <CardBody>
               <SettingsSectionNotice scope="profilo" notice={notice} />
-              <div className="flex flex-1 flex-col justify-between gap-5 py-1 min-h-0">
+              <div className="grid grid-cols-1 gap-4 py-1 md:grid-cols-2">
+                <Select
+                  label="Titolo"
+                  selectedKeys={[doctorInfo.titolo]}
+                  onSelectionChange={(keys) => {
+                    const t = Array.from(keys)[0] as TitoloMedico | undefined;
+                    if (t) handleDoctorInfoChange("titolo", t);
+                  }}
+                  variant="bordered"
+                  disallowEmptySelection
+                >
+                  {TITOLI_MEDICO.map((t) => (
+                    <SelectItem key={t}>{t}</SelectItem>
+                  ))}
+                </Select>
                 <Input
                   label="Nome"
                   value={doctorInfo.nome}
@@ -1526,22 +1667,52 @@ const SettingsScreen = () => {
                   variant="bordered"
                   placeholder="Es. Ginecologia e Ostetricia"
                 />
+                <Input
+                  label="Partita IVA"
+                  value={doctorInfo.partitaIva}
+                  onValueChange={(value) => {
+                    handleDoctorInfoChange("partitaIva", value);
+                    setErrorePartitaIva(null);
+                  }}
+                  onBlur={() =>
+                    setErrorePartitaIva(validatePartitaIva(doctorInfo.partitaIva))
+                  }
+                  isInvalid={!!errorePartitaIva}
+                  errorMessage={errorePartitaIva ?? undefined}
+                  description="Facoltativa. Se compilata, compare nell'intestazione di referti e documenti."
+                  variant="bordered"
+                  inputMode="numeric"
+                  maxLength={16}
+                  placeholder="11 cifre"
+                />
               </div>
 
-              <Button
-                color="primary"
-                className="corioli-cta w-full mt-auto"
-                onPress={saveDoctorInfo}
-                isLoading={isLoading}
-              >
-                {isLoading ? "Salvando..." : "Salva Modifiche"}
-              </Button>
+              <div className="flex justify-end">
+                <Button
+                  color="primary"
+                  className="corioli-cta"
+                  onPress={saveDoctorInfo}
+                  isLoading={isLoading}
+                >
+                  {isLoading ? "Salvando..." : "Salva profilo"}
+                </Button>
+              </div>
             </CardBody>
           </Card>
 
+          <FirmaTimbroCard
+            immagine={signatureStampImage}
+            onImmagineChange={setSignatureStampImage}
+            firmaSulReferto={preferences.firmaSulReferto !== false}
+            onFirmaSulRefertoChange={(value) =>
+              handlePreferenceChange("firmaSulReferto", value)
+            }
+          />
+
           {/* Ambulatori */}
           <Card
-            className="shadow-lg w-full"
+            id="impostazioni-ambulatori"
+            className="shadow-lg w-full scroll-mt-32"
             classNames={{
               base: "h-full flex flex-col min-h-0",
               body: "flex flex-1 flex-col gap-3 min-h-0",
@@ -1796,9 +1967,9 @@ const SettingsScreen = () => {
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 gap-8">
           {/* Backup e Dati */}
-          <Card className="shadow-lg h-full">
+          <Card id="impostazioni-dati" className="shadow-lg scroll-mt-32">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-3">
                 <Database className="w-5 h-5 text-primary shrink-0" />
@@ -1907,13 +2078,13 @@ const SettingsScreen = () => {
           </Card>
 
           {/* Funzionalita Visite */}
-          <Card className="shadow-lg h-full">
+          <Card id="impostazioni-visita" className="shadow-lg scroll-mt-32">
             <CardHeader className="pb-1">
               <div className="flex items-center gap-3">
                 <SettingsIcon className="w-5 h-5 text-primary" />
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">
-                    Funzionalita Visite
+                    Visita e referto
                   </h2>
                   <p className="text-xs text-default-500">
                     Configura comportamento visite e contenuto PDF
@@ -1922,6 +2093,36 @@ const SettingsScreen = () => {
               </div>
             </CardHeader>
             <CardBody className="space-y-4">
+              {/* L'impaginazione dei PDF ha una pagina sua: l'anteprima del
+                  foglio accanto alle impostazioni non sta in una card. */}
+              <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <Printer className="mt-0.5 h-6 w-6 shrink-0 text-brand-700" />
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold text-gray-900">
+                        Modelli di stampa
+                      </p>
+                      <p className="mt-1 text-sm text-default-600">
+                        Come escono i referti ginecologici e ostetrici, la ricetta, il certificato e la richiesta:
+                        cinque modelli pronti a colori o in bianco e nero, o
+                        uno tuo con logo, carta intestata, colori, ordine delle
+                        sezioni e firma.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="lg"
+                    color="primary"
+                    className="shrink-0"
+                    startContent={<Printer size={18} />}
+                    onPress={() => navigate("/modelli-stampa")}
+                  >
+                    Apri l&apos;editor
+                  </Button>
+                </div>
+              </div>
+
               <div className="rounded-lg border border-default-200 bg-default-50/60 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -2038,6 +2239,10 @@ const SettingsScreen = () => {
                 <p className="text-sm font-medium text-gray-800">
                   Dati dottore nel PDF
                 </p>
+                <p className="text-xs text-default-500">
+                  Spenti qui, non si stampano su nessun documento, qualunque
+                  sia il modello di stampa.
+                </p>
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm text-default-700">Mostra telefono</p>
                   <Switch
@@ -2066,7 +2271,7 @@ const SettingsScreen = () => {
       </div>
 
       {/* Sezione dedicata: Qualità Dati Pazienti */}
-      <div className="space-y-3">
+      <div id="impostazioni-doppioni" className="space-y-3 scroll-mt-32">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">
             Qualità Dati Pazienti
@@ -2271,8 +2476,10 @@ const SettingsScreen = () => {
       </div>
 
       {/* Gestione Modelli */}
-      <Card className="shadow-lg">
-        <CardHeader className="pb-2">
+      <Card id="impostazioni-modelli" className="shadow-lg scroll-mt-32">
+        {/* `data-guida`: la guida di primo avvio illumina testata e
+            categorie dei modelli. */}
+        <CardHeader className="pb-2" data-guida="modelli-categorie">
           <div className="flex items-center gap-3">
             <FileText className="w-5 h-5 text-primary shrink-0" />
             <h2 className="text-xl font-semibold text-gray-900">
@@ -2305,6 +2512,7 @@ const SettingsScreen = () => {
             </Button>
           </div>
           <Tabs
+            data-guida="modelli-categorie"
             aria-label="Categorie Template"
             selectedKey={selectedCategory}
             onSelectionChange={(key) =>
@@ -2363,6 +2571,7 @@ const SettingsScreen = () => {
               className="corioli-cta w-full shrink-0 px-6 sm:w-auto sm:min-w-[168px]"
               startContent={<Plus size={18} />}
               onPress={handleNewTemplate}
+              data-guida="nuovo-modello"
             >
               Nuovo modello
             </Button>
@@ -2382,7 +2591,7 @@ const SettingsScreen = () => {
                 .map((template) => (
                   <TableRow key={template.id}>
                     <TableCell className="font-medium">
-                      {template.label}
+                      <div className="max-w-[16rem] break-words">{template.label}</div>
                     </TableCell>
                     <TableCell>
                       <Chip size="sm" variant="flat" className="capitalize">
@@ -2440,7 +2649,7 @@ const SettingsScreen = () => {
       </Card>
 
       {/* Info App */}
-      <Card className="shadow-lg">
+      <Card id="impostazioni-info" className="shadow-lg scroll-mt-32">
         <CardBody>
           <div className="text-center space-y-2">
             <h3 className="font-semibold text-gray-900">Corioli Desktop</h3>
@@ -2454,6 +2663,8 @@ const SettingsScreen = () => {
           </div>
         </CardBody>
       </Card>
+        </div>
+      </div>
 
       <AppModal
         isOpen={mergeConflictOpen}

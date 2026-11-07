@@ -183,9 +183,9 @@ function MockModelloControl({
             </p>
           </div>
           <div className="px-2.5 py-2">
-            <p className="text-xs font-semibold text-gray-900">{menuLabel}</p>
+            <p className="line-clamp-2 break-words text-xs font-semibold text-gray-900">{menuLabel}</p>
             {menuDescription && (
-              <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-default-500">
+              <p className="mt-0.5 line-clamp-2 break-words text-[10px] leading-snug text-default-500">
                 {menuDescription}
               </p>
             )}
@@ -214,7 +214,7 @@ function MockLiveField({
 
   return (
     <div
-      className={`mt-1.5 rounded-md border px-2 py-1.5 text-[11px] leading-relaxed transition-all whitespace-pre-wrap ${
+      className={`mt-1.5 rounded-md border px-2 py-1.5 text-[11px] leading-relaxed transition-all whitespace-pre-wrap break-words ${
         compact
           ? "min-h-[1.5rem] max-h-[1.5rem] overflow-hidden"
           : multiline
@@ -296,7 +296,7 @@ function VisitFormMock({
             >
               <div className="flex items-start justify-between gap-2">
                 <span
-                  className={`text-xs font-bold ${isActive ? "text-primary-900" : "text-gray-700"}`}
+                  className={`min-w-0 break-words text-xs font-bold ${isActive ? "text-primary-900" : "text-gray-700"}`}
                 >
                   {field.label}
                   {field.section === "prestazione" &&
@@ -360,6 +360,7 @@ function EsameFormMock({ preview }: { preview: LivePreviewContent }) {
             value={preview.fieldText}
             placeholder="Il nome esame comparirà qui..."
             active
+            multiline
           />
         </div>
         <div className="rounded-lg px-2.5 py-2 opacity-40">
@@ -368,6 +369,7 @@ function EsameFormMock({ preview }: { preview: LivePreviewContent }) {
             value={preview.fieldNote ?? ""}
             placeholder={preview.fieldNote?.trim() ? preview.fieldNote : "Note opzionali..."}
             active={Boolean(preview.fieldNote?.trim())}
+            multiline
           />
         </div>
       </div>
@@ -650,7 +652,7 @@ export function TemplateEditorModal({
       }}
     >
       <ModalContent>
-        <ModalHeader className="flex flex-col gap-2 pb-4">
+        <ModalHeader className="flex flex-col gap-2 pb-4" data-guida="editor-modello">
           <div className="flex items-start gap-3">
             <div className="shrink-0 rounded-lg bg-primary-100 p-2">
               <FileText className="h-5 w-5 text-primary" />

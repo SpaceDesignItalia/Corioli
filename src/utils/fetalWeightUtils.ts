@@ -24,9 +24,9 @@ export interface StimaPesoFetale {
 
 // === FORMULE HADLOCK (1985) - EFW in grammi ===
 
-/** Hadlock I: BPD, AC, FL (cm) */
+/** Hadlock I: BPD, AC, FL (cm). Coefficiente di FL 0.1623 come in LOINC 11735-8 (era 0.162). */
 function hadlock1(bpd: number, ac: number, fl: number): number {
-  const log10 = 1.335 - 0.0034 * ac * fl + 0.0316 * bpd + 0.0457 * ac + 0.162 * fl;
+  const log10 = 1.335 - 0.0034 * ac * fl + 0.0316 * bpd + 0.0457 * ac + 0.1623 * fl;
   return Math.pow(10, log10);
 }
 
@@ -129,6 +129,37 @@ export const BIOMETRIA_FIELD_LABELS: Record<BiometriaFieldKey, string> = {
   acMm: "CA (mm)",
   flMm: "FL (mm)",
 };
+
+/**
+ * Il massimo credibile di ogni misura, in mm: oltre c'e' un refuso, una cifra
+ * in piu' (760 per 76), non un feto. Non e' una soglia clinica: sta molto
+ * sopra il 99° centile a termine (DBP ~105, CC ~370, CA ~400, FL ~82 mm), per
+ * non fermare un'idrocefalia o una macrosomia, e una cifra in piu' moltiplica
+ * per dieci, quindi la si prende comunque. Senza questo limite il referto
+ * stampava pesi fetali di decine di chili.
+ */
+export const BIOMETRIA_MAX_MM: Record<BiometriaFieldKey, number> = {
+  bpdMm: 150,
+  hcMm: 600,
+  acMm: 600,
+  flMm: 100,
+};
+
+/** Il messaggio per la prima misura oltre il massimo credibile, o null. */
+export function biometriaFuoriScala(
+  biometria?: Partial<Record<BiometriaFieldKey, number>>,
+): string | null {
+  if (!biometria) return null;
+  for (const campo of Object.keys(BIOMETRIA_MAX_MM) as BiometriaFieldKey[]) {
+    const valore = biometria[campo];
+    const massimo = BIOMETRIA_MAX_MM[campo];
+    if (valore != null && valore > massimo) {
+      const nome = BIOMETRIA_FIELD_LABELS[campo].replace(" (mm)", "");
+      return `${nome} di ${valore} mm: oltre ${massimo} mm non è una misura possibile, controlla di non aver scritto una cifra in più`;
+    }
+  }
+  return null;
+}
 
 /** Backward compatibility alias */
 export const calcolaTreScalePesoFetale = calcolaStimePesoFetale;

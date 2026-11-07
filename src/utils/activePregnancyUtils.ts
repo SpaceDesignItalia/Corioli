@@ -76,10 +76,17 @@ export function computeTrackedPregnancies(
     if (!umDate) continue;
 
     const umDay = startOfDay(umDate);
-    const dpp = startOfDay(addDays(umDay, 280));
+    // La DPP salvata può essere stata ridatata col CRL: ha la precedenza su
+    // UM + 280, altrimenti l'elenco contraddice la visita.
+    const umKey = normalizeLMP(umRaw);
+    const dppSalvata = sorted
+      .filter((v) => normalizeLMP(v.ostetricia?.ultimaMestruazione) === umKey)
+      .map((v) => parseLMPDate(v.ostetricia?.dataPresunta ?? ""))
+      .find((d): d is Date => d != null);
+    const dpp = startOfDay(dppSalvata ?? addDays(umDay, 280));
     const isDelivered = dpp.getTime() <= today.getTime();
 
-    const totalDays = differenceInDays(today, umDay);
+    const totalDays = 280 - differenceInDays(dpp, today);
     if (totalDays < 0) continue;
 
     const patient = patientMap.get(patientId);

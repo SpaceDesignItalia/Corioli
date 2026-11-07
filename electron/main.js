@@ -302,6 +302,21 @@ function createWindow() {
         { label: "Taglia", role: "cut" },
         { label: "Copia", role: "copy" },
         { label: "Incolla", role: "paste" },
+      );
+      // I campi del referto sono aree modificabili (`RefertoTextarea`), gli
+      // unici dell'app dove il grassetto esiste: lo applica la pagina.
+      if (params.editFlags?.canEditRichly) {
+        menuTemplate.push(
+          { type: "separator" },
+          {
+            label: "Grassetto",
+            accelerator: "CmdOrCtrl+B",
+            registerAccelerator: false,
+            click: () => mainWindow.webContents.send("referto:grassetto"),
+          },
+        );
+      }
+      menuTemplate.push(
         { type: "separator" },
         { label: "Seleziona tutto", role: "selectAll" },
       );
