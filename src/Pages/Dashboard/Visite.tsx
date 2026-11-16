@@ -38,7 +38,7 @@ import { PdfService } from "../../services/PdfService";
 import { Visit, Patient, Doctor, type ModelloStampa } from "../../types/Storage";
 import { SceltaModelloStampa } from "../../components/modelliStampa/SceltaModelloStampa";
 import { senzaMarcatori } from "../../utils/grassettoReferto";
-import { titoloMedico } from "../../utils/doctorProfile";
+import { emailSuiDocumenti, titoloMedico } from "../../utils/doctorProfile";
 import { PageHeader } from "../../components/PageHeader";
 import { PageLoadingSkeleton } from "../../components/AppStartupSkeleton";
 import { CodiceFiscaleValue } from "../../components/CodiceFiscaleValue";
@@ -974,7 +974,7 @@ export default function Visite() {
                               parts.push(amb.nome, `${amb.indirizzo}, ${amb.citta}`);
                             }
                             if (showDoctorPhoneInPdf && doctorForPreview?.telefono) parts.push(`Tel: ${doctorForPreview.telefono}`);
-                            if (showDoctorEmailInPdf && doctorForPreview?.email) parts.push(doctorForPreview.email);
+                            if (showDoctorEmailInPdf && emailSuiDocumenti(doctorForPreview)) parts.push(emailSuiDocumenti(doctorForPreview));
                             return parts.length ? parts.join("  •  ") : "—";
                           })()}
                         </p>

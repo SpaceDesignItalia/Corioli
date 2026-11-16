@@ -32,7 +32,7 @@ import {
 import type { Ambulatorio, Doctor, Patient, TitoloMedico } from "../../types/Storage";
 import { formatPatientDisplayName } from "../../utils/patientDisplay";
 import { cancellaBozzaVisita, chiaveBozzaVisita } from "../../utils/bozzaVisita";
-import { TITOLI_MEDICO, titoloMedico } from "../../utils/doctorProfile";
+import { TITOLI_MEDICO, emailSuiDocumenti, titoloMedico } from "../../utils/doctorProfile";
 import {
   EVENTO_PAZIENTI_CAMBIATI,
   FORMULE_PESO_FETALE,
@@ -207,7 +207,7 @@ function AnteprimaIntestazione({
     .join(" - ");
   const contatti = [
     mostraTelefono && doctor?.telefono ? `Tel ${doctor.telefono}` : "",
-    mostraEmail && doctor?.email ? doctor.email : "",
+    mostraEmail ? emailSuiDocumenti(doctor) : "",
   ].filter(Boolean);
 
   return (

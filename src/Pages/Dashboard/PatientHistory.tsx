@@ -69,7 +69,7 @@ import {
 } from "../../types/Storage";
 import { SceltaModelloStampa } from "../../components/modelliStampa/SceltaModelloStampa";
 import { senzaMarcatori } from "../../utils/grassettoReferto";
-import { titoloMedico } from "../../utils/doctorProfile";
+import { emailSuiDocumenti, titoloMedico } from "../../utils/doctorProfile";
 import type { LucideIcon } from "lucide-react";
 import { getFetalGrowthDataPointsFromVisits, getVisitsOfSamePregnancy } from "../../utils/fetalGrowthChartUtils";
 import {
@@ -2509,9 +2509,9 @@ export default function PatientHistory() {
                           }
                           if (doctor?.telefono)
                             parts.push(`Tel: ${doctor.telefono}`);
-                          if (doctor?.email) parts.push(doctor.email);
+                          if (emailSuiDocumenti(doctor)) parts.push(emailSuiDocumenti(doctor));
                           if (showDoctorPhoneInPdf && doctor?.telefono) parts.push(`Tel: ${doctor.telefono}`);
-                          if (showDoctorEmailInPdf && doctor?.email) parts.push(doctor.email);
+                          if (showDoctorEmailInPdf && emailSuiDocumenti(doctor)) parts.push(emailSuiDocumenti(doctor));
                           return parts.length ? parts.join("  •  ") : "—";
                         })()}
                       </p>

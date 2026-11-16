@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import AppNavbar from "./AppNavbar";
 import { CheckPatientModalProvider } from "../contexts/CheckPatientModalContext";
 import { UnsavedChangesProvider } from "../contexts/UnsavedChangesContext";
+import BannerAbbonamento from "./abbonamento/BannerAbbonamento";
 
 type DesktopShellProps = {
   children: React.ReactNode;
@@ -41,6 +42,8 @@ export default function DesktopShell({ children, navbar }: DesktopShellProps) {
           <main
             className={`${senzaNavbar ? "pb-8 pt-[calc(1.5rem_+_var(--titlebar-h))]" : "py-8"} ${SHELL_CLASS}`}
           >
+            {/* Nella maschera della visita l'avviso toglierebbe spazio al referto */}
+            {senzaNavbar ? null : <BannerAbbonamento />}
             {children}
           </main>
         </div>
