@@ -1,4 +1,5 @@
 import axios from "axios";
+import { IS_DEMO } from "../demo";
 import { appendClientFileAccessToken } from "../utils/configureClientApi";
 
 export interface SupportAttachmentDto {
@@ -60,6 +61,7 @@ export async function fetchSupportMessages(
 }
 
 export async function fetchClientUnreadCount(clientId: string): Promise<number> {
+  if (IS_DEMO) return 0;
   const { data } = await axios.get<{ unreadCount: number }>(
     clientPath(clientId, "/unread-count"),
   );

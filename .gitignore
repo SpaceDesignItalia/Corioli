@@ -31,3 +31,4 @@ db
 *.sw?
 
 .env
+dist-demo
