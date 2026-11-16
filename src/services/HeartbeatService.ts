@@ -1,4 +1,5 @@
 import axios from "axios";
+import { IS_DEMO } from "../demo";
 import { Doctor } from "../types/Storage";
 import { conteggiArchivioReale } from "./StorageServiceFallback";
 
@@ -29,6 +30,8 @@ export const sendHeartbeat = async (
   doctor: Doctor,
   app: "corioli" | "corioli-pediatria",
 ): Promise<HeartbeatResult> => {
+  // Demo: nessun contatto con il server.
+  if (IS_DEMO) return { blocked: false, reason: null };
   try {
     // Servono solo i conteggi, e dall'archivio vero anche a guida aperta: le
     // pazienti inventate della prova non vanno contate.

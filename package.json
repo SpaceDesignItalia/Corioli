@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
     "build": "tsc --noEmit && vite build",
+    "build:demo": "cross-env VITE_DEMO=true vite build --outDir dist-demo --base /demo/ginecologia/",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "electron": "electron .",
