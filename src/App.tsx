@@ -2,7 +2,6 @@ import React, { Suspense, lazy, useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import Documents from "./Pages/Dashboard/Documents";
 import DesktopShell from "./components/DesktopShell";
-import { ContextMenu } from "./components/ContextMenu";
 import {
   AppStartupGate,
   RoutePageSkeleton,
@@ -74,7 +73,6 @@ const App: React.FC = () => {
   }, [navigate]);
 
   return (
-    <ContextMenu>
       <AppStartupGate>
         <Routes>
           <Route element={<BlockedPage />} path="/blocked" />
@@ -110,7 +108,6 @@ const App: React.FC = () => {
           />
         </Routes>
       </AppStartupGate>
-    </ContextMenu>
   );
 };
 export default App;

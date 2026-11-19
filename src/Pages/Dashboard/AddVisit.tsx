@@ -106,7 +106,7 @@ import {
   gestationalDaysFromCrl,
   crlRedatingThresholdDays,
 } from "../../utils/fetalGrowthCentiles";
-import { misureDaRifare } from "../../utils/copiaVisitaOstetrica";
+import { epocaAllaData, misureDaRifare } from "../../utils/copiaVisitaOstetrica";
 import { getBiometryPercentile } from "../../utils/biometryCentiles";
 import {
   bmiBand,
@@ -831,6 +831,31 @@ export default function AddVisit() {
     };
     loadData();
   }, [searchParams, visitId]);
+
+  // Nuova visita: il peso pre-gravidanza non cambia nella stessa gravidanza,
+  // lo riprendiamo dall'ultima visita ostetrica la cui UM e' ancora in corso
+  // (il medico puo' sempre correggerlo).
+  useEffect(() => {
+    if (visitId) return;
+    const oggi = new Date().toISOString().slice(0, 10);
+    // Senza UM la gravidanza e' "in corso" se la visita e' di meno di 300 giorni fa.
+    const inCorso = (v: Visit) =>
+      v.ostetricia?.ultimaMestruazione
+        ? epocaAllaData(v.ostetricia.ultimaMestruazione, oggi) !== ""
+        : epocaAllaData(v.dataVisita.slice(0, 10), oggi) !== "" ||
+          v.dataVisita.slice(0, 10) === oggi;
+    const precedente = patientVisits.find(
+      (v) =>
+        v.tipo === "ostetrica" &&
+        (v.ostetricia?.pesoPreGravidanza ?? 0) > 0 &&
+        inCorso(v),
+    );
+    if (!precedente?.ostetricia) return;
+    const pesoPre = precedente.ostetricia.pesoPreGravidanza;
+    setOstetriciaData((prev) =>
+      prev.pesoPreGravidanza > 0 ? prev : { ...prev, pesoPreGravidanza: pesoPre },
+    );
+  }, [patientVisits, visitId]);
 
   // ── Bozza locale (vedi utils/bozzaVisita) ──────────────────────────────
   const chiaveBozza = patient ? chiaveBozzaVisita(visitId, patient.id) : null;
@@ -3519,10 +3544,9 @@ export default function AddVisit() {
                       />
 
                       {/* Indicatore aumento peso + BMI pre-gravidanza (compatto) */}
-                      {ostetriciaData.pesoPreGravidanza > 0 &&
-                        ostetriciaData.pesoAttuale > 0 && (
+                      {ostetriciaData.pesoPreGravidanza > 0 && (
                           <div className="flex flex-col items-center justify-end gap-1 pb-1 px-1.5 animate-appearance-in">
-                            {(() => {
+                            {ostetriciaData.pesoAttuale > 0 && (() => {
                               const diff =
                                 ostetriciaData.pesoAttuale -
                                 ostetriciaData.pesoPreGravidanza;
